@@ -1,6 +1,6 @@
 import type { ParserRecords } from "./types.ts";
 import { createTypeGuard } from "./guard.ts";
-import { Is } from "./index.ts";
+import { Is } from "../mod.ts";
 
 /** The return Is dictionary, merging both the definitions from the standard library
  * and the custom type guards generated from the GuardExtension record. */
