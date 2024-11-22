@@ -1,13 +1,10 @@
-import { createTypeGuard, type Parser } from "./guard.ts";
+import type { ParserRecords } from "./types.ts";
+import { createTypeGuard } from "./guard.ts";
 import { Is } from "./index.ts";
-
-/** A record describing various types and their parsers. This can be used to generate
- * a customized Is dictionary. */
-type GuardExtension = Record<string, Parser>;
 
 /** The return Is dictionary, merging both the definitions from the standard library
  * and the custom type guards generated from the GuardExtension record. */
-type ExtendedIs<E extends GuardExtension> =
+type ExtendedIs<E extends ParserRecords> =
   & typeof Is
   & {
     [key in keyof E]: ReturnType<
@@ -21,12 +18,9 @@ type ExtendedIs<E extends GuardExtension> =
  * @param config
  * @returns
  */
-export function extend<E extends GuardExtension>(config: E): ExtendedIs<E> {
-  const mappedEntries = Object.fromEntries(
-    Object.entries(config).map((
-      [name, parser],
-    ) => [name, createTypeGuard(parser)]),
-  );
+export function extend<P extends ParserRecords>(config: P): ExtendedIs<P> {
+  const entries = Object.entries(config)
+    .map(([name, parser]) => [name, createTypeGuard(parser)]);
 
-  return { ...mappedEntries, ...Is } as ExtendedIs<E>;
+  return { ...Object.fromEntries(entries), ...Is } as ExtendedIs<P>;
 }
