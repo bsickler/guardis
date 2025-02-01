@@ -1,4 +1,6 @@
 {
+	"name": "@mrpossumz/guardis",
+	"version": "0.0.2",
   "exports": "./mod.ts",
   "tasks": {
     "dev": {
