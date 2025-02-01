@@ -1,13 +1,18 @@
+/**
+ * guard.ts
+ * @module
+ */
+
 // A parser is a function that takes an unknown and returns T or null
 export type Parser<T = unknown> = (
-	val: unknown,
-	has: typeof hasProperty,
+  val: unknown,
+  has: typeof hasProperty,
 ) => T | null;
 
 // The createTypeGuard function accepts a parser and returns a new function that
 // can be used to validate if the input matches the specified type.
 
-/** 
+/**
  * Utility to verify if a property exists in an object. Checks that
  * k is a key in t. If a guard method is provided, it will also check
  * that the value at k passes the guard.
@@ -17,13 +22,13 @@ export type Parser<T = unknown> = (
  * @returns {boolean}
  */
 export function hasProperty<K extends PropertyKey, G = unknown>(
-	t: object,
-	k: K,
-	guard?: (v: unknown) => v is G,
+  t: object,
+  k: K,
+  guard?: (v: unknown) => v is G,
 ): t is Record<K, G> {
-	if (!(k in t)) return false;
+  if (!(k in t)) return false;
 
-	return guard ? guard(t[k as keyof typeof t]) : true;
+  return guard ? guard(t[k as keyof typeof t]) : true;
 }
 
 /**
@@ -45,19 +50,19 @@ export function hasProperty<K extends PropertyKey, G = unknown>(
  * @returns {Function}
  */
 export const createTypeGuard = <T>(parse: Parser<T>) => {
-	const callback = (value: unknown): value is T => {
-		return parse(value, hasProperty) !== null;
-	};
+  const callback = (value: unknown): value is T => {
+    return parse(value, hasProperty) !== null;
+  };
 
-	callback.strict = (value: unknown): value is T => {
-		if (parse(value, hasProperty) === null) {
-			throw TypeError(`Type guard failed. Parser ${parse.name} returned null.`);
-		}
+  callback.strict = (value: unknown): value is T => {
+    if (parse(value, hasProperty) === null) {
+      throw TypeError(`Type guard failed. Parser ${parse.name} returned null.`);
+    }
 
-		return true;
-	};
+    return true;
+  };
 
-	return callback;
+  return callback;
 };
 
 /**
@@ -66,7 +71,7 @@ export const createTypeGuard = <T>(parse: Parser<T>) => {
  * @return {boolean}
  */
 export const isBoolean = createTypeGuard((t) =>
-	typeof t === "boolean" ? t : null
+  typeof t === "boolean" ? t : null
 );
 
 /**
@@ -75,7 +80,7 @@ export const isBoolean = createTypeGuard((t) =>
  * @return {boolean}
  */
 export const isString = createTypeGuard((t) =>
-	typeof t === "string" ? t : null
+  typeof t === "string" ? t : null
 );
 
 /**
@@ -84,7 +89,7 @@ export const isString = createTypeGuard((t) =>
  * @return {boolean}
  */
 export const isNumber = createTypeGuard((t) =>
-	typeof t === "number" ? t : null
+  typeof t === "number" ? t : null
 );
 
 /**
@@ -100,11 +105,11 @@ export const isBinary = createTypeGuard((t) => t === 1 || t === 0 ? t : null);
  * @return {boolean}
  */
 export const isNumeric = createTypeGuard((t) => {
-	if (isNumber(t)) return t as number;
+  if (isNumber(t)) return t as number;
 
-	const _t = parseInt(t as string) || parseFloat(t as string);
+  const _t = parseInt(t as string) || parseFloat(t as string);
 
-	return !isNaN(_t) && isNumber(_t) ? t as number : null;
+  return !isNaN(_t) && isNumber(_t) ? t as number : null;
 });
 
 /**
@@ -113,7 +118,7 @@ export const isNumeric = createTypeGuard((t) => {
  * @return {boolean}
  */
 export const isFunction = createTypeGuard((t) =>
-	typeof t === "function" ? t : null
+  typeof t === "function" ? t : null
 );
 
 /**
@@ -122,7 +127,7 @@ export const isFunction = createTypeGuard((t) =>
  * @return {boolean}
  */
 export const isUndefined = createTypeGuard((t) =>
-	typeof t === "undefined" ? t : null
+  typeof t === "undefined" ? t : null
 );
 
 /**
@@ -133,7 +138,7 @@ export const isUndefined = createTypeGuard((t) =>
  * @return {boolean}
  */
 export const isObject = createTypeGuard((t) =>
-	t && typeof t === "object" && !Array.isArray(t) ? t : null
+  t && typeof t === "object" && !Array.isArray(t) ? t : null
 );
 
 /**
@@ -144,11 +149,11 @@ export const isObject = createTypeGuard((t) =>
  * @return {boolean}
  */
 export const isJsonObject = createTypeGuard((t) => {
-	if (t && typeof t === "object" && !Array.isArray(t)) {
-		return t;
-	}
+  if (t && typeof t === "object" && !Array.isArray(t)) {
+    return t;
+  }
 
-	return null;
+  return null;
 });
 
 /**
@@ -172,11 +177,11 @@ export const isJsonArray = createTypeGuard((t) => Array.isArray(t) ? t : null);
  */
 const isNull = (value: unknown): value is null => value === null;
 isNull.strict = (value: unknown): value is null => {
-	if (!isNull(value)) {
-		throw TypeError("Type guard failed. Input is not null.");
-	}
+  if (!isNull(value)) {
+    throw TypeError("Type guard failed. Input is not null.");
+  }
 
-	return true;
+  return true;
 };
 
 /**
@@ -185,14 +190,14 @@ isNull.strict = (value: unknown): value is null => {
  * @return {boolean}
  */
 const isNil = (value: unknown): value is null | undefined =>
-	isNull(value) || isUndefined(value);
+  isNull(value) || isUndefined(value);
 
 isNil.strict = (value: unknown): value is null | undefined => {
-	if (!isNil(value)) {
-		throw TypeError("Type guard failed. Input is not null or undefined.");
-	}
+  if (!isNil(value)) {
+    throw TypeError("Type guard failed. Input is not null or undefined.");
+  }
 
-	return true;
+  return true;
 };
 
 /**
@@ -202,30 +207,29 @@ isNil.strict = (value: unknown): value is null | undefined => {
  * @return {boolean}
  */
 const isEmpty = (
-	value: unknown,
+  value: unknown,
 ): value is null | undefined | "" | [] | Record<string, never> => {
-	if (
-		value === null ||
-		isUndefined(value) ||
-		(typeof value === "string" && value === "") ||
-		(Array.isArray(value) && (value as unknown[]).length === 0) ||
-		(value && typeof value === "object" && Object.keys(value).length === 0)
-	) {
-		return true;
-	}
+  if (
+    value === null ||
+    isUndefined(value) ||
+    (typeof value === "string" && value === "") ||
+    (Array.isArray(value) && (value as unknown[]).length === 0) ||
+    (value && typeof value === "object" && Object.keys(value).length === 0)
+  ) {
+    return true;
+  }
 
-	return false;
+  return false;
 };
 
-
 isEmpty.strict = (
-	value: unknown,
+  value: unknown,
 ): value is null | undefined | "" | [] | Record<string, never> => {
-	if (!isEmpty(value)) {
-		throw TypeError("Type guard failed. Input is not empty.");
-	}
+  if (!isEmpty(value)) {
+    throw TypeError("Type guard failed. Input is not empty.");
+  }
 
-	return true;
+  return true;
 };
 
 export { isEmpty, isNil, isNull };

@@ -4,10 +4,10 @@ import { Is } from "../mod.ts";
 
 /** The return Is dictionary, merging both the definitions from the standard library
  * and the custom type guards generated from the GuardExtension record. */
-type ExtendedIs<E extends ParserRecords> =
-  & typeof Is
+type ExtendedIs<E extends ParserRecords, I extends typeof Is> =
+  & I
   & {
-    [key in keyof E]: ReturnType<
+    readonly [key in keyof E]: ReturnType<
       typeof createTypeGuard<Exclude<ReturnType<E[key]>, null>>
     >;
   };
@@ -18,9 +18,28 @@ type ExtendedIs<E extends ParserRecords> =
  * @param config
  * @returns
  */
-export function extend<P extends ParserRecords>(config: P): ExtendedIs<P> {
+export function extend<P extends ParserRecords>(
+  config: P,
+): ExtendedIs<P, typeof Is>;
+/**
+ * Clones the provided Is library and extends it by adding in your
+ * new parsers.
+ * @param Is The Is library to extend.
+ * @param config The catalog of parsers to include in your library.
+ * @returns
+ */
+export function extend<P extends ParserRecords, I extends typeof Is>(
+  is: I,
+  config: P,
+): ExtendedIs<P, I>;
+export function extend<P extends ParserRecords, I extends typeof Is>(
+  ...args: [P] | [P, I]
+): ExtendedIs<P, I> {
+  const config = (1 in args ? args[1] : args[0]) as P;
+  const is = 1 in args ? args[0] : Is;
+
   const entries = Object.entries(config)
     .map(([name, parser]) => [name, createTypeGuard(parser)]);
 
-  return { ...Object.fromEntries(entries), ...Is } as ExtendedIs<P>;
+  return { ...Object.fromEntries(entries), ...(is ?? Is) } as ExtendedIs<P, I>;
 }
