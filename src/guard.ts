@@ -58,9 +58,18 @@ export const createTypeGuard = <T>(parse: Parser<T>) => {
     return parse(value, hasProperty) !== null;
   };
 
-  callback.strict = (value: unknown): value is T => {
+  /**
+   * Throws a TypeError if the type guard fails. Optionally you may define an
+   * error message to be included.
+   * @param {unknown} value
+   * @param {string?} errorMsg Optional
+   * @returns
+   */
+  callback.strict = (value: unknown, errorMsg?: string): value is T => {
     if (parse(value, hasProperty) === null) {
-      throw TypeError(`Type guard failed. Parser ${parse.name} returned null.`);
+      throw TypeError(
+        errorMsg ?? `Type guard failed. Parser ${parse.name} returned null.`,
+      );
     }
 
     return true;
@@ -163,11 +172,11 @@ export const isObject = createTypeGuard((t) =>
  */
 export const isJsonObject = createTypeGuard<JsonObject>((t) => {
   if (t && typeof t === "object" && !Array.isArray(t)) {
-		for (const v of Object.values(t)) {
-			if (!isJsonValue(v)) return null;
-		}
+    for (const v of Object.values(t)) {
+      if (!isJsonValue(v)) return null;
+    }
 
-		return t as JsonObject;
+    return t as JsonObject;
   }
 
   return null;
