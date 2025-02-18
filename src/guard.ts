@@ -211,9 +211,9 @@ export const isJsonValue = createTypeGuard<JsonValue>((t) => {
  * @param {unknown} t
  * @return {boolean}
  */
-const isNull = (value: unknown): value is null => value === null;
-isNull.strict = (value: unknown): value is null => {
-  if (!isNull(value)) {
+const isNull = (t: unknown): t is null => t === null;
+isNull.strict = (t: unknown): t is null => {
+  if (!isNull(t)) {
     throw TypeError("Type guard failed. Input is not null.");
   }
 
@@ -225,11 +225,11 @@ isNull.strict = (value: unknown): value is null => {
  * @param {unknown} t
  * @return {boolean}
  */
-const isNil = (value: unknown): value is null | undefined =>
-  isNull(value) || isUndefined(value);
+const isNil = (t: unknown): t is null | undefined =>
+  isNull(t) || isUndefined(t);
 
-isNil.strict = (value: unknown): value is null | undefined => {
-  if (!isNil(value)) {
+isNil.strict = (t: unknown): t is null | undefined => {
+  if (!isNil(t)) {
     throw TypeError("Type guard failed. Input is not null or undefined.");
   }
 
@@ -243,14 +243,14 @@ isNil.strict = (value: unknown): value is null | undefined => {
  * @return {boolean}
  */
 const isEmpty = (
-  value: unknown,
-): value is null | undefined | "" | [] | Record<string, never> => {
+  t: unknown,
+): t is null | undefined | "" | [] | Record<string, never> => {
   if (
-    value === null ||
-    isUndefined(value) ||
-    (typeof value === "string" && value === "") ||
-    (Array.isArray(value) && (value as unknown[]).length === 0) ||
-    (value && typeof value === "object" && Object.keys(value).length === 0)
+    t === null ||
+    isUndefined(t) ||
+    (typeof t === "string" && t === "") ||
+    (Array.isArray(t) && (t as unknown[]).length === 0) ||
+    (t && typeof t === "object" && Object.keys(t).length === 0)
   ) {
     return true;
   }
@@ -259,13 +259,20 @@ const isEmpty = (
 };
 
 isEmpty.strict = (
-  value: unknown,
-): value is null | undefined | "" | [] | Record<string, never> => {
-  if (!isEmpty(value)) {
+  t: unknown,
+): t is null | undefined | "" | [] | Record<string, never> => {
+  if (!isEmpty(t)) {
     throw TypeError("Type guard failed. Input is not empty.");
   }
 
   return true;
 };
+
+// deno-lint-ignore no-explicit-any
+export const isIterator = <C = any>(t: unknown): t is Iterator<C> =>
+  typeof t === "object" &&
+  !isNil(t) &&
+  Symbol.iterator in t &&
+  isFunction(t[Symbol.iterator]);
 
 export { isEmpty, isNil, isNull };
