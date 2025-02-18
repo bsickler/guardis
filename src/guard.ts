@@ -36,6 +36,49 @@ export function hasProperty<K extends PropertyKey, G = unknown>(
 }
 
 /**
+ * Creates a type guard that strictly checks the type, throwing
+ *  a TypeError if it fails.
+ * @param parse
+ * @returns
+ */
+const createStrictTypeGuard = <T>(parse: Parser<T>) => {
+  return (value: unknown, errorMsg?: string): value is T => {
+    if (parse(value, hasProperty) === null) {
+      throw TypeError(
+        errorMsg ?? `Type guard failed. Parser ${parse.name} returned null.`,
+      );
+    }
+
+    return true;
+  };
+};
+
+/**
+ * Creates a type guard that fails if the value is considered
+ * "empty" by the `isEmpty` type guard.
+ * @param parse
+ * @returns
+ */
+const createNotEmptyTypeGuard = <T>(parse: Parser<T>): {
+  (value: unknown): value is T;
+  strict: (value: unknown, errorMsg?: string) => value is T;
+} => {
+  const callback = (value: unknown): value is T =>
+    !isEmpty(value) && parse(value, hasProperty) !== null;
+
+  /**
+   * Throws a TypeError if the type guard fails or value is empty.
+   * Optionally you may define an error message to be included.
+   * @param {unknown} value
+   * @param {string?} errorMsg Optional
+   * @returns
+   */
+  callback.strict = createStrictTypeGuard(parse);
+
+  return callback;
+};
+
+/**
  * The createTypeGuard function accepts a parser and returns a new function that
  * can be used to validate an input against a specified type. The parser
  * should perform whatever checks are necessary to safely establish that
@@ -54,9 +97,8 @@ export function hasProperty<K extends PropertyKey, G = unknown>(
  * @returns {Function}
  */
 export const createTypeGuard = <T>(parse: Parser<T>) => {
-  const callback = (value: unknown): value is T => {
-    return parse(value, hasProperty) !== null;
-  };
+  const callback = (value: unknown): value is T =>
+    parse(value, hasProperty) !== null;
 
   /**
    * Throws a TypeError if the type guard fails. Optionally you may define an
@@ -65,15 +107,15 @@ export const createTypeGuard = <T>(parse: Parser<T>) => {
    * @param {string?} errorMsg Optional
    * @returns
    */
-  callback.strict = (value: unknown, errorMsg?: string): value is T => {
-    if (parse(value, hasProperty) === null) {
-      throw TypeError(
-        errorMsg ?? `Type guard failed. Parser ${parse.name} returned null.`,
-      );
-    }
+  callback.strict = createStrictTypeGuard(parse);
 
-    return true;
-  };
+  /**
+   * Returns false if the value fails the "empty" type guard
+   * or if it fails the parser.
+   * @param {unknown} value
+   * @returns
+   */
+  callback.notEmpty = createNotEmptyTypeGuard(parse);
 
   return callback;
 };
@@ -228,9 +270,11 @@ isNull.strict = (t: unknown): t is null => {
 const isNil = (t: unknown): t is null | undefined =>
   isNull(t) || isUndefined(t);
 
-isNil.strict = (t: unknown): t is null | undefined => {
+isNil.strict = (t: unknown, errorMsg?: string): t is null | undefined => {
   if (!isNil(t)) {
-    throw TypeError("Type guard failed. Input is not null or undefined.");
+    throw TypeError(
+      errorMsg ?? "Type guard failed. Value is not null or undefined.",
+    );
   }
 
   return true;
@@ -246,9 +290,7 @@ const isEmpty = (
   t: unknown,
 ): t is null | undefined | "" | [] | Record<string, never> => {
   if (
-    t === null ||
-    isUndefined(t) ||
-    (typeof t === "string" && t === "") ||
+    t === null || isUndefined(t) || (t === "") ||
     (Array.isArray(t) && (t as unknown[]).length === 0) ||
     (t && typeof t === "object" && Object.keys(t).length === 0)
   ) {
@@ -260,19 +302,40 @@ const isEmpty = (
 
 isEmpty.strict = (
   t: unknown,
+  errorMsg?: string,
 ): t is null | undefined | "" | [] | Record<string, never> => {
   if (!isEmpty(t)) {
-    throw TypeError("Type guard failed. Input is not empty.");
+    throw TypeError(errorMsg ?? "Type guard failed. Value is not empty.");
   }
 
   return true;
 };
 
+/**
+ * Returns true if the date type is an iterator. Does not
+ * check the type contained within the iterator.
+ * @param t
+ * @returns
+ */
 // deno-lint-ignore no-explicit-any
-export const isIterator = <C = any>(t: unknown): t is Iterator<C> =>
+const isIterator = <C = any>(t: unknown): t is Iterator<C> =>
   typeof t === "object" &&
   !isNil(t) &&
   Symbol.iterator in t &&
   isFunction(t[Symbol.iterator]);
 
-export { isEmpty, isNil, isNull };
+// deno-lint-ignore no-explicit-any
+isIterator.strict = <C = any>(
+  t: unknown,
+  errorMsg?: string,
+): t is Iterator<C> => {
+  if (!isIterator(t)) {
+    throw TypeError(
+      errorMsg ?? "Tpye guard failed. Value is not an interator.",
+    );
+  }
+
+  return true;
+};
+
+export { isEmpty, isIterator, isNil, isNull };
