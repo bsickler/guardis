@@ -10,6 +10,7 @@
 export * from "./src/guard.ts";
 export * from "./src/extend.ts";
 export * from "./src/batch.ts";
+export * from "./src/types.ts";
 
 import * as g from "./src/guard.ts";
 
@@ -28,8 +29,10 @@ export const Is = {
   Function: g.isFunction,
   Object: g.isObject,
   Undefined: g.isUndefined,
+  JsonPrimitive: g.isJsonPrimitive,
   JsonArray: g.isJsonArray,
   JsonObject: g.isJsonObject,
+  JsonValue: g.isJsonValue,
   Null: g.isNull,
   Nil: g.isNil,
   Empty: g.isEmpty,

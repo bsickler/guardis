@@ -239,3 +239,11 @@ Deno.test("strict mode", async (t) => {
     assert(isString.strict("1"));
   });
 });
+
+Deno.test("notEmpty", () => {
+  assert(isString.notEmpty("a string"));
+
+  assertFalse(isString.notEmpty(0));
+  assertFalse(isString.notEmpty(10));
+  assertFalse(isString.notEmpty(""));
+});
