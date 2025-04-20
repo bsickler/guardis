@@ -8,10 +8,6 @@
     "./http": "./src/modules/http.ts"
   },
   "tasks": {
-    "dev": {
-      "description": "Start the dev process.",
-      "command": "deno run --watch main.ts"
-    },
     "test": {
       "description": "Run unit tests.",
       "command": "deno test"
