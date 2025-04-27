@@ -76,9 +76,9 @@ isNumber.strict(num);
 num += 1; // TS knows that "num" is a number
 
 isNumber.strict(str);
-str += 1; 	// Ts knows that if this point of the code is reached then
-			// "str" must be a number, or else an error would have been
-			// thrown.
+str += 1; // Ts knows that if this point of the code is reached then
+// "str" must be a number, or else an error would have been
+// thrown.
 ```
 
 ## Creating New Type Guards
@@ -106,9 +106,13 @@ isZeroOrOne("a"); // false
 
 #### Typing Complex Objects
 
-When typing objects with many properties it can become unwieldy to manually test each property. Similarly, it can be an exercise in frustration to get the TS server to coerce these checks into satisfying your desired type. To simplify this, the `createTypeGuard` passes the `has` utility to each callback.
+When typing objects with many properties it can become unwieldy to manually test
+each property. Similarly, it can be an exercise in frustration to get the TS
+server to coerce these checks into satisfying your desired type. To simplify
+this, the `createTypeGuard` passes the `has` utility to each callback.
 
-This can be used to check for the presence of a key. It also accepts an optional third argument to verify the value.
+This can be used to check for the presence of a key. It also accepts an optional
+third argument to verify the value.
 
 ```ts
 type User = {
@@ -129,13 +133,46 @@ const isUser = createTypeGuard((t, has) => {
 
   return null;
 });
-
 ```
 
 ## Modules
 
+Beyond the default included types, Guardis offers modules tailored towards more
+specific use cases. Currently this includes the **_http_** module but the
+catalog will expand as more updates are added.
+
+## Batch Generating Type Guards
+
+Hate having to call `createTypeGuard` repeatedly for every type you want to define? So do we! That's why we created the `batch` method to just generate a whole bunch of them in a single call.
+
+```ts
+const { isMeatball, isSausage, isSpaghetti } = batch({
+	Meatball: (v) => v === "meatball" ? v : null,
+	Sausage: (v) => v === "sausage" ? v : null,
+	Spaghetti: (v) => v === "spaghetti" ? v : null,
+});
+```
+The batch method will automatically generate typed guards for each key-value in your input object. Too lazy to have to capitalize every key? That's fine too! The batch method will accept any casing and convert it to the camel case format of `isKey`.
+
 ## Extending
 
-### Extend
+Want to extend the `Is` object for your own purposes? Guardis includes an easy
+way to bundle in your own custom types and keep them under one simple interface.
+You can use the `extend` method to generate a new `Is` object or modify an
+existing one.
 
-### Batch
+```ts
+// Generating a new Is object
+const Is = extend({ Meatball: (v: unknown) => v === "meatball" ? v : null });
+
+Is.Meatball(true); // false
+Is.Meatball(1); //false
+Is.Meatball("meatball"); // True
+
+// Extending an existing Is object
+import { Is as _Is } from "jsr:@mr-possumz/guardis";
+
+const Is = extend(_Is, {
+  Sausage: (v: unknown) => v === "sausage" ? v : null,
+});
+```
