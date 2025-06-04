@@ -17,7 +17,7 @@ import {
 
 Deno.test("createTypeGuard", async (t) => {
   await t.step('injects "has" function', () => {
-    const testGuard = createTypeGuard<{ a: string }>((v, has) => {
+    const testGuard = createTypeGuard<{ a: string }>((v, { has }) => {
       if (isObject(v) && has(v, "a", isString)) {
         return v;
       }
@@ -27,6 +27,29 @@ Deno.test("createTypeGuard", async (t) => {
 
     assertEquals(testGuard({ a: "1" }), true);
     assertEquals(testGuard({}), false);
+  });
+
+  await t.step('injects "includes" function', () => {
+    const tuple = ["a", "b", "c"] as const;
+
+    const testGuard = createTypeGuard<typeof tuple[number]>(
+      (v, { includes }) => {
+        if (includes(tuple, v)) return v;
+
+        return null;
+      },
+    );
+
+    assertEquals(testGuard('a'), true);
+    assertEquals(testGuard('f'), false);
+    assertEquals(testGuard([]), false);
+    assertEquals(testGuard({}), false);
+    assertEquals(testGuard(1), false);
+    assertEquals(testGuard(0), false);
+    assertEquals(testGuard(true), false);
+    assertEquals(testGuard(false), false);
+    assertEquals(testGuard(null), false);
+    assertEquals(testGuard(undefined), false);
   });
 });
 

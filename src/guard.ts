@@ -13,7 +13,7 @@ import type {
 /** A parser is a function that takes an unknown and returns T or null */
 export type Parser<T = unknown> = (
   val: unknown,
-  has: typeof hasProperty,
+  helper: { has: typeof hasProperty, includes: typeof includes },
 ) => T | null;
 
 /**
@@ -36,6 +36,19 @@ export function hasProperty<K extends PropertyKey, G = unknown>(
 }
 
 /**
+ * Utility to verify if a value is included in a tuple.
+ * @param {array} t The tuple to check for value v. 
+ * @param {unknown} v The value to check for inclusion in t.
+ * @returns {boolean}
+ */
+export function includes<T extends readonly unknown[]>(
+  t: T,
+  v: unknown,
+): v is T[number] {
+  return t.includes(v);
+}
+
+/**
  * Creates a type guard that strictly checks the type, throwing
  *  a TypeError if it fails.
  * @param parse
@@ -43,7 +56,7 @@ export function hasProperty<K extends PropertyKey, G = unknown>(
  */
 const createStrictTypeGuard = <T>(parse: Parser<T>) => {
   return (value: unknown, errorMsg?: string): value is T => {
-    if (parse(value, hasProperty) === null) {
+    if (parse(value, { has: hasProperty, includes }) === null) {
       throw TypeError(
         errorMsg ?? `Type guard failed. Parser ${parse.name} returned null.`,
       );
@@ -64,7 +77,7 @@ const createNotEmptyTypeGuard = <T>(parse: Parser<T>): {
   strict: (value: unknown, errorMsg?: string) => value is T;
 } => {
   const callback = (value: unknown): value is T =>
-    !isEmpty(value) && parse(value, hasProperty) !== null;
+    !isEmpty(value) && parse(value, { has: hasProperty, includes }) !== null;
 
   /**
    * Throws a TypeError if the type guard fails or value is empty.
@@ -98,7 +111,7 @@ const createNotEmptyTypeGuard = <T>(parse: Parser<T>): {
  */
 export const createTypeGuard = <T>(parse: Parser<T>) => {
   const callback = (value: unknown): value is T =>
-    parse(value, hasProperty) !== null;
+    parse(value, { has: hasProperty, includes }) !== null;
 
   /**
    * Throws a TypeError if the type guard fails. Optionally you may define an
