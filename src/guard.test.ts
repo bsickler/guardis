@@ -12,6 +12,7 @@ import {
   isNumber,
   isObject,
   isString,
+  isTuple,
   isUndefined,
 } from "./guard.ts";
 
@@ -269,4 +270,20 @@ Deno.test("notEmpty", () => {
   assertFalse(isString.notEmpty(0));
   assertFalse(isString.notEmpty(10));
   assertFalse(isString.notEmpty(""));
+});
+
+Deno.test('isTuple', () => {
+  assert(isTuple([], 0));
+  assert(isTuple([1], 1));
+  assert(isTuple([1, 2], 2));
+  assert(isTuple([1, 2, 3], 3));
+  assert(isTuple([1, 2, 3, 4], 4));
+  assert(isTuple([1, 2, 3, 4, 5], 5));
+  assert(isTuple([1, 2, 3, 4, 5, 6], 6));
+  assert(isTuple([1, 2, 3, 4, 5, 6, 7], 7));
+  assert(isTuple([1, 2, 3, 4, 5, 6, 7, 8], 8));
+  assert(isTuple([1, 2, 3, 4, 5, 6, 7, 8, 9], 9));
+  assert(isTuple([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 10));
+  assertFalse(isTuple([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], 10));
+  assertFalse(isTuple([1, 2, 3, 4, 5, 6, 7, 8, 9], 10));
 });
