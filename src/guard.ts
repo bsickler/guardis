@@ -8,12 +8,13 @@ import type {
   JsonObject,
   JsonPrimitive,
   JsonValue,
+  TupleOfLength,
 } from "./types.ts";
 
 /** A parser is a function that takes an unknown and returns T or null */
 export type Parser<T = unknown> = (
   val: unknown,
-  helper: { has: typeof hasProperty, includes: typeof includes },
+  helper: { has: typeof hasProperty; includes: typeof includes },
 ) => T | null;
 
 /**
@@ -37,7 +38,7 @@ export function hasProperty<K extends PropertyKey, G = unknown>(
 
 /**
  * Utility to verify if a value is included in a tuple.
- * @param {array} t The tuple to check for value v. 
+ * @param {array} t The tuple to check for value v.
  * @param {unknown} v The value to check for inclusion in t.
  * @returns {boolean}
  */
@@ -351,4 +352,26 @@ isIterator.strict = <C = any>(
   return true;
 };
 
-export { isEmpty, isIterator, isNil, isNull };
+const isTuple = <N extends number>(
+  t: unknown,
+  length: N,
+): t is TupleOfLength<N> => {
+  return Array.isArray(t) && t.length === length;
+};
+
+isTuple.strict = <N extends number>(
+  t: unknown,
+  length: N,
+  errorMsg?: string,
+): t is TupleOfLength<N> => {
+  if (!isTuple(t, length)) {
+    throw TypeError(
+      errorMsg ??
+        `Type guard failed. Value is not a tuple of length ${length}.`,
+    );
+  }
+
+  return true;
+};
+
+export { isEmpty, isIterator, isNil, isNull, isTuple };
