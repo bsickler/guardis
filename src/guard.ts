@@ -221,8 +221,9 @@ export const isNumeric: TypeGuard<number> = createTypeGuard((t): number | null =
  * @param {unknown} t
  * @return {boolean}
  */
-export const isFunction: TypeGuard<Function> = createTypeGuard((t): Function | null =>
-  typeof t === "function" ? t : null
+export const isFunction: TypeGuard<(...args: unknown[]) => unknown> = createTypeGuard(
+  (t): ((...args: unknown[]) => unknown) | null =>
+    typeof t === "function" ? (t as (...args: unknown[]) => unknown) : null
 );
 
 /**
