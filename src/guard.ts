@@ -8,7 +8,11 @@ import type { JsonArray, JsonObject, JsonPrimitive, JsonValue, TupleOfLength } f
 /** A parser is a function that takes an unknown and returns T or null */
 export type Parser<T = unknown> = (
   val: unknown,
-  helper: { has: typeof hasProperty; includes: typeof includes },
+  helper: {
+    has: typeof hasProperty;
+    tupleHas: typeof tupleHas;
+    includes: typeof includes;
+  },
 ) => T | null;
 
 export type Guard<T = unknown> = {
@@ -38,14 +42,32 @@ export function hasProperty<K extends PropertyKey, G = unknown>(
 
 /**
  * Utility to verify if a value is included in a tuple.
- * @param {array} t The tuple to check for value v.
- * @param {unknown} v The value to check for inclusion in t.
+ * @param {array} t The tuple to check for the presence of index i.
+ * @param {unknown} i The index to check.
+ * @param {Function} guard The type guard to validate t[i].
  * @returns {boolean}
  */
-export function includes<T extends readonly unknown[]>(
+// deno-lint-ignore no-explicit-any
+export function tupleHas<T extends readonly any[], I extends number, G = unknown>(
   t: T,
-  v: unknown,
-): v is T[number] {
+  i: I,
+  guard: (v: unknown) => v is G,
+  // @ts-expect-error While TS doesn't understand this, we are
+  // explicitly validating that t[i] is of type G and returning a new type
+  // that replaces the type at index I with G, effectively narrowing the type.
+): t is { [K in keyof T]: K extends `${I}` ? G : T[K] } {
+  return (i in t) && guard(t[i]);
+}
+
+/**
+ * Determines whether the specified value `i` is included in the array `t`.
+ * Useful for checking if a value is part of a union type represented by a tuple.
+ * @typeParam T - A readonly array of unknown elements.
+ * @param t - The array to search within.
+ * @param v - The value to search for in the array.
+ * @returns `true` if `i` is found in `t`, otherwise `false`.
+ */
+export function includes<T extends readonly unknown[]>(t: T, v: unknown): v is T[number] {
   return t.includes(v);
 }
 
@@ -57,7 +79,7 @@ export function includes<T extends readonly unknown[]>(
  */
 const createStrictTypeGuard = <T>(parse: Parser<T>): StrictTypeGuard<T> => {
   return (value: unknown, errorMsg?: string): value is T => {
-    if (parse(value, { has: hasProperty, includes }) === null) {
+    if (parse(value, { has: hasProperty, includes, tupleHas }) === null) {
       throw TypeError(
         errorMsg ?? `Type guard failed. Parser ${parse.name} returned null.`,
       );
@@ -75,7 +97,7 @@ const createStrictTypeGuard = <T>(parse: Parser<T>): StrictTypeGuard<T> => {
  */
 const createNotEmptyTypeGuard = <T>(parse: Parser<T>): TypeGuard<T>["notEmpty"] => {
   const callback = (value: unknown): value is T =>
-    !isEmpty(value) && parse(value, { has: hasProperty, includes }) !== null;
+    !isEmpty(value) && parse(value, { has: hasProperty, includes, tupleHas }) !== null;
 
   /**
    * Throws a TypeError if the type guard fails or value is empty.
@@ -123,7 +145,7 @@ export type TypeGuard<T> = {
  */
 export const createTypeGuard = <T>(parse: Parser<T>): TypeGuard<T> => {
   const callback = (value: unknown): value is T =>
-    parse(value, { has: hasProperty, includes }) !== null;
+    parse(value, { has: hasProperty, includes, tupleHas }) !== null;
 
   /**
    * Throws a TypeError if the type guard fails. Optionally you may define an
@@ -219,7 +241,7 @@ export const isUndefined: TypeGuard<undefined> = createTypeGuard((t): undefined 
  */
 export const isJsonPrimitive: TypeGuard<JsonPrimitive> = createTypeGuard((
   t,
-): JsonPrimitive | null => isBoolean(t) || isString(t) || isNumber(t) || isNull(t));
+): JsonPrimitive | null => (isBoolean(t) || isString(t) || isNumber(t) || isNull(t)) || null);
 
 /**
  * Returns true if input satisfies type object. _BEWARE_ object
@@ -274,7 +296,7 @@ export const isJsonArray: TypeGuard<JsonArray> = createTypeGuard((
 export const isJsonValue: TypeGuard<JsonValue> = createTypeGuard(
   (t): JsonValue | null => {
     if (isJsonPrimitive(t) || isJsonArray(t) || isJsonObject(t)) {
-      return t;
+      return t ?? true;
     }
 
     return null;
