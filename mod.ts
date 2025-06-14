@@ -34,7 +34,7 @@ export const Is: {
   Number: TypeGuard<number>;
   Binary: TypeGuard<0 | 1>;
   Numeric: TypeGuard<number>;
-  Function: TypeGuard<Function>;
+  Function: TypeGuard<(...args: unknown[]) => unknown>;
   Object: TypeGuard<object>;
   Undefined: TypeGuard<undefined>;
   Array: TypeGuard<Array<unknown>>;
@@ -44,22 +44,14 @@ export const Is: {
   JsonValue: TypeGuard<JsonPrimitive | JsonArray | JsonObject>;
   Null: {
     (value: unknown): value is null;
-    strict: (
-      value: unknown,
-      errorMsg?: string,
-    ) => value is null;
+    strict: (value: unknown, errorMsg?: string) => value is null;
   };
   Nil: {
     (value: unknown): value is null | undefined;
-    strict: (
-      value: unknown,
-      errorMsg?: string,
-    ) => value is null | undefined;
+    strict: (value: unknown, errorMsg?: string) => value is null | undefined;
   };
   Empty: {
-    (
-      value: unknown,
-    ): value is null | undefined | "" | [] | Record<string, never>;
+    (value: unknown): value is null | undefined | "" | [] | Record<string, never>;
     strict: (
       value: unknown,
       errorMsg?: string,
@@ -67,10 +59,7 @@ export const Is: {
   };
   Tuple: {
     <N extends number>(value: unknown, length: N): value is TupleOfLength<N>;
-    strict<N extends number>(
-      value: unknown,
-      length: N,
-    ): value is TupleOfLength<N>;
+    strict<N extends number>(value: unknown, length: N): value is TupleOfLength<N>;
   };
 } = {
   Boolean: g.isBoolean,
