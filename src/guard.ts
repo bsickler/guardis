@@ -3,19 +3,19 @@
  * @module
  */
 
-import type {
-  JsonArray,
-  JsonObject,
-  JsonPrimitive,
-  JsonValue,
-  TupleOfLength,
-} from "./types.ts";
+import type { JsonArray, JsonObject, JsonPrimitive, JsonValue, TupleOfLength } from "./types.ts";
 
 /** A parser is a function that takes an unknown and returns T or null */
 export type Parser<T = unknown> = (
   val: unknown,
   helper: { has: typeof hasProperty; includes: typeof includes },
 ) => T | null;
+
+export type Guard<T = unknown> = {
+  (value: unknown): value is T;
+  strict: (value: unknown, errorMsg?: string) => value is T;
+  notEmpty: (value: unknown) => value is T;
+};
 
 /**
  * Utility to verify if a property exists in an object. Checks that
@@ -55,13 +55,15 @@ export function includes<T extends readonly unknown[]>(
  * @param parse
  * @returns
  */
-const createStrictTypeGuard = <T>(parse: Parser<T>) => {
+const createStrictTypeGuard = <T>(parse: Parser<T>): StrictTypeGuard<T> => {
   return (value: unknown, errorMsg?: string): value is T => {
     if (parse(value, { has: hasProperty, includes }) === null) {
       throw TypeError(
         errorMsg ?? `Type guard failed. Parser ${parse.name} returned null.`,
       );
     }
+
+    return true;
   };
 };
 
@@ -71,9 +73,7 @@ const createStrictTypeGuard = <T>(parse: Parser<T>) => {
  * @param parse
  * @returns
  */
-const createNotEmptyTypeGuard = <T>(
-  parse: Parser<T>,
-): TypeGuard<T>["notEmpty"] => {
+const createNotEmptyTypeGuard = <T>(parse: Parser<T>): TypeGuard<T>["notEmpty"] => {
   const callback = (value: unknown): value is T =>
     !isEmpty(value) && parse(value, { has: hasProperty, includes }) !== null;
 
@@ -92,7 +92,7 @@ const createNotEmptyTypeGuard = <T>(
 type StrictTypeGuard<T> = (
   value: unknown,
   errorMsg?: string,
-) => asserts value is T;
+) => value is T;
 
 export type TypeGuard<T> = {
   (value: unknown): value is T;
@@ -186,33 +186,31 @@ export const isBinary: TypeGuard<0 | 1> = createTypeGuard((t): 0 | 1 | null =>
  * @param {unknown} t
  * @return {boolean}
  */
-export const isNumeric: TypeGuard<number> = createTypeGuard(
-  (t): number | null => {
-    if (isNumber(t)) return t as number;
+export const isNumeric: TypeGuard<number> = createTypeGuard((t): number | null => {
+  if (isNumber(t)) return t as number;
 
-    const _t = parseInt(t as string) || parseFloat(t as string);
+  const _t = parseInt(t as string) || parseFloat(t as string);
 
-    return !isNaN(_t) && isNumber(_t) ? t as number : null;
-  },
-);
+  return !isNaN(_t) && isNumber(_t) ? t as number : null;
+});
 
 /**
  * Returns true if input satisfies type Function.
  * @param {unknown} t
  * @return {boolean}
  */
-export const isFunction: TypeGuard<Function> = createTypeGuard((
-  t,
-): Function | null => typeof t === "function" ? t : null);
+export const isFunction: TypeGuard<Function> = createTypeGuard((t): Function | null =>
+  typeof t === "function" ? t : null
+);
 
 /**
  * Returns true if input satisfies type undefined.
  * @param {unknown} t
  * @return {boolean}
  */
-export const isUndefined: TypeGuard<undefined> = createTypeGuard((
-  t,
-): undefined | null => typeof t === "undefined" ? t : null);
+export const isUndefined: TypeGuard<undefined> = createTypeGuard((t): undefined | null =>
+  typeof t === "undefined" ? t : null
+);
 
 /**
  * Returns true if input is a JSON-able primitive date type
@@ -221,9 +219,7 @@ export const isUndefined: TypeGuard<undefined> = createTypeGuard((
  */
 export const isJsonPrimitive: TypeGuard<JsonPrimitive> = createTypeGuard((
   t,
-): JsonPrimitive | null =>
-  isBoolean(t) || isString(t) || isNumber(t) || isNull(t)
-);
+): JsonPrimitive | null => isBoolean(t) || isString(t) || isNumber(t) || isNull(t));
 
 /**
  * Returns true if input satisfies type object. _BEWARE_ object
@@ -292,10 +288,12 @@ export const isJsonValue: TypeGuard<JsonValue> = createTypeGuard(
  */
 const isNull = (t: unknown): t is null => t === null;
 
-isNull.strict = (t: unknown): asserts t is null => {
+isNull.strict = (t: unknown): t is null => {
   if (!isNull(t)) {
     throw TypeError("Type guard failed. Input is not null.");
   }
+
+  return true;
 };
 
 /**
@@ -303,18 +301,14 @@ isNull.strict = (t: unknown): asserts t is null => {
  * @param {unknown} t
  * @return {boolean}
  */
-const isNil = (t: unknown): t is null | undefined =>
-  isNull(t) || isUndefined(t);
+const isNil = (t: unknown): t is null | undefined => isNull(t) || isUndefined(t);
 
-isNil.strict = (
-  t: unknown,
-  errorMsg?: string,
-): asserts t is null | undefined => {
+isNil.strict = (t: unknown, errorMsg?: string): t is null | undefined => {
   if (!isNil(t)) {
-    throw TypeError(
-      errorMsg ?? "Type guard failed. Value is not null or undefined.",
-    );
+    throw TypeError(errorMsg ?? "Type guard failed. Value is not null or undefined.");
   }
+
+  return true;
 };
 
 /**
@@ -323,9 +317,7 @@ isNil.strict = (
  * @param {unknown} t
  * @return {boolean}
  */
-const isEmpty = (
-  t: unknown,
-): t is null | undefined | "" | [] | Record<string, never> => {
+const isEmpty = (t: unknown): t is null | undefined | "" | [] | Record<string, never> => {
   if (
     t === null || isUndefined(t) || (t === "") ||
     (Array.isArray(t) && (t as unknown[]).length === 0) ||
@@ -340,10 +332,11 @@ const isEmpty = (
 isEmpty.strict = (
   t: unknown,
   errorMsg?: string,
-): asserts t is null | undefined | "" | [] | Record<string, never> => {
+): t is null | undefined | "" | [] | Record<string, never> => {
   if (!isEmpty(t)) {
     throw TypeError(errorMsg ?? "Type guard failed. Value is not empty.");
   }
+  return true;
 };
 
 /**
@@ -354,27 +347,18 @@ isEmpty.strict = (
  */
 // deno-lint-ignore no-explicit-any
 const isIterator = <C = any>(t: unknown): t is Iterator<C> =>
-  typeof t === "object" &&
-  !isNil(t) &&
-  Symbol.iterator in t &&
-  isFunction(t[Symbol.iterator]);
+  typeof t === "object" && !isNil(t) && Symbol.iterator in t && isFunction(t[Symbol.iterator]);
 
 // deno-lint-ignore no-explicit-any
-isIterator.strict = <C = any>(
-  t: unknown,
-  errorMsg?: string,
-): asserts t is Iterator<C> => {
+isIterator.strict = <C = any>(t: unknown, errorMsg?: string): t is Iterator<C> => {
   if (!isIterator(t)) {
-    throw TypeError(
-      errorMsg ?? "Type guard failed. Value is not an interator.",
-    );
+    throw TypeError(errorMsg ?? "Type guard failed. Value is not an interator.");
   }
+
+  return true;
 };
 
-const isTuple = <N extends number>(
-  t: unknown,
-  length: N,
-): t is TupleOfLength<N> => {
+const isTuple = <N extends number>(t: unknown, length: N): t is TupleOfLength<N> => {
   return Array.isArray(t) && t.length === length;
 };
 
@@ -384,10 +368,7 @@ isTuple.strict = <N extends number>(
   errorMsg?: string,
 ): t is TupleOfLength<N> => {
   if (!isTuple(t, length)) {
-    throw TypeError(
-      errorMsg ??
-        `Type guard failed. Value is not a tuple of length ${length}.`,
-    );
+    throw TypeError(errorMsg ?? `Type guard failed. Value is not a tuple of length ${length}.`);
   }
 
   return true;

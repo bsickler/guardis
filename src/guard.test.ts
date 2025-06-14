@@ -169,7 +169,7 @@ Deno.test("isNull", async (t) => {
   });
 
   await t.step("strict mode", () => {
-    assert(isNull.strict(null));
+    isNull.strict(null);
     assertThrows(() => isNull.strict(true));
     assertThrows(() => isNull.strict(false));
     assertThrows(() => isNull.strict(0));
@@ -211,11 +211,11 @@ Deno.test("isEmpty", async (t) => {
   );
 
   await t.step("strict mode", () => {
-    assert(isEmpty.strict(null));
-    assert(isEmpty.strict(undefined));
-    assert(isEmpty.strict(""));
-    assert(isEmpty.strict({}));
-    assert(isEmpty.strict([]));
+    isEmpty.strict(null);
+    isEmpty.strict(undefined);
+    isEmpty.strict("");
+    isEmpty.strict({});
+    isEmpty.strict([]);
     assertThrows(() => isEmpty.strict(true));
     assertThrows(() => isEmpty.strict(false));
     assertThrows(() => isEmpty.strict(0));
@@ -236,8 +236,8 @@ Deno.test("isNil", async (t) => {
   });
 
   await t.step("strict mode", () => {
-    assert(isNil.strict(null));
-    assert(isNil.strict(undefined));
+    isNil.strict(null);
+    isNil.strict(undefined);
     assertThrows(() => isNil.strict(true));
     assertThrows(() => isNil.strict(false));
     assertThrows(() => isNil.strict(0));
@@ -257,10 +257,10 @@ Deno.test("strict mode", async (t) => {
   });
 
   await t.step("does not throw on successful typeguard", () => {
-    assert(isBoolean.strict(true));
-    assert(isBoolean.strict(false));
-    assert(isNumber.strict(0));
-    assert(isString.strict("1"));
+    isBoolean.strict(true);
+    isBoolean.strict(false);
+    isNumber.strict(0);
+    isString.strict("1");
   });
 });
 

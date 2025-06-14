@@ -7,7 +7,6 @@
     ".": "./mod.ts",
     "./http": "./src/modules/http.ts"
   },
-  "exclude": ["**/*.test.ts", "**/*.bench.ts"],
   "tasks": {
     "test": {
       "description": "Run unit tests.",
@@ -26,5 +25,8 @@
     "@std/assert": "jsr:@std/assert@^1.0.0"
   },
   "compilerOptions": {},
-  "lock": false
+  "lock": false,
+  "fmt": {
+    "lineWidth": 100
+  }
 }
