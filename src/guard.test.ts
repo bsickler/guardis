@@ -12,12 +12,13 @@ import {
   isNumber,
   isObject,
   isString,
+  isTuple,
   isUndefined,
 } from "./guard.ts";
 
 Deno.test("createTypeGuard", async (t) => {
   await t.step('injects "has" function', () => {
-    const testGuard = createTypeGuard<{ a: string }>((v, has) => {
+    const testGuard = createTypeGuard<{ a: string }>((v, { has }) => {
       if (isObject(v) && has(v, "a", isString)) {
         return v;
       }
@@ -27,6 +28,29 @@ Deno.test("createTypeGuard", async (t) => {
 
     assertEquals(testGuard({ a: "1" }), true);
     assertEquals(testGuard({}), false);
+  });
+
+  await t.step('injects "includes" function', () => {
+    const tuple = ["a", "b", "c"] as const;
+
+    const testGuard = createTypeGuard<typeof tuple[number]>(
+      (v, { includes }) => {
+        if (includes(tuple, v)) return v;
+
+        return null;
+      },
+    );
+
+    assertEquals(testGuard('a'), true);
+    assertEquals(testGuard('f'), false);
+    assertEquals(testGuard([]), false);
+    assertEquals(testGuard({}), false);
+    assertEquals(testGuard(1), false);
+    assertEquals(testGuard(0), false);
+    assertEquals(testGuard(true), false);
+    assertEquals(testGuard(false), false);
+    assertEquals(testGuard(null), false);
+    assertEquals(testGuard(undefined), false);
   });
 });
 
@@ -246,4 +270,20 @@ Deno.test("notEmpty", () => {
   assertFalse(isString.notEmpty(0));
   assertFalse(isString.notEmpty(10));
   assertFalse(isString.notEmpty(""));
+});
+
+Deno.test('isTuple', () => {
+  assert(isTuple([], 0));
+  assert(isTuple([1], 1));
+  assert(isTuple([1, 2], 2));
+  assert(isTuple([1, 2, 3], 3));
+  assert(isTuple([1, 2, 3, 4], 4));
+  assert(isTuple([1, 2, 3, 4, 5], 5));
+  assert(isTuple([1, 2, 3, 4, 5, 6], 6));
+  assert(isTuple([1, 2, 3, 4, 5, 6, 7], 7));
+  assert(isTuple([1, 2, 3, 4, 5, 6, 7, 8], 8));
+  assert(isTuple([1, 2, 3, 4, 5, 6, 7, 8, 9], 9));
+  assert(isTuple([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 10));
+  assertFalse(isTuple([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], 10));
+  assertFalse(isTuple([1, 2, 3, 4, 5, 6, 7, 8, 9], 10));
 });

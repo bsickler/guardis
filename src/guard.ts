@@ -8,12 +8,13 @@ import type {
   JsonObject,
   JsonPrimitive,
   JsonValue,
+  TupleOfLength,
 } from "./types.ts";
 
 /** A parser is a function that takes an unknown and returns T or null */
 export type Parser<T = unknown> = (
   val: unknown,
-  has: typeof hasProperty,
+  helper: { has: typeof hasProperty; includes: typeof includes },
 ) => T | null;
 
 /**
@@ -36,14 +37,27 @@ export function hasProperty<K extends PropertyKey, G = unknown>(
 }
 
 /**
+ * Utility to verify if a value is included in a tuple.
+ * @param {array} t The tuple to check for value v.
+ * @param {unknown} v The value to check for inclusion in t.
+ * @returns {boolean}
+ */
+export function includes<T extends readonly unknown[]>(
+  t: T,
+  v: unknown,
+): v is T[number] {
+  return t.includes(v);
+}
+
+/**
  * Creates a type guard that strictly checks the type, throwing
  *  a TypeError if it fails.
  * @param parse
  * @returns
  */
 const createStrictTypeGuard = <T>(parse: Parser<T>) => {
-  return (value: unknown, errorMsg?: string): asserts value is T => {
-    if (parse(value, hasProperty) === null) {
+  return (value: unknown, errorMsg?: string): value is T => {
+    if (parse(value, { has: hasProperty, includes }) === null) {
       throw TypeError(
         errorMsg ?? `Type guard failed. Parser ${parse.name} returned null.`,
       );
@@ -61,7 +75,7 @@ const createNotEmptyTypeGuard = <T>(
   parse: Parser<T>,
 ): TypeGuard<T>["notEmpty"] => {
   const callback = (value: unknown): value is T =>
-    !isEmpty(value) && parse(value, hasProperty) !== null;
+    !isEmpty(value) && parse(value, { has: hasProperty, includes }) !== null;
 
   /**
    * Throws a TypeError if the type guard fails or value is empty.
@@ -109,7 +123,7 @@ export type TypeGuard<T> = {
  */
 export const createTypeGuard = <T>(parse: Parser<T>): TypeGuard<T> => {
   const callback = (value: unknown): value is T =>
-    parse(value, hasProperty) !== null;
+    parse(value, { has: hasProperty, includes }) !== null;
 
   /**
    * Throws a TypeError if the type guard fails. Optionally you may define an
@@ -357,4 +371,26 @@ isIterator.strict = <C = any>(
   }
 };
 
-export { isEmpty, isIterator, isNil, isNull };
+const isTuple = <N extends number>(
+  t: unknown,
+  length: N,
+): t is TupleOfLength<N> => {
+  return Array.isArray(t) && t.length === length;
+};
+
+isTuple.strict = <N extends number>(
+  t: unknown,
+  length: N,
+  errorMsg?: string,
+): t is TupleOfLength<N> => {
+  if (!isTuple(t, length)) {
+    throw TypeError(
+      errorMsg ??
+        `Type guard failed. Value is not a tuple of length ${length}.`,
+    );
+  }
+
+  return true;
+};
+
+export { isEmpty, isIterator, isNil, isNull, isTuple };

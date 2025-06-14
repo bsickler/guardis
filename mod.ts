@@ -37,4 +37,5 @@ export const Is = {
   Null: g.isNull,
   Nil: g.isNil,
   Empty: g.isEmpty,
+  Tuple: g.isTuple,
 } as const;

@@ -17,3 +17,29 @@ export type JsonObject =
 
 /** The complete set of JSON-able data types. */
 export type JsonValue = JsonPrimitive | JsonObject | JsonArray;
+
+/** Construct a tuple of unknowns, up to size 10. */
+export type TupleOfLength<N extends number> = N extends 0 ? []
+  : N extends 1 ? [unknown]
+  : N extends 2 ? [unknown, unknown]
+  : N extends 3 ? [unknown, unknown, unknown]
+  : N extends 4 ? [unknown, unknown, unknown, unknown]
+  : N extends 5 ? [unknown, unknown, unknown, unknown, unknown]
+  : N extends 6 ? [unknown, unknown, unknown, unknown, unknown, unknown]
+  : N extends 7
+    ? [unknown, unknown, unknown, unknown, unknown, unknown, unknown]
+  : N extends 8
+    ? [unknown, unknown, unknown, unknown, unknown, unknown, unknown, unknown]
+  : N extends 9
+    ? [
+      unknown,
+      unknown,
+      unknown,
+      unknown,
+      unknown,
+      unknown,
+      unknown,
+      unknown,
+      unknown,
+    ]
+  : unknown[];
