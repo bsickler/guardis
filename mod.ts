@@ -1,7 +1,7 @@
 /**
  * Guardis is a utility to help build type guard libraries while
- * addressing one of the main flaws in TypeScript's "type guard"
- * behavior.
+ * addressing one of the main potential sources of error in TypeScript's 
+ * "type guard" behavior.
  *
  * @module Guardis
  * @author MrPossumz
