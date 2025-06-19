@@ -1,6 +1,7 @@
 import { assert, assertEquals, assertFalse, assertThrows } from "@std/assert";
 import {
   createTypeGuard,
+  hasOptionalProperty,
   hasProperty,
   includes,
   isArray,
@@ -438,5 +439,117 @@ Deno.test("isDate", async (t) => {
     assertThrows(() => isDate.strict({}));
     assertThrows(() => isDate.strict(null));
     assertThrows(() => isDate.strict(undefined));
+  });
+});
+Deno.test("hasOptionalProperty", async (t) => {
+  await t.step("returns true if property exists and passes guard", () => {
+    const obj = { a: 1, b: "test" };
+    assert(hasOptionalProperty(obj, "a", isNumber));
+    assert(hasOptionalProperty(obj, "b", isString));
+    assertFalse(hasOptionalProperty(obj, "b", isNumber));
+  });
+
+  await t.step("returns true if property is undefined", () => {
+    const obj = { a: 1, b: undefined };
+    assert(hasOptionalProperty(obj, "b"));
+    assert(hasOptionalProperty(obj, "b", isString));
+  });
+});
+
+Deno.test("isDate with ISO string conversion", async (t) => {
+  await t.step("can validate dates created from ISO strings", () => {
+    const isoString = "2023-01-01T00:00:00.000Z";
+    const dateFromISO = new Date(isoString);
+
+    assert(isDate(dateFromISO));
+    assert(dateFromISO.toISOString() === isoString);
+
+    assertFalse(isDate(isoString));
+  });
+});
+
+Deno.test("isJsonValue with nested structures", async (t) => {
+  await t.step("validates complex nested JSON structures", () => {
+    const validJson = {
+      string: "value",
+      number: 123,
+      boolean: true,
+      null: null,
+      array: [1, "two", false, null],
+      object: {
+        nestedProp: "nested",
+        deepNesting: {
+          evenDeeper: [{ a: 1 }],
+        },
+      },
+    };
+
+    assert(isJsonValue(validJson));
+
+    const invalidJson = {
+      func: () => {},
+      date: new Date(),
+      undef: undefined,
+      symbol: Symbol("test"),
+    };
+
+    assertFalse(isJsonValue(invalidJson));
+    assertFalse(isJsonValue({ nested: { prop: undefined } }));
+  });
+});
+
+Deno.test("isTuple with strict mode", async (t) => {
+  await t.step("strict mode throws with correct error message", () => {
+    const tuple = [1, 2, 3] as const;
+
+    isTuple.strict(tuple, 3);
+
+    assertThrows(() => isTuple.strict(tuple, 4), TypeError);
+
+    const customMsg = "Custom error message";
+    assertThrows(() => isTuple.strict(tuple, 2, customMsg), TypeError, customMsg);
+  });
+});
+
+Deno.test("isNumeric with edge cases", async (t) => {
+  await t.step("handles numeric edge cases correctly", () => {
+    assert(isNumeric(0));
+    assert(isNumeric(-0));
+    assert(isNumeric(Infinity));
+    assert(isNumeric(-Infinity));
+    assert(isNumeric("0"));
+    assert(isNumeric("-1.5"));
+    assert(isNumeric("3.14159"));
+
+    assertFalse(isNumeric(""));
+    assertFalse(isNumeric("abc123"));
+    assertFalse(isNumeric("123abc"));
+  });
+});
+
+Deno.test("createTypeGuard with custom parser", async (t) => {
+  await t.step("creates custom type guards with complex logic", () => {
+    // Custom type guard for positive integers
+    const isPositiveInteger = createTypeGuard<number>((val) => {
+      if (typeof val !== "number") return null;
+      if (!Number.isInteger(val)) return null;
+      if (val <= 0) return null;
+      return val;
+    });
+
+    assert(isPositiveInteger(1));
+    assert(isPositiveInteger(42));
+    assertFalse(isPositiveInteger(0));
+    assertFalse(isPositiveInteger(-1));
+    assertFalse(isPositiveInteger(3.14));
+    assertFalse(isPositiveInteger("5"));
+
+    // Test strict mode
+    isPositiveInteger.strict(5);
+    assertThrows(() => isPositiveInteger.strict(-5));
+
+    // Test notEmpty (should work the same as regular for numbers)
+    assert(isPositiveInteger.notEmpty(10));
+    assertFalse(isPositiveInteger.notEmpty(0));
   });
 });

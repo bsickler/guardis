@@ -10,6 +10,7 @@ export type Parser<T = unknown> = (
   val: unknown,
   helper: {
     has: typeof hasProperty;
+    hasOptional: typeof hasOptionalProperty;
     tupleHas: typeof tupleHas;
     includes: typeof includes;
   },
@@ -38,6 +39,28 @@ export function hasProperty<K extends PropertyKey, G = unknown>(
   if (!(k in t)) return false;
 
   return guard ? guard(t[k as keyof typeof t]) : true;
+}
+
+/**
+ * Checks if an object has an optional property that passes a type guard.
+ *
+ * This function verifies if a property is either:
+ * - Undefined (which is valid for optional properties)
+ * - Present and passes the specified type guard
+
+ * @param t - The object to check
+ * @param k - The property key to look for
+ * @param guard - Optional function that checks if the value is of type G
+ * @returns Type predicate indicating if the object has the optional property of type G
+ */
+export function hasOptionalProperty<K extends PropertyKey, G = unknown>(
+  t: object,
+  k: K,
+  guard?: (v: unknown) => v is G,
+): t is { [K2 in K]+?: G } {
+  if (isUndefined(t[k as keyof typeof t])) return true;
+
+  return hasProperty(t, k, guard);
 }
 
 /**
@@ -78,8 +101,15 @@ export function includes<T extends readonly unknown[]>(t: T, v: unknown): v is T
  * @returns
  */
 const createStrictTypeGuard = <T>(parse: Parser<T>): StrictTypeGuard<T> => {
+  const helpers = {
+    has: hasProperty,
+    hasOptional: hasOptionalProperty,
+    includes,
+    tupleHas,
+  };
+
   return (value: unknown, errorMsg?: string): value is T => {
-    if (parse(value, { has: hasProperty, includes, tupleHas }) === null) {
+    if (parse(value, helpers) === null) {
       throw TypeError(
         errorMsg ?? `Type guard failed. Parser ${parse.name} returned null.`,
       );
@@ -96,8 +126,15 @@ const createStrictTypeGuard = <T>(parse: Parser<T>): StrictTypeGuard<T> => {
  * @returns
  */
 const createNotEmptyTypeGuard = <T>(parse: Parser<T>): TypeGuard<T>["notEmpty"] => {
+  const helpers = {
+    has: hasProperty,
+    hasOptional: hasOptionalProperty,
+    includes,
+    tupleHas,
+  };
+
   const callback = (value: unknown): value is T =>
-    !isEmpty(value) && parse(value, { has: hasProperty, includes, tupleHas }) !== null;
+    !isEmpty(value) && parse(value, helpers) !== null;
 
   /**
    * Throws a TypeError if the type guard fails or value is empty.
@@ -144,8 +181,14 @@ export type TypeGuard<T> = {
  * @returns {Function}
  */
 export const createTypeGuard = <T>(parse: Parser<T>): TypeGuard<T> => {
-  const callback = (value: unknown): value is T =>
-    parse(value, { has: hasProperty, includes, tupleHas }) !== null;
+  const helpers = {
+    has: hasProperty,
+    hasOptional: hasOptionalProperty,
+    includes,
+    tupleHas,
+  };
+
+  const callback = (value: unknown): value is T => parse(value, helpers) !== null;
 
   /**
    * Throws a TypeError if the type guard fails. Optionally you may define an
@@ -211,9 +254,11 @@ export const isBinary: TypeGuard<0 | 1> = createTypeGuard((t): 0 | 1 | null =>
 export const isNumeric: TypeGuard<number> = createTypeGuard((t): number | null => {
   if (isNumber(t)) return t as number;
 
+  if (!/^-?\d*\.?\d+$/.test(t as string)) return null;
+
   const _t = parseInt(t as string) || parseFloat(t as string);
 
-  return !isNaN(_t) && isNumber(_t) ? t as number : null;
+  return (!isNaN(_t) && isNumber(_t)) ? t as number : null;
 });
 
 /**
@@ -399,14 +444,14 @@ isTuple.strict = <N extends number>(
 
 /**
  * A type guard function that checks if a value is a Date object.
- * 
+ *
  * @param t - The value to check
  * @returns The original Date object if the value is a Date, otherwise null
- * 
+ *
  * @example
  * ```typescript
  * const maybeDate: unknown = new Date();
- * 
+ *
  * if (isDate(maybeDate)) {
  *   // maybeDate is now typed as Date
  *   console.log(maybeDate.toISOString());
