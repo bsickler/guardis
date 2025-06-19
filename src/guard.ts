@@ -223,7 +223,7 @@ export const isNumeric: TypeGuard<number> = createTypeGuard((t): number | null =
  */
 export const isFunction: TypeGuard<(...args: unknown[]) => unknown> = createTypeGuard(
   (t): ((...args: unknown[]) => unknown) | null =>
-    typeof t === "function" ? (t as (...args: unknown[]) => unknown) : null
+    typeof t === "function" ? (t as (...args: unknown[]) => unknown) : null,
 );
 
 /**
@@ -396,5 +396,25 @@ isTuple.strict = <N extends number>(
 
   return true;
 };
+
+/**
+ * A type guard function that checks if a value is a Date object.
+ * 
+ * @param t - The value to check
+ * @returns The original Date object if the value is a Date, otherwise null
+ * 
+ * @example
+ * ```typescript
+ * const maybeDate: unknown = new Date();
+ * 
+ * if (isDate(maybeDate)) {
+ *   // maybeDate is now typed as Date
+ *   console.log(maybeDate.toISOString());
+ * }
+ * ```
+ */
+export const isDate = createTypeGuard((t): Date | null => {
+  return t instanceof Date ? t : null;
+});
 
 export { isEmpty, isIterator, isNil, isNull, isTuple };

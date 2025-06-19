@@ -1,6 +1,6 @@
 /**
  * Guardis is a utility to help build type guard libraries while
- * addressing one of the main potential sources of error in TypeScript's 
+ * addressing one of the main potential sources of error in TypeScript's
  * "type guard" behavior.
  *
  * @module Guardis
@@ -42,6 +42,7 @@ export const Is: {
   JsonArray: TypeGuard<JsonArray>;
   JsonObject: TypeGuard<Record<string, JsonValue>>;
   JsonValue: TypeGuard<JsonPrimitive | JsonArray | JsonObject>;
+  Date: TypeGuard<Date>;
   Null: {
     (value: unknown): value is null;
     strict: (value: unknown, errorMsg?: string) => value is null;
@@ -79,4 +80,5 @@ export const Is: {
   Nil: g.isNil,
   Empty: g.isEmpty,
   Tuple: g.isTuple,
+  Date: g.isDate,
 } as const;

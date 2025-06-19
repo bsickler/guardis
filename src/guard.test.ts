@@ -6,6 +6,7 @@ import {
   isArray,
   isBinary,
   isBoolean,
+  isDate,
   isEmpty,
   isFunction,
   isIterator,
@@ -412,5 +413,30 @@ Deno.test("isIterator", async (t) => {
     assertThrows(() => isIterator.strict(null));
     assertThrows(() => isIterator.strict(undefined));
     assertThrows(() => isIterator.strict("str"));
+  });
+});
+Deno.test("isDate", async (t) => {
+  await t.step("returns true only for Date objects", () => {
+    const date = new Date();
+    assert(isDate(date));
+
+    assertFalse(isDate("2023-01-01"));
+    assertFalse(isDate(1672531200000)); // timestamp
+    assertFalse(isDate({}));
+    assertFalse(isDate(null));
+    assertFalse(isDate(undefined));
+    assertFalse(isDate(true));
+    assertFalse(isDate([]));
+  });
+
+  await t.step("strict mode throws on non-Date values", () => {
+    const date = new Date();
+    isDate.strict(date);
+
+    assertThrows(() => isDate.strict("2023-01-01"));
+    assertThrows(() => isDate.strict(1672531200000));
+    assertThrows(() => isDate.strict({}));
+    assertThrows(() => isDate.strict(null));
+    assertThrows(() => isDate.strict(undefined));
   });
 });
