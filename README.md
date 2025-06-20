@@ -1,178 +1,407 @@
 # Guardis
 
-> _Do you miss being able to just declare types while scaffolding out your
-> code?_
+Guardis is an unopinionated validation and type guard system that prioritizes using TypeScript types
+to define your validation logic. Let your _**types**_ dictate validation rather than having your
+validation library dictate your types.
 
-> _Frustrated trying to manually code out property validation on objects to
-> appease the ts linter?_
+Use the included type guards to perform validation or quickly generate your own anywhere in your
+code, using your existing type definitions.
 
-> _Tired of getting locked into a validation library that requires you to use
-> their schema to define your program types?_
+```ts
+import { createTypeGuard, isString } from "jsr:@mr-possumz/guardis";
 
-Maximize the benefits of the TS linter to validate your types without limiting
-yourself to a third party schema for type definitions.
+// Use built-in guards
+if (isString(userInput)) {
+  console.log(userInput.toUpperCase()); // TypeScript knows this is a string
+}
 
-### Summary
+// Create custom guards from your types
+type User = { id: number; name: string };
 
-Guardis is an unopinionated validation and type guard system that prioritizes
-using TypeScript types to define your validation logic, and not the other way
-around.
-
-Use the included type guards to perform validation or quickly generate your own
-anywhere in your code, using your existing type definitions.
+const isUser = createTypeGuard<User>((val, { has }) =>
+  has(val, "id", Is.Number) && has(val, "name", Is.String) ? val : null
+);
+```
 
 ## Features
 
-- Modular library of common used types
-- No 3rd party dependencies
-- No library lock in
-- Extensible
-- Base your validations on your types, not the other way around
-- Make the most of TypeScript by letting it double check your validations
+- **Type-First**: Define TypeScript types first, validation follows
+- **Zero Dependencies**: No runtime dependencies
+- **Multiple Modes**: Basic, strict (throws), assert, optional, and notEmpty variants
+- **Helper Functions**: Built-in utilities for object, array and tuple validation
+- **Extensible**: Create custom guards and extend the core library
+- **Modular**: Import only what you need
 
-# Usage
+## Installation
 
-Guardis comes with two primary tools. The first is a library of commonly used
-type guards which you can simply import and apply in your code.
+```bash
+# Deno
+deno install jsr:@mr-possumz/guardis;
 
-### Standard Type Guards
-
-The standard guards can be imported directly from the package. These are type
-checks for commonly used types, such as primitives. For a full list of available
-guards, see the documentation.
-
-```ts
-import { isString } from "jsr:@mr-possumz/guardis";
-
-let a: unknown = "someValue";
-
-if (isString(a)) {
-  // TypeScript now knows that any code in this block should
-  // treat the variable "a" as a string type.
-}
+# Node.js/npm
+npx jsr add @mr-possumz/guardis
 ```
 
-To avoid generating large import lists in files that require multiple type
-guards, the package exports the `Is` object which can also be used to call any
-standard guard.
+
+## Table of Contents
+
+- [Features](#features)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Type Guard Modes](#type-guard-modes)
+  - [Basic Mode](#basic-mode)
+  - [Strict Mode (Throws Errors)](#strict-mode-throws-errors)
+  - [Assert Mode (TypeScript Assertions)](#assert-mode-typescript-assertions)
+  - [Optional Mode](#optional-mode)
+  - [NotEmpty Mode](#notempty-mode)
+- [Creating Custom Type Guards](#creating-custom-type-guards)
+- [Specialized Modules](#specialized-modules)
+- [Batch Creation](#batch-creation)
+- [Extending the Is Object](#extending-the-is-object)
+- [Real-World Examples](#real-world-examples)
+  - [API Response Validation](#api-response-validation)
+  - [Form Validation](#form-validation)
+- [TypeScript Integration](#typescript-integration)
+
+## Quick Start
+
+### Built-in Type Guards
+
+Guardis provides type guards for all common JavaScript types:
 
 ```ts
 import { Is } from "jsr:@mr-possumz/guardis";
 
-Is.Array(["a", "b", "c"]);
+// Primitives
+Is.String("hello"); // true
+Is.Number(42); // true
+Is.Boolean(true); // true
+Is.Null(null); // true
+Is.Undefined(undefined); // true
+
+// Collections
+Is.Array([1, 2, 3]); // true
+Is.Object({ key: "value" }); // true
+
+// Special types
+Is.Date(new Date()); // true
+Is.Function(() => {}); // true
+Is.Iterable([1, 2, 3]); // true (arrays, sets, maps, etc.)
+Is.Tuple([1, 2], 2); // true (array with exact length)
+
+// JSON-safe types
+Is.JsonValue({ a: 1, b: "text" }); // true
+Is.JsonObject({ key: "value" }); // true
+Is.JsonArray([1, "two", true]); // true
 ```
 
-### Strict Mode
+### Individual Imports
 
-Each type guard includes a "strict" mode. When invoked, if the type guard fails
-then an error is thrown. Custom messages can be specified when invoking the
-method.
+Import specific guards to keep bundles small:
 
 ```ts
-let str: unknown = "a";
-let num: unknown = 1;
+import { isArray, isNumber, isString } from "jsr:@mr-possumz/guardis";
 
-isNumber.strict(num);
-num += 1; // TS knows that "num" is a number
+if (isString(userInput)) {
+  console.log(userInput.trim());
+}
 
-isNumber.strict(str);
-str += 1; // Ts knows that if this point of the code is reached then
-// "str" must be a number, or else an error would have been
-// thrown.
+if (isNumber(userInput)) {
+  return userInput * 10;
+}
+
+if (isArray(userValues)) {
+  return userValues.at(-1);
+}
 ```
 
-## Creating New Type Guards
+## Type Guard Modes
 
-Custom guards can be created using the `createTypeGuard` function. This expects
-a callback that returns your expected type, or null if validation fails.
+Every type guard comes with multiple modes for different use cases:
 
-> **Note:** that if your validation fails then the function **must** return null
-> to indicate that. Throwing an error or returning any other value will cause
-> unintended behavior.
+### Basic Mode
 
 ```ts
-import { createTypeGuard } from "guardis";
+if (Is.String(value)) {
+  // TypeScript knows value is a string here
+  console.log(value.toUpperCase());
+}
+```
 
-type ZeroOrOne = 0 | 1;
+### Optional Mode
 
-const isZeroOrOne = createTypeGuard((t) => {
-  return t === 0 || t === 1 ? t : null;
+```ts
+// Allows undefined values
+Is.String.optional(value); // true for strings OR undefined
+Is.Number.optional(undefined); // true
+Is.Number.optional(42); // true
+Is.Number.optional("hello"); // false
+```
+
+### NotEmpty Mode
+
+```ts
+// Rejects "empty" values (null, undefined, "", [], {})
+Is.String.notEmpty("hello"); // true
+Is.String.notEmpty(""); // false
+Is.Array.notEmpty([1, 2, 3]); // true
+Is.Array.notEmpty([]); // false
+```
+
+### Strict Mode (Throws Errors)
+
+Throws an error if the predicate fails.
+
+```ts
+// Throws TypeError if validation fails
+Is.String.strict(value);
+
+// With custom error message
+Is.Number.strict(value, "Expected a number for calculation");
+```
+
+### Assert Mode (TypeScript Assertions)
+
+It's a requirement of the TypeScript language that all assertion functions have an explicit type annotation. For that reason, in order for TypeScript to recognize that any use of the variable after `assertIsString` can safely consider the `value` to be a string, you have to explicitly set the type to itself.
+
+See https://github.com/microsoft/TypeScript/issues/47945 for more information.
+
+```ts
+// For TypeScript assertion functions
+const assertIsString: typeof Is.String.assert = Is.String.assert;
+
+assertIsString(value);
+
+console.log(value.toUpperCase()); // TypeScript now knows value is a string
+```
+
+
+## Creating Custom Type Guards
+
+Use `createTypeGuard` to build validators for your own types:
+
+### Simple Types
+
+```ts
+import { createTypeGuard } from "jsr:@mr-possumz/guardis";
+
+type Status = "pending" | "complete" | "failed";
+
+const isStatus = createTypeGuard((val, { includes }) => {
+  const validStatuses: Status[] = ["pending", "complete", "failed"];
+  return isString(val) && includes(validStatuses, val) ? val : null;
 });
 
-isZeroOrOne(1); // true
-izZeroOrOne(0); //true
-isZeroOrOne("a"); // false
+// All modes available automatically
+isStatus("pending"); // true
+isStatus.strict("invalid"); // throws TypeError
+isStatus.optional(undefined); // true
 ```
 
-#### Typing Complex Objects
+### Complex Objects
 
-When typing objects with many properties it can become unwieldy to manually test
-each property. Similarly, it can be an exercise in frustration to get the TS
-server to coerce these checks into satisfying your desired type. To simplify
-this, the `createTypeGuard` passes the `has` utility to each callback.
-
-This can be used to check for the presence of a key. It also accepts an optional
-third argument to verify the value.
+Use helper functions for object validation:
 
 ```ts
 type User = {
   id: number;
   name: string;
-  email: string;
+  email?: string; // optional property
 };
 
-const isUser = createTypeGuard((t, has) => {
+const isUser = createTypeGuard<User>((val, { has, hasOptional }) => {
+  if (!Is.Object(val)) return null;
+
   if (
-    isObject(t) &&
-    has(t, "id", isNumber) &&
-    has(t, "name", isString) &&
-    has(t, "email", isString)
+    has(val, "id", Is.Number) &&
+    has(val, "name", Is.String) &&
+    hasOptional(val, "email", Is.String)
   ) {
-    return t;
+    return val;
   }
 
   return null;
 });
 ```
 
-## Modules
-
-Beyond the default included types, Guardis offers modules tailored towards more
-specific use cases. Currently this includes the **_http_** module but the
-catalog will expand as more updates are added.
-
-## Batch Generating Type Guards
-
-Hate having to call `createTypeGuard` repeatedly for every type you want to define? So do we! That's why we created the `batch` method to just generate a whole bunch of them in a single call.
+### Available Helpers
 
 ```ts
-const { isMeatball, isSausage, isSpaghetti } = batch({
-	Meatball: (v) => v === "meatball" ? v : null,
-	Sausage: (v) => v === "sausage" ? v : null,
-	Spaghetti: (v) => v === "spaghetti" ? v : null,
+const isExample = createTypeGuard((val, helpers) => {
+  const { has, hasOptional, tupleHas, includes } = helpers;
+
+  // Check required object property
+  has(obj, "key", Is.String);
+
+  // Check optional object property
+  hasOptional(obj, "optional", Is.Number); // { optional?: number | undefined }
+
+  // Check tuple element at specific index
+  tupleHas(tuple, 0, Is.String); // [string, ...unknown[]]
+
+  // Check if value is in array (for union types)
+  const colors = ["red", "blue", "green"] as const;
+  includes(colors, val); // "red" | "blue" | "green"
+
+  return val;
 });
 ```
-The batch method will automatically generate typed guards for each key-value in your input object. Too lazy to have to capitalize every key? That's fine too! The batch method will accept any casing and convert it to the camel case format of `isKey`.
 
-## Extending
+## Specialized Modules
 
-Want to extend the `Is` object for your own purposes? Guardis includes an easy
-way to bundle in your own custom types and keep them under one simple interface.
-You can use the `extend` method to generate a new `Is` object or modify an
-existing one.
+Guardis includes specialized modules for domain-specific types:
+
+### HTTP Module
 
 ```ts
-// Generating a new Is object
-const Is = extend({ Meatball: (v: unknown) => v === "meatball" ? v : null });
+import { isNativeURL, isRequest, isResponse } from "jsr:@mr-possumz/guardis/http";
 
-Is.Meatball(true); // false
-Is.Meatball(1); //false
-Is.Meatball("meatball"); // True
+// Web API types
+isNativeURL(new URL("https://example.com")); // true
+isRequest(new Request("https://api.com")); // true
+isResponse(new Response("data")); // true
 
-// Extending an existing Is object
-import { Is as _Is } from "jsr:@mr-possumz/guardis";
+// All modes available
+isRequest.strict(value); // throws if not Request
+isResponse.optional(value); // allows undefined
+```
 
-const Is = extend(_Is, {
-  Sausage: (v: unknown) => v === "sausage" ? v : null,
+## Batch Creation
+
+Generate multiple type guards at once:
+
+```ts
+import { batch } from "jsr:@mr-possumz/guardis";
+
+const { isRed, isBlue, isGreen } = batch({
+  Red: (val) => val === "red" ? val : null,
+  Blue: (val) => val === "blue" ? val : null,
+  Green: (val) => val === "green" ? val : null,
 });
+
+// Automatic camelCase conversion
+const { isUserRole, isAdminRole } = batch({
+  "user-role": (val) => val === "user" ? val : null,
+  AdminRole: (val) => val === "admin" ? val : null,
+});
+
+// All guards get full mode support
+isRed.strict("blue"); // throws
+isBlue.optional(undefined); // true
+```
+
+## Extending the Is Object
+
+Add your own type guards to the `Is` namespace:
+
+```ts
+import { extend, Is as BaseIs } from "jsr:@mr-possumz/guardis";
+
+// Create new Is object with custom guards
+const Is = extend(BaseIs, {
+  Email: (val) => typeof val === "string" && val.includes("@") ? val : null,
+  PositiveNumber: (val) => typeof val === "number" && val > 0 ? val : null,
+});
+
+// Use built-in and custom guards together
+Is.String("hello"); // built-in
+Is.Email("user@domain.com"); // custom
+Is.PositiveNumber(42); // custom
+
+// All modes work with custom guards
+Is.Email.strict(invalidEmail); // throws
+Is.PositiveNumber.optional(undefined); // true
+```
+
+## Real-World Examples
+
+### API Response Validation
+
+```ts
+type ApiResponse<T> = {
+  success: boolean;
+  data?: T;
+  error?: string;
+};
+
+const isApiResponse = <T>(dataGuard: (val: unknown) => val is T) =>
+  createTypeGuard<ApiResponse<T>>((val, { has, hasOptional }) => {
+    if (!Is.Object(val)) return null;
+
+    if (
+      has(val, "success", Is.Boolean) &&
+      hasOptional(val, "data", dataGuard) &&
+      hasOptional(val, "error", Is.String)
+    ) {
+      return val;
+    }
+
+    return null;
+  });
+
+// Usage
+const isUserResponse = isApiResponse(isUser);
+if (isUserResponse(response)) {
+  console.log(response.data?.name); // TypeScript knows the shape
+}
+```
+
+### Form Validation
+
+```ts
+type ContactForm = {
+  name: string;
+  email: string;
+  age: number;
+  newsletter: boolean;
+};
+
+const isContactForm = createTypeGuard<ContactForm>((val, { has }) => {
+  if (!Is.Object(val)) return null;
+
+  if (
+    has(val, "name", Is.String) &&
+    has(val, "email", (v) => Is.String(v) && v.includes("@") ? v : null) &&
+    has(val, "age", (v) => Is.Number(v) && v >= 0 ? v : null) &&
+    has(val, "newsletter", Is.Boolean)
+  ) {
+    return val;
+  }
+
+  return null;
+});
+
+// Use in form handler
+function handleSubmit(formData: unknown) {
+  try {
+    isContactForm.strict(formData, "Invalid form data");
+    // formData is now typed as ContactForm
+    saveContact(formData);
+  } catch (error) {
+    showError(error.message);
+  }
+}
+```
+
+## TypeScript Integration
+
+Guardis is designed to work seamlessly with TypeScript:
+
+- **Type Narrowing**: Guards narrow types in `if` statements
+- **Assertion Functions**: `.assert()` methods work as TypeScript assertions
+- **Generic Support**: Create guards for generic types
+- **Strict Typing**: All guards are fully typed with proper inference
+
+```ts
+function processData(input: unknown) {
+  if (Is.Array(input)) {
+    // TypeScript knows input is unknown[]
+    input.forEach((item) => {/* ... */});
+  }
+
+  // Assertion style
+  const assertIsString: typeof Is.String.assert = Is.String.assert;
+  assertIsString(input);
+  // TypeScript knows input is string after this line
+}
 ```
