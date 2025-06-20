@@ -553,3 +553,451 @@ Deno.test("createTypeGuard with custom parser", async (t) => {
     assertFalse(isPositiveInteger.notEmpty(0));
   });
 });
+
+// Assert tests for all guards
+Deno.test("assert method tests", async (t) => {
+  // Primitive type guards
+  await t.step("isBoolean.assert", () => {
+    const assertIsBoolean: typeof isBoolean.assert = isBoolean.assert;
+    assertIsBoolean(true);
+    assertIsBoolean(false);
+    assertThrows(() => assertIsBoolean("not a boolean"));
+    assertThrows(() => assertIsBoolean(1));
+    assertThrows(() => assertIsBoolean(null));
+    assertThrows(() => assertIsBoolean(undefined));
+    assertThrows(() => assertIsBoolean({}));
+    assertThrows(() => assertIsBoolean([]), TypeError, "Type guard failed");
+  });
+
+  await t.step("isString.assert", () => {
+    const assertIsString: typeof isString.assert = isString.assert;
+    assertIsString("hello");
+    assertIsString("");
+    assertThrows(() => assertIsString(123));
+    assertThrows(() => assertIsString(true));
+    assertThrows(() => assertIsString(null));
+    assertThrows(() => assertIsString(undefined));
+    assertThrows(() => assertIsString({}));
+    assertThrows(() => assertIsString([]), TypeError, "Type guard failed");
+  });
+
+  await t.step("isNumber.assert", () => {
+    const assertIsNumber: typeof isNumber.assert = isNumber.assert;
+    assertIsNumber(0);
+    assertIsNumber(42);
+    assertIsNumber(-3.14);
+    assertIsNumber(Infinity);
+    assertThrows(() => assertIsNumber("123"));
+    assertThrows(() => assertIsNumber(true));
+    assertThrows(() => assertIsNumber(null));
+    assertThrows(() => assertIsNumber(undefined));
+    assertThrows(() => assertIsNumber({}));
+    assertThrows(() => assertIsNumber([]), TypeError, "Type guard failed");
+  });
+
+  await t.step("isBinary.assert", () => {
+    const assertIsBinary: typeof isBinary.assert = isBinary.assert;
+    assertIsBinary(0);
+    assertIsBinary(1);
+    assertThrows(() => assertIsBinary(2));
+    assertThrows(() => assertIsBinary(0.5));
+    assertThrows(() => assertIsBinary("1"));
+    assertThrows(() => assertIsBinary(true));
+    assertThrows(() => assertIsBinary(null));
+    assertThrows(() => assertIsBinary(undefined), TypeError, "Type guard failed");
+  });
+
+  await t.step("isNumeric.assert", () => {
+    const assertIsNumeric: typeof isNumeric.assert = isNumeric.assert;
+    assertIsNumeric(42);
+    assertIsNumeric("42");
+    assertIsNumeric("3.14");
+    assertIsNumeric(0);
+    assertThrows(() => assertIsNumeric("abc"));
+    assertThrows(() => assertIsNumeric(""));
+    assertThrows(() => assertIsNumeric(null));
+    assertThrows(() => assertIsNumeric(undefined));
+    assertThrows(() => assertIsNumeric({}), TypeError, "Type guard failed");
+  });
+
+  // Complex type guards
+  await t.step("isFunction.assert", () => {
+    const assertIsFunction: typeof isFunction.assert = isFunction.assert;
+    assertIsFunction(() => {});
+    assertIsFunction(function () {});
+    assertIsFunction(Math.max);
+    assertThrows(() => assertIsFunction(123));
+    assertThrows(() => assertIsFunction("function"));
+    assertThrows(() => assertIsFunction(null));
+    assertThrows(() => assertIsFunction(undefined));
+    assertThrows(() => assertIsFunction({}), TypeError, "Type guard failed");
+  });
+
+  await t.step("isObject.assert", () => {
+    const assertIsObject: typeof isObject.assert = isObject.assert;
+    assertIsObject({});
+    assertIsObject({ a: 1 });
+    assertIsObject(new Date());
+    assertThrows(() => assertIsObject([])); // Arrays are not objects in this guard
+    assertThrows(() => assertIsObject(null));
+    assertThrows(() => assertIsObject(undefined));
+    assertThrows(() => assertIsObject("object"));
+    assertThrows(() => assertIsObject(123), TypeError, "Type guard failed");
+  });
+
+  await t.step("isArray.assert", () => {
+    const assertIsArray: typeof isArray.assert = isArray.assert;
+    assertIsArray([]);
+    assertIsArray([1, 2, 3]);
+    assertIsArray(new Array(5));
+    assertThrows(() => assertIsArray({}));
+    assertThrows(() => assertIsArray("array"));
+    assertThrows(() => assertIsArray(null));
+    assertThrows(() => assertIsArray(undefined), TypeError, "Type guard failed");
+  });
+
+  await t.step("isDate.assert", () => {
+    const assertIsDate: typeof isDate.assert = isDate.assert;
+    assertIsDate(new Date());
+    assertIsDate(new Date("2023-01-01"));
+    assertThrows(() => assertIsDate("2023-01-01"));
+    assertThrows(() => assertIsDate(1672531200000));
+    assertThrows(() => assertIsDate({}));
+    assertThrows(() => assertIsDate(null), TypeError, "Type guard failed");
+  });
+
+  // Special type guards
+  await t.step("isNull.assert", () => {
+    const assertIsNull: typeof isNull.assert = isNull.assert;
+    assertIsNull(null);
+    assertThrows(() => assertIsNull(undefined));
+    assertThrows(() => assertIsNull(0));
+    assertThrows(() => assertIsNull(""));
+    assertThrows(() => assertIsNull(false), TypeError, "Type guard failed");
+  });
+
+  await t.step("isUndefined.assert", () => {
+    const assertIsUndefined: typeof isUndefined.assert = isUndefined.assert;
+    assertIsUndefined(undefined);
+    assertThrows(() => assertIsUndefined(null));
+    assertThrows(() => assertIsUndefined(0));
+    assertThrows(() => assertIsUndefined(""));
+    assertThrows(() => assertIsUndefined(false), TypeError, "Type guard failed");
+  });
+
+  await t.step("isNil.assert", () => {
+    const assertIsNil: typeof isNil.assert = isNil.assert;
+    assertIsNil(null);
+    assertIsNil(undefined);
+    assertThrows(() => assertIsNil(0));
+    assertThrows(() => assertIsNil(""));
+    assertThrows(() => assertIsNil(false), TypeError, "Type guard failed");
+  });
+
+  await t.step("isEmpty.assert", () => {
+    const assertIsEmpty: typeof isEmpty.assert = isEmpty.assert;
+    assertIsEmpty(null);
+    assertIsEmpty(undefined);
+    assertIsEmpty("");
+    assertIsEmpty([]);
+    assertIsEmpty({});
+    assertThrows(() => assertIsEmpty("a"));
+    assertThrows(() => assertIsEmpty([1]));
+    assertThrows(() => assertIsEmpty({ a: 1 }), TypeError, "Type guard failed");
+  });
+
+  // JSON type guards
+  await t.step("isJsonPrimitive.assert", () => {
+    const assertIsJsonPrimitive: typeof isJsonPrimitive.assert = isJsonPrimitive.assert;
+    assertIsJsonPrimitive(true);
+    assertIsJsonPrimitive(false);
+    assertIsJsonPrimitive(123);
+    assertIsJsonPrimitive("string");
+    assertIsJsonPrimitive(null);
+    assertThrows(() => assertIsJsonPrimitive(undefined));
+    assertThrows(() => assertIsJsonPrimitive({}));
+    assertThrows(() => assertIsJsonPrimitive([]), TypeError, "Type guard failed");
+  });
+
+  await t.step("isJsonObject.assert", () => {
+    const assertIsJsonObject: typeof isJsonObject.assert = isJsonObject.assert;
+    assertIsJsonObject({});
+    assertIsJsonObject({ a: 1, b: "test" });
+    assertIsJsonObject({ nested: { value: true } });
+    assertThrows(() => assertIsJsonObject([]));
+    assertThrows(() => assertIsJsonObject(null));
+    assertThrows(() => assertIsJsonObject("object"));
+    assertThrows(() => assertIsJsonObject({ func: () => {} }), TypeError, "Type guard failed");
+  });
+
+  await t.step("isJsonArray.assert", () => {
+    const assertIsJsonArray: typeof isJsonArray.assert = isJsonArray.assert;
+    assertIsJsonArray([]);
+    assertIsJsonArray([1, 2, 3]);
+    assertIsJsonArray(["a", "b", "c"]);
+    assertThrows(() => assertIsJsonArray({}));
+    assertThrows(() => assertIsJsonArray(null));
+    assertThrows(() => assertIsJsonArray("array"), TypeError, "Type guard failed");
+  });
+
+  await t.step("isJsonValue.assert", () => {
+    const assertIsJsonValue: typeof isJsonValue.assert = isJsonValue.assert;
+    assertIsJsonValue(true);
+    assertIsJsonValue(123);
+    assertIsJsonValue("string");
+    assertIsJsonValue(null);
+    assertIsJsonValue([]);
+    assertIsJsonValue({});
+    assertIsJsonValue({ a: [1, 2, { b: "test" }] });
+    assertThrows(() => assertIsJsonValue(undefined));
+    assertThrows(() => assertIsJsonValue({ func: () => {} }), TypeError, "Type guard failed");
+  });
+
+  // Other guards
+  await t.step("isIterator.assert", () => {
+    const assertIsIterator: typeof isIterator.assert = isIterator.assert;
+    const arr = [1, 2, 3];
+    const iter = arr[Symbol.iterator]();
+    assertIsIterator(iter);
+    assertIsIterator([]); // Arrays have Symbol.iterator property
+    assertThrows(() => assertIsIterator({}));
+    assertThrows(() => assertIsIterator(null), TypeError, "Type guard failed");
+  });
+
+  await t.step("isTuple.assert", () => {
+    const assertIsTuple: typeof isTuple.assert = isTuple.assert;
+    assertIsTuple([1, 2, 3], 3);
+    assertIsTuple([], 0);
+    assertThrows(() => assertIsTuple([1, 2], 3));
+    assertThrows(() => assertIsTuple({}, 0));
+    assertThrows(() => assertIsTuple(null, 0), TypeError, "Type guard failed");
+  });
+});
+
+// NotEmpty tests
+Deno.test("notEmpty.assert method tests", async (t) => {
+  await t.step("isString.notEmpty.assert", () => {
+    const assertIsNotEmptyString: typeof isString.notEmpty.assert = isString.notEmpty.assert;
+    assertIsNotEmptyString("hello");
+    assertIsNotEmptyString("a");
+    assertThrows(() => assertIsNotEmptyString(""));
+    assertThrows(() => assertIsNotEmptyString(null));
+    assertThrows(() => assertIsNotEmptyString(undefined));
+    assertThrows(() => assertIsNotEmptyString(123), TypeError, "Type guard failed");
+  });
+
+  await t.step("isArray.notEmpty.assert", () => {
+    const assertIsNotEmptyArray: typeof isArray.notEmpty.assert = isArray.notEmpty.assert;
+    assertIsNotEmptyArray([1]);
+    assertIsNotEmptyArray([1, 2, 3]);
+    assertThrows(() => assertIsNotEmptyArray([]));
+    assertThrows(() => assertIsNotEmptyArray(null));
+    assertThrows(() => assertIsNotEmptyArray(undefined));
+    assertThrows(() => assertIsNotEmptyArray({}), TypeError, "Type guard failed");
+  });
+
+  await t.step("isObject.notEmpty.assert", () => {
+    const assertIsNotEmptyObject: typeof isObject.notEmpty.assert = isObject.notEmpty.assert;
+    assertIsNotEmptyObject({ a: 1 });
+    assertIsNotEmptyObject({ a: 1, b: 2 });
+    assertThrows(() => assertIsNotEmptyObject({}));
+    assertThrows(() => assertIsNotEmptyObject(null));
+    assertThrows(() => assertIsNotEmptyObject(undefined));
+    assertThrows(() => assertIsNotEmptyObject([]), TypeError, "Type guard failed");
+  });
+
+  await t.step("isNumber.notEmpty.assert", () => {
+    const assertIsNotEmptyNumber: typeof isNumber.notEmpty.assert = isNumber.notEmpty.assert;
+    assertIsNotEmptyNumber(1);
+    assertIsNotEmptyNumber(0); // 0 is not considered empty for numbers
+    assertIsNotEmptyNumber(-42);
+    assertThrows(() => assertIsNotEmptyNumber(null));
+    assertThrows(() => assertIsNotEmptyNumber(undefined));
+    assertThrows(() => assertIsNotEmptyNumber("42"), TypeError, "Type guard failed");
+  });
+});
+
+// Optional tests
+Deno.test("optional.assert method tests", async (t) => {
+  await t.step("isString.optional.assert", () => {
+    const assertIsOptionalString: typeof isString.optional.assert = isString.optional.assert;
+    assertIsOptionalString("hello");
+    assertIsOptionalString("");
+    assertIsOptionalString(undefined);
+    assertThrows(() => assertIsOptionalString(null));
+    assertThrows(() => assertIsOptionalString(123));
+    assertThrows(() => assertIsOptionalString({}), TypeError, "Type guard failed");
+  });
+
+  await t.step("isNumber.optional.assert", () => {
+    const assertIsOptionalNumber: typeof isNumber.optional.assert = isNumber.optional.assert;
+    assertIsOptionalNumber(42);
+    assertIsOptionalNumber(0);
+    assertIsOptionalNumber(undefined);
+    assertThrows(() => assertIsOptionalNumber(null));
+    assertThrows(() => assertIsOptionalNumber("42"));
+    assertThrows(() => assertIsOptionalNumber({}), TypeError, "Type guard failed");
+  });
+
+  await t.step("isBoolean.optional.assert", () => {
+    const assertIsOptionalBoolean: typeof isBoolean.optional.assert = isBoolean.optional.assert;
+    assertIsOptionalBoolean(true);
+    assertIsOptionalBoolean(false);
+    assertIsOptionalBoolean(undefined);
+    assertThrows(() => assertIsOptionalBoolean(null));
+    assertThrows(() => assertIsOptionalBoolean(1));
+    assertThrows(() => assertIsOptionalBoolean("true"), TypeError, "Type guard failed");
+  });
+
+  await t.step("isArray.optional.assert", () => {
+    const assertIsOptionalArray: typeof isArray.optional.assert = isArray.optional.assert;
+    assertIsOptionalArray([]);
+    assertIsOptionalArray([1, 2, 3]);
+    assertIsOptionalArray(undefined);
+    assertThrows(() => assertIsOptionalArray(null));
+    assertThrows(() => assertIsOptionalArray({}));
+    assertThrows(() => assertIsOptionalArray("array"), TypeError, "Type guard failed");
+  });
+
+  await t.step("isObject.optional.assert", () => {
+    const assertIsOptionalObject: typeof isObject.optional.assert = isObject.optional.assert;
+    assertIsOptionalObject({});
+    assertIsOptionalObject({ a: 1 });
+    assertIsOptionalObject(undefined);
+    assertThrows(() => assertIsOptionalObject(null));
+    assertThrows(() => assertIsOptionalObject([]));
+    assertThrows(() => assertIsOptionalObject("object"), TypeError, "Type guard failed");
+  });
+
+  await t.step("isDate.optional.assert", () => {
+    const assertIsOptionalDate: typeof isDate.optional.assert = isDate.optional.assert;
+    assertIsOptionalDate(new Date());
+    assertIsOptionalDate(undefined);
+    assertThrows(() => assertIsOptionalDate(null));
+    assertThrows(() => assertIsOptionalDate("2023-01-01"));
+    assertThrows(() => assertIsOptionalDate(1672531200000), TypeError, "Type guard failed");
+  });
+
+  // Tests for newly added optional methods
+  await t.step("isNull.optional.assert", () => {
+    const assertIsOptionalNull: typeof isNull.optional.assert = isNull.optional.assert;
+    assertIsOptionalNull(null);
+    assertIsOptionalNull(undefined);
+    assertThrows(() => assertIsOptionalNull(0));
+    assertThrows(() => assertIsOptionalNull(""));
+    assertThrows(() => assertIsOptionalNull(false));
+    assertThrows(() => assertIsOptionalNull({}), TypeError, "Type guard failed");
+  });
+
+  await t.step("isIterator.optional.assert", () => {
+    const assertIsOptionalIterator: typeof isIterator.optional.assert = isIterator.optional.assert;
+    const arr = [1, 2, 3];
+    const iter = arr[Symbol.iterator]();
+    assertIsOptionalIterator(iter);
+    assertIsOptionalIterator(undefined);
+    assertThrows(() => assertIsOptionalIterator(null));
+    assertThrows(() => assertIsOptionalIterator({}));
+    assertThrows(() => assertIsOptionalIterator("not iterator"), TypeError, "Type guard failed");
+  });
+
+  await t.step("isTuple.optional.assert", () => {
+    const assertIsOptionalTuple: typeof isTuple.optional.assert = isTuple.optional.assert;
+    assertIsOptionalTuple([1, 2, 3], 3);
+    assertIsOptionalTuple([], 0);
+    assertIsOptionalTuple(undefined, 5);
+    assertThrows(() => assertIsOptionalTuple([1, 2], 3));
+    assertThrows(() => assertIsOptionalTuple({}, 0));
+    assertThrows(() => assertIsOptionalTuple(null, 0), TypeError, "Type guard failed");
+  });
+});
+
+// Comprehensive tests for newly added optional methods
+Deno.test("isNull.optional", async (t) => {
+  await t.step("returns true for null and undefined", () => {
+    assert(isNull.optional(null));
+    assert(isNull.optional(undefined));
+  });
+
+  await t.step("returns false for non-null defined values", () => {
+    assertFalse(isNull.optional(0));
+    assertFalse(isNull.optional(""));
+    assertFalse(isNull.optional(false));
+    assertFalse(isNull.optional({}));
+    assertFalse(isNull.optional([]));
+    assertFalse(isNull.optional("null"));
+  });
+
+  await t.step("strict mode", () => {
+    isNull.optional.strict(null);
+    isNull.optional.strict(undefined);
+    assertThrows(() => isNull.optional.strict(0));
+    assertThrows(() => isNull.optional.strict(""));
+    assertThrows(() => isNull.optional.strict(false));
+    assertThrows(() => isNull.optional.strict({}));
+    assertThrows(() => isNull.optional.strict([]));
+  });
+});
+
+Deno.test("isIterator.optional", async (t) => {
+  await t.step("returns true for iterators and undefined", () => {
+    const arr = [1, 2, 3];
+    const iter = arr[Symbol.iterator]();
+    assert(isIterator.optional(iter));
+    assert(isIterator.optional(undefined));
+
+    // Arrays are iterable
+    const iterableArray = [1, 2, 3];
+    assert(isIterator.optional(iterableArray));
+  });
+
+  await t.step("returns false for non-iterator defined values", () => {
+    assertFalse(isIterator.optional(null));
+    assertFalse(isIterator.optional({}));
+    assertFalse(isIterator.optional("string"));
+    assertFalse(isIterator.optional(123));
+    assertFalse(isIterator.optional(true));
+  });
+
+  await t.step("strict mode", () => {
+    const arr = [1, 2, 3];
+    const iter = arr[Symbol.iterator]();
+    isIterator.optional.strict(iter);
+    isIterator.optional.strict(undefined);
+
+    assertThrows(() => isIterator.optional.strict(null));
+    assertThrows(() => isIterator.optional.strict({}));
+    assertThrows(() => isIterator.optional.strict("not iterator"));
+    assertThrows(() => isIterator.optional.strict(123));
+  });
+});
+
+Deno.test("isTuple.optional", async (t) => {
+  await t.step("returns true for correct length tuples and undefined", () => {
+    assert(isTuple.optional([], 0));
+    assert(isTuple.optional([1], 1));
+    assert(isTuple.optional([1, 2, 3], 3));
+    assert(isTuple.optional(undefined, 0));
+    assert(isTuple.optional(undefined, 5));
+    assert(isTuple.optional(undefined, 10));
+  });
+
+  await t.step("returns false for incorrect length or non-arrays", () => {
+    assertFalse(isTuple.optional([1, 2], 3));
+    assertFalse(isTuple.optional([1, 2, 3], 2));
+    assertFalse(isTuple.optional(null, 0));
+    assertFalse(isTuple.optional({}, 0));
+    assertFalse(isTuple.optional("string", 6));
+    assertFalse(isTuple.optional(123, 0));
+  });
+
+  await t.step("strict mode", () => {
+    isTuple.optional.strict([], 0);
+    isTuple.optional.strict([1, 2], 2);
+    isTuple.optional.strict(undefined, 5);
+
+    assertThrows(() => isTuple.optional.strict([1, 2], 3));
+    assertThrows(() => isTuple.optional.strict(null, 0));
+    assertThrows(() => isTuple.optional.strict({}, 0));
+    assertThrows(() => isTuple.optional.strict("not tuple", 1));
+  });
+});

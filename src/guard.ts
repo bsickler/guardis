@@ -125,14 +125,10 @@ type StrictTypeGuard<T> = (value: unknown, errorMsg?: string) => value is T;
  * // After this line, TypeScript knows that value is a string
  * ```
  */
-const createAssertTypeGuard = <T>(guard: StrictTypeGuard<T>) => {
-  return <P extends Parameters<StrictTypeGuard<T>> | never[]>(...args: P) => {
-    if (args.length === 0) {
-      return guard as (value: unknown, errorMsg?: string) => asserts value is T;
-    }
-
-    return guard(...args as Parameters<StrictTypeGuard<T>>);
-  };
+const createAssertTypeGuard = <T>(
+  guard: StrictTypeGuard<T>,
+): (value: unknown, errorMsg?: string) => asserts value is T => {
+  return guard;
 };
 
 /**
@@ -480,9 +476,7 @@ export const isJsonValue: TypeGuard<JsonValue> = createTypeGuard(
  * }
  * ```
  */
-export const isDate = createTypeGuard((t): Date | null => {
-  return t instanceof Date ? t : null;
-});
+export const isDate = createTypeGuard((t) => t instanceof Date ? t : null);
 
 /**
  * Returns true if input satisfies type null.
@@ -491,6 +485,12 @@ export const isDate = createTypeGuard((t): Date | null => {
  */
 const isNull = (t: unknown): t is null => t === null;
 
+/**
+ * Strict version of isNull that throws a TypeError if the value is not null.
+ * @param t - The value to check
+ * @returns true if the value is null
+ * @throws {TypeError} If the value is not null
+ */
 isNull.strict = (t: unknown): t is null => {
   if (!isNull(t)) {
     throw TypeError("Type guard failed. Input is not null.");
@@ -500,12 +500,46 @@ isNull.strict = (t: unknown): t is null => {
 };
 
 /**
+ * Assertion function that throws an error if the value is not null.
+ * TypeScript will narrow the type to null after this assertion.
+ * @param t - The value to check
+ * @throws {TypeError} If the value is not null
+ */
+isNull.assert = createAssertTypeGuard(isNull.strict);
+
+// Define the optional methods for isNull
+const isNullOptional = (t: unknown): t is null | undefined => isUndefined(t) || isNull(t);
+
+isNullOptional.strict = (t: unknown, errorMsg?: string): t is null | undefined => {
+  if (!isNullOptional(t)) {
+    throw TypeError(errorMsg ?? "Type guard failed. Value is not null or undefined.");
+  }
+  return true;
+};
+
+isNullOptional.assert = createAssertTypeGuard(isNullOptional.strict);
+
+/**
+ * Optional variant of isNull that accepts undefined or null.
+ * @param t - The value to check
+ * @returns true if the value is undefined or null, otherwise false
+ */
+isNull.optional = isNullOptional;
+
+/**
  * Returns true if input satisfies type null or undefined.
  * @param {unknown} t
  * @return {boolean}
  */
 const isNil = (t: unknown): t is null | undefined => isNull(t) || isUndefined(t);
 
+/**
+ * Strict version of isNil that throws a TypeError if the value is not null or undefined.
+ * @param t - The value to check
+ * @param errorMsg - Optional custom error message
+ * @returns true if the value is null or undefined
+ * @throws {TypeError} If the value is not null or undefined
+ */
 isNil.strict = (t: unknown, errorMsg?: string): t is null | undefined => {
   if (!isNil(t)) {
     throw TypeError(errorMsg ?? "Type guard failed. Value is not null or undefined.");
@@ -513,6 +547,15 @@ isNil.strict = (t: unknown, errorMsg?: string): t is null | undefined => {
 
   return true;
 };
+
+/**
+ * Assertion function that throws an error if the value is not null or undefined.
+ * TypeScript will narrow the type to null | undefined after this assertion.
+ * @param t - The value to check
+ * @param errorMsg - Optional custom error message
+ * @throws {TypeError} If the value is not null or undefined
+ */
+isNil.assert = createAssertTypeGuard(isNil.strict);
 
 /**
  * Returns true if input is undefined, null, empty string, object with length
@@ -532,6 +575,14 @@ const isEmpty = (t: unknown): t is null | undefined | "" | [] | Record<string, n
   return false;
 };
 
+/**
+ * Strict version of isEmpty that throws a TypeError if the value is not empty.
+ * Empty values include: null, undefined, empty string "", empty array [], or empty object {}.
+ * @param t - The value to check
+ * @param errorMsg - Optional custom error message
+ * @returns true if the value is empty
+ * @throws {TypeError} If the value is not empty
+ */
 isEmpty.strict = (
   t: unknown,
   errorMsg?: string,
@@ -543,6 +594,15 @@ isEmpty.strict = (
 };
 
 /**
+ * Assertion function that throws an error if the value is not empty.
+ * TypeScript will narrow the type to null | undefined | "" | [] | {} after this assertion.
+ * @param t - The value to check
+ * @param errorMsg - Optional custom error message
+ * @throws {TypeError} If the value is not empty
+ */
+isEmpty.assert = createAssertTypeGuard(isEmpty.strict);
+
+/**
  * Returns true if the date type is an iterator. Does not
  * check the type contained within the iterator.
  * @param t
@@ -552,6 +612,14 @@ isEmpty.strict = (
 const isIterator = <C = any>(t: unknown): t is Iterator<C> =>
   typeof t === "object" && !isNil(t) && Symbol.iterator in t && isFunction(t[Symbol.iterator]);
 
+/**
+ * Strict version of isIterator that throws a TypeError if the value is not an iterator.
+ * @typeParam C - The type of values the iterator yields
+ * @param t - The value to check
+ * @param errorMsg - Optional custom error message
+ * @returns true if the value is an iterator
+ * @throws {TypeError} If the value is not an iterator
+ */
 // deno-lint-ignore no-explicit-any
 isIterator.strict = <C = any>(t: unknown, errorMsg?: string): t is Iterator<C> => {
   if (!isIterator(t)) {
@@ -561,10 +629,82 @@ isIterator.strict = <C = any>(t: unknown, errorMsg?: string): t is Iterator<C> =
   return true;
 };
 
+/**
+ * Assertion function that throws an error if the value is not an iterator.
+ * TypeScript will narrow the type to Iterator<C> after this assertion.
+ * @typeParam C - The type of values the iterator yields
+ * @param t - The value to check
+ * @param errorMsg - Optional custom error message
+ * @throws {TypeError} If the value is not an iterator
+ */
+isIterator.assert = isIterator.strict as <C>(
+  t: unknown,
+  errorMsg?: string,
+) => asserts t is Iterator<C>;
+
+// Define the optional methods for isIterator
+const isIteratorOptional = <C>(t: unknown): t is Iterator<C> | undefined =>
+  isUndefined(t) || isIterator<C>(t);
+
+isIteratorOptional.strict = <C>(t: unknown, errorMsg?: string): t is Iterator<C> | undefined => {
+  if (!isIteratorOptional<C>(t)) {
+    throw TypeError(errorMsg ?? "Type guard failed. Value is not an iterator or undefined.");
+  }
+  return true;
+};
+
+isIteratorOptional.assert = isIteratorOptional.strict as <C>(
+  t: unknown,
+  errorMsg?: string,
+) => asserts t is Iterator<C> | undefined;
+
+/**
+ * Optional variant of isIterator that accepts undefined or Iterator<C>.
+ * @typeParam C - The type of values the iterator yields
+ * @param t - The value to check
+ * @returns true if the value is undefined or an Iterator<C>, otherwise false
+ */
+isIterator.optional = isIteratorOptional;
+
+/**
+ * Type guard that checks if a value is a tuple (array) of a specific length.
+ *
+ * A tuple is an array with a fixed number of elements. This function validates
+ * that the input is an array and has exactly the specified length.
+ *
+ * @typeParam N - The expected length of the tuple
+ * @param t - The value to check
+ * @param length - The expected length of the tuple
+ * @returns Type predicate indicating if the value is a tuple of length N
+ *
+ * @example
+ * ```typescript
+ * const value: unknown = [1, 2, 3];
+ *
+ * if (isTuple(value, 3)) {
+ *   // value is now typed as [unknown, unknown, unknown]
+ *   console.log(value.length); // 3
+ * }
+ *
+ * // Check for empty tuple
+ * if (isTuple([], 0)) {
+ *   console.log("Empty tuple");
+ * }
+ * ```
+ */
 const isTuple = <N extends number>(t: unknown, length: N): t is TupleOfLength<N> => {
   return Array.isArray(t) && t.length === length;
 };
 
+/**
+ * Strict version of isTuple that throws a TypeError if the value is not a tuple of the specified length.
+ * @typeParam N - The expected length of the tuple
+ * @param t - The value to check
+ * @param length - The expected length of the tuple
+ * @param errorMsg - Optional custom error message
+ * @returns true if the value is a tuple of the specified length
+ * @throws {TypeError} If the value is not a tuple of the specified length
+ */
 isTuple.strict = <N extends number>(
   t: unknown,
   length: N,
@@ -576,5 +716,50 @@ isTuple.strict = <N extends number>(
 
   return true;
 };
+
+/**
+ * Assertion function that throws an error if the value is not a tuple of the specified length.
+ * TypeScript will narrow the type to TupleOfLength<N> after this assertion.
+ * @typeParam N - The expected length of the tuple
+ * @param t - The value to check
+ * @param length - The expected length of the tuple
+ * @param errorMsg - Optional custom error message
+ * @throws {TypeError} If the value is not a tuple of the specified length
+ */
+isTuple.assert = isTuple.strict as <N extends number>(
+  t: unknown,
+  length: N,
+  errorMsg?: string,
+) => asserts t is TupleOfLength<N>;
+
+// Define the optional methods for isTuple
+const isTupleOptional = <N extends number>(
+  t: unknown,
+  length: N,
+): t is TupleOfLength<N> | undefined => isUndefined(t) || isTuple(t, length);
+
+isTupleOptional.strict = <N extends number>(
+  t: unknown,
+  length: N,
+  errorMsg?: string,
+): t is TupleOfLength<N> | undefined => {
+  if (!isTupleOptional(t, length)) {
+    throw TypeError(
+      errorMsg ?? `Type guard failed. Value is not a tuple of length ${length} or undefined.`,
+    );
+  }
+  return true;
+};
+
+isTupleOptional.assert = isTupleOptional.strict;
+
+/**
+ * Optional variant of isTuple that accepts undefined or a tuple of the specified length.
+ * @typeParam N - The expected length of the tuple
+ * @param t - The value to check
+ * @param length - The expected length of the tuple
+ * @returns true if the value is undefined or a tuple of the specified length, otherwise false
+ */
+isTuple.optional = isTupleOptional;
 
 export { isEmpty, isIterator, isNil, isNull, isTuple };
