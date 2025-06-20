@@ -12,15 +12,7 @@ export * from "./src/extend.ts";
 export * from "./src/batch.ts";
 export * from "./src/types.ts";
 
-import type { TypeGuard } from "./src/guard.ts";
 import * as g from "./src/guard.ts";
-import type {
-  JsonArray,
-  JsonObject,
-  JsonPrimitive,
-  JsonValue,
-  TupleOfLength,
-} from "./src/types.ts";
 
 /**
  * "Is" serves as the main libray object and contains
