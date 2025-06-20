@@ -2,7 +2,6 @@
  * guard.ts
  * @module
  */
-
 import type { JsonArray, JsonObject, JsonPrimitive, JsonValue, TupleOfLength } from "./types.ts";
 
 /** A parser is a function that takes an unknown and returns T or null */
@@ -15,12 +14,6 @@ export type Parser<T = unknown> = (
     includes: typeof includes;
   },
 ) => T | null;
-
-export type Guard<T = unknown> = {
-  (value: unknown): value is T;
-  strict: (value: unknown, errorMsg?: string) => value is T;
-  notEmpty: (value: unknown) => value is T;
-};
 
 /**
  * Utility to verify if a property exists in an object. Checks that
@@ -100,65 +93,170 @@ export function includes<T extends readonly unknown[]>(t: T, v: unknown): v is T
  * @param parse
  * @returns
  */
-const createStrictTypeGuard = <T>(parse: Parser<T>): StrictTypeGuard<T> => {
-  const helpers = {
-    has: hasProperty,
-    hasOptional: hasOptionalProperty,
-    includes,
-    tupleHas,
-  };
-
+const createStrictTypeGuard = <T>(parse: (v: unknown) => v is T): StrictTypeGuard<T> => {
   return (value: unknown, errorMsg?: string): value is T => {
-    if (parse(value, helpers) === null) {
-      throw TypeError(
-        errorMsg ?? `Type guard failed. Parser ${parse.name} returned null.`,
-      );
+    if (!parse(value)) {
+      throw TypeError(errorMsg ?? `Type guard failed. Parser ${parse.name} returned null.`);
     }
 
     return true;
   };
 };
 
+type StrictTypeGuard<T> = (value: unknown, errorMsg?: string) => value is T;
+
 /**
- * Creates a type guard that fails if the value is considered
- * "empty" by the `isEmpty` type guard.
- * @param parse
- * @returns
+ * Creates an assertion type guard function from a strict type guard.
+ *
+ * An assertion type guard is a function that throws an error if the value
+ * doesn't match the expected type, rather than returning a boolean.
+ *
+ * @template T - The type being guarded
+ * @param guard - The strict type guard function to convert
+ * @returns An assertion function that throws if the value is not of type T
+ *
+ * @example
+ * ```typescript
+ * const isString = (value: unknown): value is string => typeof value === 'string';
+ * const assertIsString = createAssertTypeGuard(isString);
+ *
+ * // If value is not a string, this will throw an error
+ * assertIsString(value, 'Expected a string');
+ * // After this line, TypeScript knows that value is a string
+ * ```
  */
-const createNotEmptyTypeGuard = <T>(parse: Parser<T>): TypeGuard<T>["notEmpty"] => {
-  const helpers = {
-    has: hasProperty,
-    hasOptional: hasOptionalProperty,
-    includes,
-    tupleHas,
+const createAssertTypeGuard = <T>(guard: StrictTypeGuard<T>) => {
+  return <P extends Parameters<StrictTypeGuard<T>> | never[]>(...args: P) => {
+    if (args.length === 0) {
+      return guard as (value: unknown, errorMsg?: string) => asserts value is T;
+    }
+
+    return guard(...args as Parameters<StrictTypeGuard<T>>);
   };
-
-  const callback = (value: unknown): value is T =>
-    !isEmpty(value) && parse(value, helpers) !== null;
-
-  /**
-   * Throws a TypeError if the type guard fails or value is empty.
-   * Optionally you may define an error message to be included.
-   * @param {unknown} value
-   * @param {string?} errorMsg Optional
-   * @returns
-   */
-  callback.strict = createStrictTypeGuard(parse);
-
-  return callback;
 };
 
-type StrictTypeGuard<T> = (
-  value: unknown,
-  errorMsg?: string,
-) => value is T;
-
+/**
+ * Represents a type guard function with additional utility methods.
+ *
+ * A TypeGuard is a function that determines if a value is of type T, providing
+ * type narrowing in TypeScript. This type extends the basic type guard with:
+ * - strict mode validation
+ * - assertion functions that throw errors for invalid values
+ * - utilities for handling non-empty and optional values
+ *
+ * @template T The type being guarded
+ */
 export type TypeGuard<T> = {
+  /**
+   * A type guard function that checks if the value is of type T.
+   * @param value The value to check
+   * @returns true if the value is of type T, otherwise false
+   */
   (value: unknown): value is T;
+  /**
+   * A strict type guard that throws an error if the value is not of type T.
+   * @param value The value to check
+   * @param errorMsg Optional error message to include in the thrown error
+   * @returns true if the value is of type T, otherwise throws an error
+   */
   strict: StrictTypeGuard<T>;
+  /**
+   * An assertion function that throws an error if the value is not of type T.
+   * This is useful for ensuring that a value meets the type requirements at runtime.
+   *
+   * Unfortunately, TypeScript does not support the inference of assertion functions
+   * so the function must be invoked by declaring an intermediate variable and specifying
+   * the type.
+   *
+   * Example:
+   * ```typescript
+   * const value: unknown = someValue();
+   *
+   * const assertIsString: typeof isString.assert = isString.assert;
+   * assertIsString(value, "Expected a string");
+   * // After this line, TypeScript knows that value is a string
+   * ```
+   * @param value The value to check
+   * @param errorMsg Optional error message to include in the thrown error
+   * @returns Asserts that the value is of type T
+   */
+  assert: (value: unknown, errorMsg?: string) => asserts value is T;
   notEmpty: {
+    /**
+     * A type guard that checks if the value is not empty and of type T.
+     * An empty value is defined as null, undefined, an empty string, an empty array,
+     * or an empty object.
+     * @param value The value to check
+     * @returns true if the value is of type T and not empty, otherwise false
+     */
     (value: unknown): value is T;
+    /**
+     * A strict type guard that throws an error if the value is not of type T
+     * or if the value is empty (null, undefined, empty string, empty array, or empty object).
+     * @param value The value to check
+     * @param errorMsg Optional error message to include in the thrown error
+     * @returns true if the value is of type T, otherwise throws an error
+     */
     strict: StrictTypeGuard<T>;
+    /**
+     * An assertion function that throws an error if the value is not of type T or if it is
+     * empty. An empty value is defined as null, undefined, an empty string,
+     * an empty array, or an empty object. This is useful for ensuring that a value meets
+     * the type requirements at runtime.
+     *
+     * Unfortunately, TypeScript does not support the inference of assertion functions
+     * so the function must be invoked by declaring an intermediate variable and specifying
+     * the type.
+     *
+     * Example:
+     * ```typescript
+     * const value: unknown = someValue();
+     *
+     * const assertIsNotEmptyString: typeof isString.notEmpty.assert = isString.notEmpty.assert;
+     * assertIsNotEmptyString(value, "Expected a non-empty string");
+     * // After this line, TypeScript knows that value is a string
+     * ```
+     * @param value The value to check
+     * @param errorMsg Optional error message to include in the thrown error
+     * @returns Asserts that the value is of type T
+     */
+    assert: (value: unknown, errorMsg?: string) => asserts value is T;
+  };
+  optional: {
+    /**
+     * A type guard that checks if the value is either undefined or of type T.
+     * @param value The value to check
+     * @returns true if the value is of type T or undefined, otherwise false
+     */
+    (value: unknown): value is T | undefined;
+    /**
+     * A strict type guard that throws an error if the value is defined but not of type T.
+     * @param value The value to check
+     * @param errorMsg Optional error message to include in the thrown error
+     * @returns true if the value is of type T, otherwise throws an error
+     */
+    strict: (value: unknown, errorMsg?: string) => value is T | undefined;
+    /**
+     * An assertion function that throws an error if the value is defined but not of type T.
+     * This is useful for ensuring that a value meets the type requirements at runtime.
+     *
+     * Unfortunately, TypeScript does not support the inference of assertion functions
+     * so the function must be invoked by declaring an intermediate variable and specifying
+     * the type.
+     *
+     * Example:
+     * ```typescript
+     * const value: unknown = someValue();
+     *
+     * const assertIsOptionalString: typeof isString.optional.assert = isString.optional.assert;
+     * assertIsOptionalString(value, "Expected a string or undefined");
+     * // After this line, TypeScript knows that value is a string
+     * ```
+     * @param value The value to check
+     * @param errorMsg Optional error message to include in the thrown error
+     * @returns Asserts that the value is of type T
+     */
+    assert: (value: unknown, errorMsg?: string) => asserts value is T | undefined;
   };
 };
 
@@ -191,21 +289,38 @@ export const createTypeGuard = <T>(parse: Parser<T>): TypeGuard<T> => {
   const callback = (value: unknown): value is T => parse(value, helpers) !== null;
 
   /**
+   * Returns false if the value fails the "empty" type guard
+   * or if it fails the parser.
+   * @param {unknown} value
+   * @returns
+   */
+  const notEmpty = (value: unknown): value is T => !isEmpty(value) && callback(value);
+
+  notEmpty.strict = createStrictTypeGuard(notEmpty);
+  notEmpty.assert = createAssertTypeGuard(notEmpty.strict);
+  callback.notEmpty = notEmpty;
+
+  /**
+   * Returns true if the value is undefined or passes the parser.
+   * @param {unknown} value
+   * @returns
+   */
+  const optional = (value: unknown): value is T | undefined =>
+    isUndefined(value) || callback(value);
+
+  optional.strict = createStrictTypeGuard(optional);
+  optional.assert = createAssertTypeGuard(optional.strict);
+  callback.optional = optional;
+
+  /**
    * Throws a TypeError if the type guard fails. Optionally you may define an
    * error message to be included.
    * @param {unknown} value
    * @param {string?} errorMsg Optional
    * @returns
    */
-  callback.strict = createStrictTypeGuard(parse);
-
-  /**
-   * Returns false if the value fails the "empty" type guard
-   * or if it fails the parser.
-   * @param {unknown} value
-   * @returns
-   */
-  callback.notEmpty = createNotEmptyTypeGuard(parse);
+  callback.strict = createStrictTypeGuard(callback);
+  callback.assert = createAssertTypeGuard(callback.strict);
 
   return callback;
 };
@@ -215,9 +330,9 @@ export const createTypeGuard = <T>(parse: Parser<T>): TypeGuard<T> => {
  * @param {unknown} t
  * @return {boolean}
  */
-export const isBoolean: TypeGuard<boolean> = createTypeGuard((
-  t,
-): boolean | null => typeof t === "boolean" ? t : null);
+export const isBoolean: TypeGuard<boolean> = createTypeGuard((t): boolean | null =>
+  typeof t === "boolean" ? t : null
+);
 
 /**
  * Returns true if input satisfies type string.
@@ -350,6 +465,26 @@ export const isJsonValue: TypeGuard<JsonValue> = createTypeGuard(
 );
 
 /**
+ * A type guard function that checks if a value is a Date object.
+ *
+ * @param t - The value to check
+ * @returns The original Date object if the value is a Date, otherwise null
+ *
+ * @example
+ * ```typescript
+ * const maybeDate: unknown = new Date();
+ *
+ * if (isDate(maybeDate)) {
+ *   // maybeDate is now typed as Date
+ *   console.log(maybeDate.toISOString());
+ * }
+ * ```
+ */
+export const isDate = createTypeGuard((t): Date | null => {
+  return t instanceof Date ? t : null;
+});
+
+/**
  * Returns true if input satisfies type null.
  * @param {unknown} t
  * @return {boolean}
@@ -441,25 +576,5 @@ isTuple.strict = <N extends number>(
 
   return true;
 };
-
-/**
- * A type guard function that checks if a value is a Date object.
- *
- * @param t - The value to check
- * @returns The original Date object if the value is a Date, otherwise null
- *
- * @example
- * ```typescript
- * const maybeDate: unknown = new Date();
- *
- * if (isDate(maybeDate)) {
- *   // maybeDate is now typed as Date
- *   console.log(maybeDate.toISOString());
- * }
- * ```
- */
-export const isDate = createTypeGuard((t): Date | null => {
-  return t instanceof Date ? t : null;
-});
 
 export { isEmpty, isIterator, isNil, isNull, isTuple };
