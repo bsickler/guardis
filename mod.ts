@@ -46,10 +46,17 @@ export const Is: {
   Null: {
     (value: unknown): value is null;
     strict: (value: unknown, errorMsg?: string) => value is null;
+    assert: (value: unknown, errorMsg?: string) => asserts value is null;
+    optional: {
+      (value: unknown): value is null | undefined;
+      strict: (value: unknown, errorMsg?: string) => value is null | undefined;
+      assert: (value: unknown, errorMsg?: string) => asserts value is null | undefined;
+    };
   };
   Nil: {
     (value: unknown): value is null | undefined;
     strict: (value: unknown, errorMsg?: string) => value is null | undefined;
+    assert: (value: unknown, errorMsg?: string) => asserts value is null | undefined;
   };
   Empty: {
     (value: unknown): value is null | undefined | "" | [] | Record<string, never>;
@@ -57,10 +64,30 @@ export const Is: {
       value: unknown,
       errorMsg?: string,
     ) => value is null | undefined | "" | [] | Record<string, never>;
+    assert: (
+      value: unknown,
+      errorMsg?: string,
+    ) => asserts value is null | undefined | "" | [] | Record<string, never>;
+  };
+  Iterable: {
+    <T = unknown>(value: unknown): value is Iterable<T>;
+    strict<T = unknown>(value: unknown, errorMsg?: string): value is Iterable<T>;
+    assert<T = unknown>(value: unknown, errorMsg?: string): asserts value is Iterable<T>;
+    optional: {
+      <T = unknown>(value: unknown): value is Iterable<T> | undefined;
+      strict<T = unknown>(value: unknown, errorMsg?: string): value is Iterable<T> | undefined;
+      assert<T = unknown>(value: unknown, errorMsg?: string): asserts value is Iterable<T> | undefined;
+    };
   };
   Tuple: {
     <N extends number>(value: unknown, length: N): value is TupleOfLength<N>;
     strict<N extends number>(value: unknown, length: N): value is TupleOfLength<N>;
+    assert<N extends number>(value: unknown, length: N, errorMsg?: string): asserts value is TupleOfLength<N>;
+    optional: {
+      <N extends number>(value: unknown, length: N): value is TupleOfLength<N> | undefined;
+      strict<N extends number>(value: unknown, length: N, errorMsg?: string): value is TupleOfLength<N> | undefined;
+      assert<N extends number>(value: unknown, length: N, errorMsg?: string): asserts value is TupleOfLength<N> | undefined;
+    };
   };
 } = {
   Boolean: g.isBoolean,
@@ -79,6 +106,7 @@ export const Is: {
   Null: g.isNull,
   Nil: g.isNil,
   Empty: g.isEmpty,
+  Iterable: g.isIterable,
   Tuple: g.isTuple,
   Date: g.isDate,
 } as const;

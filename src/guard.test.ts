@@ -10,7 +10,7 @@ import {
   isDate,
   isEmpty,
   isFunction,
-  isIterator,
+  isIterable,
   isJsonArray,
   isJsonObject,
   isJsonPrimitive,
@@ -26,509 +26,1226 @@ import {
   tupleHas,
 } from "./guard.ts";
 
-Deno.test("createTypeGuard", async (t) => {
-  await t.step('injects "has" function', () => {
-    const testGuard = createTypeGuard<{ a: string }>((v, { has }) => {
-      if (isObject(v) && has(v, "a", isString)) {
-        return v;
-      }
+// Standard test values for consistency across all type guard tests
+const TEST_VALUES = {
+  // Primitive values
+  string: "test",
+  emptyString: "",
+  number: 42,
+  zero: 0,
+  float: 3.14,
+  infinity: Infinity,
+  negativeInfinity: -Infinity,
+  boolean: true,
+  booleanFalse: false,
+  nullValue: null,
+  undefinedValue: undefined,
+  
+  // Complex values
+  emptyObject: {},
+  object: { a: 1, b: "test" },
+  emptyArray: [],
+  array: [1, 2, 3],
+  function: () => {},
+  date: new Date(),
+  
+  // Special values
+  binaryZero: 0 as const,
+  binaryOne: 1 as const,
+  numericString: "123",
+  invalidNumericString: "abc",
+  iterator: [1, 2, 3][Symbol.iterator](),
+} as const;
 
-      return null;
-    });
-
-    assertEquals(testGuard({ a: "1" }), true);
-    assertEquals(testGuard({}), false);
-  });
-
-  await t.step('injects "includes" function', () => {
-    const tuple = ["a", "b", "c"] as const;
-
-    const testGuard = createTypeGuard<typeof tuple[number]>(
-      (v, { includes }) => {
-        if (includes(tuple, v)) return v;
-
-        return null;
-      },
-    );
-
-    assertEquals(testGuard("a"), true);
-    assertEquals(testGuard("f"), false);
-    assertEquals(testGuard([]), false);
-    assertEquals(testGuard({}), false);
-    assertEquals(testGuard(1), false);
-    assertEquals(testGuard(0), false);
-    assertEquals(testGuard(true), false);
-    assertEquals(testGuard(false), false);
-    assertEquals(testGuard(null), false);
-    assertEquals(testGuard(undefined), false);
-  });
-});
+// === Core Type Guards ===
 
 Deno.test("isBoolean", async (t) => {
-  await t.step("returns true only on boolean value types", () => {
-    assert(isBoolean(true));
-    assert(isBoolean(false));
+  await t.step("basic functionality", () => {
+    // Valid inputs
+    assert(isBoolean(TEST_VALUES.boolean));
+    assert(isBoolean(TEST_VALUES.booleanFalse));
+    
+    // Invalid inputs
+    assertFalse(isBoolean(TEST_VALUES.string));
+    assertFalse(isBoolean(TEST_VALUES.number));
+    assertFalse(isBoolean(TEST_VALUES.zero));
+    assertFalse(isBoolean(TEST_VALUES.nullValue));
+    assertFalse(isBoolean(TEST_VALUES.undefinedValue));
+    assertFalse(isBoolean(TEST_VALUES.object));
+    assertFalse(isBoolean(TEST_VALUES.array));
+  });
 
-    assertFalse(isBoolean(0));
-    assertFalse(isBoolean(null));
-    assertFalse(isBoolean(undefined));
-    assertFalse(isBoolean("a"));
-    assertFalse(isBoolean({}));
-    assertFalse(isBoolean([]));
+  await t.step("strict mode", () => {
+    // Valid inputs don't throw
+    isBoolean.strict(TEST_VALUES.boolean);
+    isBoolean.strict(TEST_VALUES.booleanFalse);
+    
+    // Invalid inputs throw
+    assertThrows(() => isBoolean.strict(TEST_VALUES.string));
+    assertThrows(() => isBoolean.strict(TEST_VALUES.number));
+    assertThrows(() => isBoolean.strict(TEST_VALUES.nullValue));
+    assertThrows(() => isBoolean.strict(TEST_VALUES.undefinedValue));
+  });
+
+  await t.step("assert mode", () => {
+    const assertIsBoolean: typeof isBoolean.assert = isBoolean.assert;
+    
+    // Valid inputs don't throw
+    assertIsBoolean(TEST_VALUES.boolean);
+    assertIsBoolean(TEST_VALUES.booleanFalse);
+    
+    // Invalid inputs throw
+    assertThrows(() => assertIsBoolean(TEST_VALUES.string));
+    assertThrows(() => assertIsBoolean(TEST_VALUES.number));
+    assertThrows(() => assertIsBoolean(TEST_VALUES.nullValue));
+  });
+
+  await t.step("optional mode", () => {
+    // Valid inputs
+    assert(isBoolean.optional(TEST_VALUES.boolean));
+    assert(isBoolean.optional(TEST_VALUES.booleanFalse));
+    assert(isBoolean.optional(TEST_VALUES.undefinedValue));
+    
+    // Invalid inputs
+    assertFalse(isBoolean.optional(TEST_VALUES.string));
+    assertFalse(isBoolean.optional(TEST_VALUES.nullValue));
+    assertFalse(isBoolean.optional(TEST_VALUES.number));
+  });
+
+  await t.step("notEmpty mode", () => {
+    // Valid inputs (booleans are never considered empty)
+    assert(isBoolean.notEmpty(TEST_VALUES.boolean));
+    assert(isBoolean.notEmpty(TEST_VALUES.booleanFalse));
+    
+    // Invalid inputs
+    assertFalse(isBoolean.notEmpty(TEST_VALUES.string));
+    assertFalse(isBoolean.notEmpty(TEST_VALUES.nullValue));
+    assertFalse(isBoolean.notEmpty(TEST_VALUES.undefinedValue));
   });
 });
 
 Deno.test("isString", async (t) => {
-  await t.step("returns true only on string value types", () => {
-    assert(isString("a"));
-    assert(isString(""));
+  await t.step("basic functionality", () => {
+    // Valid inputs
+    assert(isString(TEST_VALUES.string));
+    assert(isString(TEST_VALUES.emptyString));
+    
+    // Invalid inputs
+    assertFalse(isString(TEST_VALUES.number));
+    assertFalse(isString(TEST_VALUES.boolean));
+    assertFalse(isString(TEST_VALUES.nullValue));
+    assertFalse(isString(TEST_VALUES.undefinedValue));
+    assertFalse(isString(TEST_VALUES.object));
+    assertFalse(isString(TEST_VALUES.array));
+  });
 
-    assertFalse(isString(0));
-    assertFalse(isString(null));
-    assertFalse(isString(undefined));
-    assertFalse(isString(true));
-    assertFalse(isString({}));
-    assertFalse(isString([]));
+  await t.step("strict mode", () => {
+    // Valid inputs don't throw
+    isString.strict(TEST_VALUES.string);
+    isString.strict(TEST_VALUES.emptyString);
+    
+    // Invalid inputs throw
+    assertThrows(() => isString.strict(TEST_VALUES.number));
+    assertThrows(() => isString.strict(TEST_VALUES.boolean));
+    assertThrows(() => isString.strict(TEST_VALUES.nullValue));
+  });
+
+  await t.step("assert mode", () => {
+    const assertIsString: typeof isString.assert = isString.assert;
+    
+    // Valid inputs don't throw
+    assertIsString(TEST_VALUES.string);
+    assertIsString(TEST_VALUES.emptyString);
+    
+    // Invalid inputs throw
+    assertThrows(() => assertIsString(TEST_VALUES.number));
+    assertThrows(() => assertIsString(TEST_VALUES.boolean));
+  });
+
+  await t.step("optional mode", () => {
+    // Valid inputs
+    assert(isString.optional(TEST_VALUES.string));
+    assert(isString.optional(TEST_VALUES.emptyString));
+    assert(isString.optional(TEST_VALUES.undefinedValue));
+    
+    // Invalid inputs
+    assertFalse(isString.optional(TEST_VALUES.number));
+    assertFalse(isString.optional(TEST_VALUES.nullValue));
+  });
+
+  await t.step("notEmpty mode", () => {
+    // Valid inputs
+    assert(isString.notEmpty(TEST_VALUES.string));
+    
+    // Invalid inputs (empty string is considered empty)
+    assertFalse(isString.notEmpty(TEST_VALUES.emptyString));
+    assertFalse(isString.notEmpty(TEST_VALUES.number));
+    assertFalse(isString.notEmpty(TEST_VALUES.nullValue));
+    assertFalse(isString.notEmpty(TEST_VALUES.undefinedValue));
   });
 });
 
 Deno.test("isNumber", async (t) => {
-  await t.step("returns true only on numeric value types", () => {
-    assert(isNumber(0));
-    assert(isNumber(100));
-    assert(isNumber(0.1));
+  await t.step("basic functionality", () => {
+    // Valid inputs
+    assert(isNumber(TEST_VALUES.number));
+    assert(isNumber(TEST_VALUES.zero));
+    assert(isNumber(TEST_VALUES.float));
+    assert(isNumber(TEST_VALUES.infinity));
+    assert(isNumber(TEST_VALUES.negativeInfinity));
+    
+    // Invalid inputs
+    assertFalse(isNumber(TEST_VALUES.string));
+    assertFalse(isNumber(TEST_VALUES.numericString));
+    assertFalse(isNumber(TEST_VALUES.boolean));
+    assertFalse(isNumber(TEST_VALUES.nullValue));
+    assertFalse(isNumber(TEST_VALUES.undefinedValue));
+    assertFalse(isNumber(TEST_VALUES.object));
+    assertFalse(isNumber(TEST_VALUES.array));
+  });
 
-    assertFalse(isNumber("a"));
-    assertFalse(isNumber(null));
-    assertFalse(isNumber(undefined));
-    assertFalse(isNumber(true));
-    assertFalse(isNumber({}));
-    assertFalse(isNumber([]));
+  await t.step("strict mode", () => {
+    // Valid inputs don't throw
+    isNumber.strict(TEST_VALUES.number);
+    isNumber.strict(TEST_VALUES.zero);
+    isNumber.strict(TEST_VALUES.float);
+    
+    // Invalid inputs throw
+    assertThrows(() => isNumber.strict(TEST_VALUES.string));
+    assertThrows(() => isNumber.strict(TEST_VALUES.numericString));
+    assertThrows(() => isNumber.strict(TEST_VALUES.boolean));
+  });
+
+  await t.step("assert mode", () => {
+    const assertIsNumber: typeof isNumber.assert = isNumber.assert;
+    
+    // Valid inputs don't throw
+    assertIsNumber(TEST_VALUES.number);
+    assertIsNumber(TEST_VALUES.zero);
+    assertIsNumber(TEST_VALUES.float);
+    
+    // Invalid inputs throw
+    assertThrows(() => assertIsNumber(TEST_VALUES.string));
+    assertThrows(() => assertIsNumber(TEST_VALUES.numericString));
+  });
+
+  await t.step("optional mode", () => {
+    // Valid inputs
+    assert(isNumber.optional(TEST_VALUES.number));
+    assert(isNumber.optional(TEST_VALUES.zero));
+    assert(isNumber.optional(TEST_VALUES.undefinedValue));
+    
+    // Invalid inputs
+    assertFalse(isNumber.optional(TEST_VALUES.string));
+    assertFalse(isNumber.optional(TEST_VALUES.nullValue));
+  });
+
+  await t.step("notEmpty mode", () => {
+    // Valid inputs (numbers are never considered empty, including 0)
+    assert(isNumber.notEmpty(TEST_VALUES.number));
+    assert(isNumber.notEmpty(TEST_VALUES.zero));
+    assert(isNumber.notEmpty(TEST_VALUES.float));
+    
+    // Invalid inputs
+    assertFalse(isNumber.notEmpty(TEST_VALUES.string));
+    assertFalse(isNumber.notEmpty(TEST_VALUES.nullValue));
+    assertFalse(isNumber.notEmpty(TEST_VALUES.undefinedValue));
   });
 });
 
 Deno.test("isBinary", async (t) => {
-  await t.step("returns true only on values of 1 or 0", () => {
-    assert(isBinary(0));
-    assert(isBinary(1));
+  await t.step("basic functionality", () => {
+    // Valid inputs
+    assert(isBinary(TEST_VALUES.binaryZero));
+    assert(isBinary(TEST_VALUES.binaryOne));
+    
+    // Invalid inputs
+    assertFalse(isBinary(TEST_VALUES.number)); // 42
+    assertFalse(isBinary(TEST_VALUES.float));
+    assertFalse(isBinary(TEST_VALUES.string));
+    assertFalse(isBinary(TEST_VALUES.boolean));
+    assertFalse(isBinary(TEST_VALUES.nullValue));
+    assertFalse(isBinary(TEST_VALUES.undefinedValue));
+  });
 
-    assertFalse(isBinary(2));
-    assertFalse(isBinary(0.1));
-    assertFalse(isBinary("a"));
-    assertFalse(isBinary(null));
-    assertFalse(isBinary(undefined));
-    assertFalse(isBinary(true));
-    assertFalse(isBinary({}));
-    assertFalse(isBinary([]));
+  await t.step("strict mode", () => {
+    // Valid inputs don't throw
+    isBinary.strict(TEST_VALUES.binaryZero);
+    isBinary.strict(TEST_VALUES.binaryOne);
+    
+    // Invalid inputs throw
+    assertThrows(() => isBinary.strict(TEST_VALUES.number));
+    assertThrows(() => isBinary.strict(TEST_VALUES.float));
+    assertThrows(() => isBinary.strict(TEST_VALUES.string));
+  });
+
+  await t.step("assert mode", () => {
+    const assertIsBinary: typeof isBinary.assert = isBinary.assert;
+    
+    // Valid inputs don't throw
+    assertIsBinary(TEST_VALUES.binaryZero);
+    assertIsBinary(TEST_VALUES.binaryOne);
+    
+    // Invalid inputs throw
+    assertThrows(() => assertIsBinary(TEST_VALUES.number));
+    assertThrows(() => assertIsBinary(TEST_VALUES.string));
+  });
+
+  await t.step("optional mode", () => {
+    // Valid inputs
+    assert(isBinary.optional(TEST_VALUES.binaryZero));
+    assert(isBinary.optional(TEST_VALUES.binaryOne));
+    assert(isBinary.optional(TEST_VALUES.undefinedValue));
+    
+    // Invalid inputs
+    assertFalse(isBinary.optional(TEST_VALUES.number));
+    assertFalse(isBinary.optional(TEST_VALUES.nullValue));
+  });
+
+  await t.step("notEmpty mode", () => {
+    // Valid inputs (0 and 1 are not considered empty for binary)
+    assert(isBinary.notEmpty(TEST_VALUES.binaryZero));
+    assert(isBinary.notEmpty(TEST_VALUES.binaryOne));
+    
+    // Invalid inputs
+    assertFalse(isBinary.notEmpty(TEST_VALUES.number));
+    assertFalse(isBinary.notEmpty(TEST_VALUES.nullValue));
+    assertFalse(isBinary.notEmpty(TEST_VALUES.undefinedValue));
+  });
+});
+
+Deno.test("isNumeric", async (t) => {
+  await t.step("basic functionality", () => {
+    // Valid inputs
+    assert(isNumeric(TEST_VALUES.number));
+    assert(isNumeric(TEST_VALUES.zero));
+    assert(isNumeric(TEST_VALUES.float));
+    assert(isNumeric(TEST_VALUES.numericString));
+    assert(isNumeric("0"));
+    assert(isNumeric("-42"));
+    assert(isNumeric("3.14"));
+    
+    // Invalid inputs
+    assertFalse(isNumeric(TEST_VALUES.invalidNumericString));
+    assertFalse(isNumeric(TEST_VALUES.emptyString));
+    assertFalse(isNumeric(TEST_VALUES.boolean));
+    assertFalse(isNumeric(TEST_VALUES.nullValue));
+    assertFalse(isNumeric(TEST_VALUES.undefinedValue));
+    assertFalse(isNumeric(TEST_VALUES.object));
+    assertFalse(isNumeric(TEST_VALUES.array));
+  });
+
+  await t.step("strict mode", () => {
+    // Valid inputs don't throw
+    isNumeric.strict(TEST_VALUES.number);
+    isNumeric.strict(TEST_VALUES.numericString);
+    
+    // Invalid inputs throw
+    assertThrows(() => isNumeric.strict(TEST_VALUES.invalidNumericString));
+    assertThrows(() => isNumeric.strict(TEST_VALUES.boolean));
+  });
+
+  await t.step("assert mode", () => {
+    const assertIsNumeric: typeof isNumeric.assert = isNumeric.assert;
+    
+    // Valid inputs don't throw
+    assertIsNumeric(TEST_VALUES.number);
+    assertIsNumeric(TEST_VALUES.numericString);
+    
+    // Invalid inputs throw
+    assertThrows(() => assertIsNumeric(TEST_VALUES.invalidNumericString));
+    assertThrows(() => assertIsNumeric(TEST_VALUES.boolean));
+  });
+
+  await t.step("optional mode", () => {
+    // Valid inputs
+    assert(isNumeric.optional(TEST_VALUES.number));
+    assert(isNumeric.optional(TEST_VALUES.numericString));
+    assert(isNumeric.optional(TEST_VALUES.undefinedValue));
+    
+    // Invalid inputs
+    assertFalse(isNumeric.optional(TEST_VALUES.invalidNumericString));
+    assertFalse(isNumeric.optional(TEST_VALUES.nullValue));
+  });
+
+  await t.step("notEmpty mode", () => {
+    // Valid inputs
+    assert(isNumeric.notEmpty(TEST_VALUES.number));
+    assert(isNumeric.notEmpty(TEST_VALUES.numericString));
+    
+    // Invalid inputs
+    assertFalse(isNumeric.notEmpty(TEST_VALUES.invalidNumericString));
+    assertFalse(isNumeric.notEmpty(TEST_VALUES.nullValue));
+    assertFalse(isNumeric.notEmpty(TEST_VALUES.undefinedValue));
   });
 });
 
 Deno.test("isFunction", async (t) => {
-  await t.step("returns true only on function type values", () => {
+  await t.step("basic functionality", () => {
+    // Valid inputs
+    assert(isFunction(TEST_VALUES.function));
     assert(isFunction(() => {}));
-
-    assertFalse(isFunction(true));
-    assertFalse(isFunction(false));
-    assertFalse(isFunction(0));
-    assertFalse(isFunction(null));
-    assertFalse(isFunction(undefined));
-    assertFalse(isFunction("a"));
-    assertFalse(isFunction({}));
-    assertFalse(isFunction([]));
-  });
-});
-
-Deno.test("isJsonArray", async (t) => {
-  await t.step("returns true only on array type values", () => {
-    assert(isJsonArray([]));
-
-    assertFalse(isJsonArray(true));
-    assertFalse(isJsonArray(false));
-    assertFalse(isJsonArray(0));
-    assertFalse(isJsonArray(null));
-    assertFalse(isJsonArray(undefined));
-    assertFalse(isJsonArray("a"));
-    assertFalse(isJsonArray({}));
-  });
-});
-
-Deno.test("isJsonObject", async (t) => {
-  await t.step("returns true only on object type values", () => {
-    assert(isJsonObject({}));
-
-    assertFalse(isJsonObject(true));
-    assertFalse(isJsonObject(false));
-    assertFalse(isJsonObject(0));
-    assertFalse(isJsonObject(null));
-    assertFalse(isJsonObject(undefined));
-    assertFalse(isJsonObject([]));
-  });
-});
-
-Deno.test("isNull", async (t) => {
-  await t.step("returns true only on null values", () => {
-    assert(isNull(null));
-
-    assertFalse(isNull(true));
-    assertFalse(isNull(false));
-    assertFalse(isNull(0));
-    assertFalse(isNull(undefined));
-    assertFalse(isNull("a"));
-    assertFalse(isNull({}));
-    assertFalse(isNull([]));
+    assert(isFunction(function () {}));
+    assert(isFunction(Math.max));
+    
+    // Invalid inputs
+    assertFalse(isFunction(TEST_VALUES.string));
+    assertFalse(isFunction(TEST_VALUES.number));
+    assertFalse(isFunction(TEST_VALUES.boolean));
+    assertFalse(isFunction(TEST_VALUES.nullValue));
+    assertFalse(isFunction(TEST_VALUES.undefinedValue));
+    assertFalse(isFunction(TEST_VALUES.object));
+    assertFalse(isFunction(TEST_VALUES.array));
   });
 
   await t.step("strict mode", () => {
-    isNull.strict(null);
-    assertThrows(() => isNull.strict(true));
-    assertThrows(() => isNull.strict(false));
-    assertThrows(() => isNull.strict(0));
-    assertThrows(() => isNull.strict("a"));
-    assertThrows(() => isNull.strict({}));
-    assertThrows(() => isNull.strict([]));
+    // Valid inputs don't throw
+    isFunction.strict(TEST_VALUES.function);
+    isFunction.strict(Math.max);
+    
+    // Invalid inputs throw
+    assertThrows(() => isFunction.strict(TEST_VALUES.string));
+    assertThrows(() => isFunction.strict(TEST_VALUES.number));
+  });
+
+  await t.step("assert mode", () => {
+    const assertIsFunction: typeof isFunction.assert = isFunction.assert;
+    
+    // Valid inputs don't throw
+    assertIsFunction(TEST_VALUES.function);
+    assertIsFunction(Math.max);
+    
+    // Invalid inputs throw
+    assertThrows(() => assertIsFunction(TEST_VALUES.string));
+    assertThrows(() => assertIsFunction(TEST_VALUES.number));
+  });
+
+  await t.step("optional mode", () => {
+    // Valid inputs
+    assert(isFunction.optional(TEST_VALUES.function));
+    assert(isFunction.optional(TEST_VALUES.undefinedValue));
+    
+    // Invalid inputs
+    assertFalse(isFunction.optional(TEST_VALUES.string));
+    assertFalse(isFunction.optional(TEST_VALUES.nullValue));
+  });
+
+  await t.step("notEmpty mode", () => {
+    // Valid inputs (functions are never considered empty)
+    assert(isFunction.notEmpty(TEST_VALUES.function));
+    assert(isFunction.notEmpty(Math.max));
+    
+    // Invalid inputs
+    assertFalse(isFunction.notEmpty(TEST_VALUES.string));
+    assertFalse(isFunction.notEmpty(TEST_VALUES.nullValue));
+    assertFalse(isFunction.notEmpty(TEST_VALUES.undefinedValue));
+  });
+});
+
+// === Special Type Guards ===
+
+Deno.test("isNull", async (t) => {
+  await t.step("basic functionality", () => {
+    // Valid inputs
+    assert(isNull(TEST_VALUES.nullValue));
+    
+    // Invalid inputs
+    assertFalse(isNull(TEST_VALUES.undefinedValue));
+    assertFalse(isNull(TEST_VALUES.string));
+    assertFalse(isNull(TEST_VALUES.number));
+    assertFalse(isNull(TEST_VALUES.zero));
+    assertFalse(isNull(TEST_VALUES.boolean));
+    assertFalse(isNull(TEST_VALUES.booleanFalse));
+    assertFalse(isNull(TEST_VALUES.object));
+    assertFalse(isNull(TEST_VALUES.array));
+  });
+
+  await t.step("strict mode", () => {
+    // Valid inputs don't throw
+    isNull.strict(TEST_VALUES.nullValue);
+    
+    // Invalid inputs throw
+    assertThrows(() => isNull.strict(TEST_VALUES.undefinedValue));
+    assertThrows(() => isNull.strict(TEST_VALUES.string));
+    assertThrows(() => isNull.strict(TEST_VALUES.number));
+    assertThrows(() => isNull.strict(TEST_VALUES.boolean));
+  });
+
+  await t.step("assert mode", () => {
+    const assertIsNull: typeof isNull.assert = isNull.assert;
+    
+    // Valid inputs don't throw
+    assertIsNull(TEST_VALUES.nullValue);
+    
+    // Invalid inputs throw
+    assertThrows(() => assertIsNull(TEST_VALUES.undefinedValue));
+    assertThrows(() => assertIsNull(TEST_VALUES.string));
+    assertThrows(() => assertIsNull(TEST_VALUES.number));
+  });
+
+  await t.step("optional mode", () => {
+    // Valid inputs
+    assert(isNull.optional(TEST_VALUES.nullValue));
+    assert(isNull.optional(TEST_VALUES.undefinedValue));
+    
+    // Invalid inputs
+    assertFalse(isNull.optional(TEST_VALUES.string));
+    assertFalse(isNull.optional(TEST_VALUES.number));
+    assertFalse(isNull.optional(TEST_VALUES.boolean));
+    assertFalse(isNull.optional(TEST_VALUES.object));
   });
 });
 
 Deno.test("isUndefined", async (t) => {
-  await t.step("returns true only on undefined values", () => {
-    assert(isUndefined(undefined));
-
-    assertFalse(isUndefined(true));
-    assertFalse(isUndefined(false));
-    assertFalse(isUndefined(0));
-    assertFalse(isUndefined(null));
-    assertFalse(isUndefined("a"));
-    assertFalse(isUndefined({}));
-    assertFalse(isUndefined([]));
+  await t.step("basic functionality", () => {
+    // Valid inputs
+    assert(isUndefined(TEST_VALUES.undefinedValue));
+    
+    // Invalid inputs
+    assertFalse(isUndefined(TEST_VALUES.nullValue));
+    assertFalse(isUndefined(TEST_VALUES.string));
+    assertFalse(isUndefined(TEST_VALUES.number));
+    assertFalse(isUndefined(TEST_VALUES.zero));
+    assertFalse(isUndefined(TEST_VALUES.boolean));
+    assertFalse(isUndefined(TEST_VALUES.booleanFalse));
+    assertFalse(isUndefined(TEST_VALUES.object));
+    assertFalse(isUndefined(TEST_VALUES.array));
   });
-});
-
-Deno.test("isEmpty", async (t) => {
-  await t.step(
-    "returns true only on null, undefined, or empty string values",
-    () => {
-      assert(isEmpty(null));
-      assert(isEmpty(undefined));
-      assert(isEmpty(""));
-      assert(isEmpty({}));
-      assert(isEmpty([]));
-
-      assertFalse(isEmpty(true));
-      assertFalse(isEmpty(false));
-      assertFalse(isEmpty(0));
-      assertFalse(isEmpty("a"));
-    },
-  );
 
   await t.step("strict mode", () => {
-    isEmpty.strict(null);
-    isEmpty.strict(undefined);
-    isEmpty.strict("");
-    isEmpty.strict({});
-    isEmpty.strict([]);
-    assertThrows(() => isEmpty.strict(true));
-    assertThrows(() => isEmpty.strict(false));
-    assertThrows(() => isEmpty.strict(0));
-    assertThrows(() => isEmpty.strict("a"));
+    // Valid inputs don't throw
+    isUndefined.strict(TEST_VALUES.undefinedValue);
+    
+    // Invalid inputs throw
+    assertThrows(() => isUndefined.strict(TEST_VALUES.nullValue));
+    assertThrows(() => isUndefined.strict(TEST_VALUES.string));
+    assertThrows(() => isUndefined.strict(TEST_VALUES.number));
+  });
+
+  await t.step("assert mode", () => {
+    const assertIsUndefined: typeof isUndefined.assert = isUndefined.assert;
+    
+    // Valid inputs don't throw
+    assertIsUndefined(TEST_VALUES.undefinedValue);
+    
+    // Invalid inputs throw
+    assertThrows(() => assertIsUndefined(TEST_VALUES.nullValue));
+    assertThrows(() => assertIsUndefined(TEST_VALUES.string));
+  });
+
+  await t.step("optional mode", () => {
+    // Valid inputs (undefined optional is always undefined)
+    assert(isUndefined.optional(TEST_VALUES.undefinedValue));
+    
+    // Invalid inputs
+    assertFalse(isUndefined.optional(TEST_VALUES.nullValue));
+    assertFalse(isUndefined.optional(TEST_VALUES.string));
+    assertFalse(isUndefined.optional(TEST_VALUES.number));
   });
 });
 
 Deno.test("isNil", async (t) => {
-  await t.step("returns true only on null or undefined values", () => {
-    assert(isNil(null));
-    assert(isNil(undefined));
-    assertFalse(isNil(true));
-    assertFalse(isNil(false));
-    assertFalse(isNil(0));
-    assertFalse(isNil("a"));
-    assertFalse(isNil({}));
-    assertFalse(isNil([]));
+  await t.step("basic functionality", () => {
+    // Valid inputs
+    assert(isNil(TEST_VALUES.nullValue));
+    assert(isNil(TEST_VALUES.undefinedValue));
+    
+    // Invalid inputs
+    assertFalse(isNil(TEST_VALUES.string));
+    assertFalse(isNil(TEST_VALUES.emptyString));
+    assertFalse(isNil(TEST_VALUES.number));
+    assertFalse(isNil(TEST_VALUES.zero));
+    assertFalse(isNil(TEST_VALUES.boolean));
+    assertFalse(isNil(TEST_VALUES.booleanFalse));
+    assertFalse(isNil(TEST_VALUES.object));
+    assertFalse(isNil(TEST_VALUES.array));
   });
 
   await t.step("strict mode", () => {
-    isNil.strict(null);
-    isNil.strict(undefined);
-    assertThrows(() => isNil.strict(true));
-    assertThrows(() => isNil.strict(false));
-    assertThrows(() => isNil.strict(0));
-    assertThrows(() => isNil.strict("a"));
-    assertThrows(() => isNil.strict({}));
-    assertThrows(() => isNil.strict([]));
+    // Valid inputs don't throw
+    isNil.strict(TEST_VALUES.nullValue);
+    isNil.strict(TEST_VALUES.undefinedValue);
+    
+    // Invalid inputs throw
+    assertThrows(() => isNil.strict(TEST_VALUES.string));
+    assertThrows(() => isNil.strict(TEST_VALUES.number));
+    assertThrows(() => isNil.strict(TEST_VALUES.boolean));
+  });
+
+  await t.step("assert mode", () => {
+    const assertIsNil: typeof isNil.assert = isNil.assert;
+    
+    // Valid inputs don't throw
+    assertIsNil(TEST_VALUES.nullValue);
+    assertIsNil(TEST_VALUES.undefinedValue);
+    
+    // Invalid inputs throw
+    assertThrows(() => assertIsNil(TEST_VALUES.string));
+    assertThrows(() => assertIsNil(TEST_VALUES.number));
   });
 });
 
-Deno.test("strict mode", async (t) => {
-  await t.step("throws on failed typeguard", () => {
-    assertThrows(() => isBoolean.strict("a"));
-    assertThrows(() => isBoolean.strict(1));
-    assertThrows(() => isBoolean.strict(null));
-    assertThrows(() => isBoolean.strict(undefined));
-    assertThrows(() => isBoolean.strict({}));
+Deno.test("isEmpty", async (t) => {
+  await t.step("basic functionality", () => {
+    // Valid inputs (empty values)
+    assert(isEmpty(TEST_VALUES.nullValue));
+    assert(isEmpty(TEST_VALUES.undefinedValue));
+    assert(isEmpty(TEST_VALUES.emptyString));
+    assert(isEmpty(TEST_VALUES.emptyObject));
+    assert(isEmpty(TEST_VALUES.emptyArray));
+    
+    // Invalid inputs (non-empty values)
+    assertFalse(isEmpty(TEST_VALUES.string));
+    assertFalse(isEmpty(TEST_VALUES.number));
+    assertFalse(isEmpty(TEST_VALUES.zero)); // 0 is not considered empty for numbers
+    assertFalse(isEmpty(TEST_VALUES.boolean));
+    assertFalse(isEmpty(TEST_VALUES.booleanFalse)); // false is not empty
+    assertFalse(isEmpty(TEST_VALUES.object));
+    assertFalse(isEmpty(TEST_VALUES.array));
   });
 
-  await t.step("does not throw on successful typeguard", () => {
-    isBoolean.strict(true);
-    isBoolean.strict(false);
-    isNumber.strict(0);
-    isString.strict("1");
-  });
-});
-
-Deno.test("notEmpty", () => {
-  assert(isString.notEmpty("a string"));
-
-  assertFalse(isString.notEmpty(0));
-  assertFalse(isString.notEmpty(10));
-  assertFalse(isString.notEmpty(""));
-});
-
-Deno.test("isTuple", () => {
-  assert(isTuple([], 0));
-  assert(isTuple([1], 1));
-  assert(isTuple([1, 2], 2));
-  assert(isTuple([1, 2, 3], 3));
-  assert(isTuple([1, 2, 3, 4], 4));
-  assert(isTuple([1, 2, 3, 4, 5], 5));
-  assert(isTuple([1, 2, 3, 4, 5, 6], 6));
-  assert(isTuple([1, 2, 3, 4, 5, 6, 7], 7));
-  assert(isTuple([1, 2, 3, 4, 5, 6, 7, 8], 8));
-  assert(isTuple([1, 2, 3, 4, 5, 6, 7, 8, 9], 9));
-  assert(isTuple([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 10));
-  assertFalse(isTuple([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], 10));
-  assertFalse(isTuple([1, 2, 3, 4, 5, 6, 7, 8, 9], 10));
-});
-Deno.test("hasProperty", async (t) => {
-  await t.step("returns true if property exists", () => {
-    const obj = { a: 1, b: "test" };
-    assert(hasProperty(obj, "a"));
-    assert(hasProperty(obj, "b"));
-    assertFalse(hasProperty(obj, "c"));
+  await t.step("strict mode", () => {
+    // Valid inputs don't throw
+    isEmpty.strict(TEST_VALUES.nullValue);
+    isEmpty.strict(TEST_VALUES.undefinedValue);
+    isEmpty.strict(TEST_VALUES.emptyString);
+    isEmpty.strict(TEST_VALUES.emptyObject);
+    isEmpty.strict(TEST_VALUES.emptyArray);
+    
+    // Invalid inputs throw
+    assertThrows(() => isEmpty.strict(TEST_VALUES.string));
+    assertThrows(() => isEmpty.strict(TEST_VALUES.number));
+    assertThrows(() => isEmpty.strict(TEST_VALUES.boolean));
   });
 
-  await t.step("returns true if property exists and passes guard", () => {
-    const obj = { a: 1, b: "test" };
-    assert(hasProperty(obj, "a", isNumber));
-    assertFalse(hasProperty(obj, "b", isNumber));
-    assert(hasProperty(obj, "b", isString));
-    assertFalse(hasProperty(obj, "c", isString));
+  await t.step("assert mode", () => {
+    const assertIsEmpty: typeof isEmpty.assert = isEmpty.assert;
+    
+    // Valid inputs don't throw
+    assertIsEmpty(TEST_VALUES.nullValue);
+    assertIsEmpty(TEST_VALUES.undefinedValue);
+    assertIsEmpty(TEST_VALUES.emptyString);
+    assertIsEmpty(TEST_VALUES.emptyObject);
+    assertIsEmpty(TEST_VALUES.emptyArray);
+    
+    // Invalid inputs throw
+    assertThrows(() => assertIsEmpty(TEST_VALUES.string));
+    assertThrows(() => assertIsEmpty(TEST_VALUES.number));
   });
 });
 
-Deno.test("tupleHas", async (t) => {
-  await t.step("returns true if index exists and passes guard", () => {
-    const tuple = [1, "a", true] as const;
-    assert(tupleHas(tuple, 0, isNumber));
-    assert(tupleHas(tuple, 1, isString));
-    assert(tupleHas(tuple, 2, isBoolean));
-    assertFalse(tupleHas(tuple, 1, isNumber));
-    assertFalse(tupleHas(tuple, 3, isString));
+// === Complex Type Guards ===
+
+Deno.test("isObject", async (t) => {
+  await t.step("basic functionality", () => {
+    // Valid inputs
+    assert(isObject(TEST_VALUES.object));
+    assert(isObject(TEST_VALUES.emptyObject));
+    assert(isObject(TEST_VALUES.date)); // Date objects are objects
+    
+    // Invalid inputs
+    assertFalse(isObject(TEST_VALUES.array)); // Arrays are not objects in this guard
+    assertFalse(isObject(TEST_VALUES.string));
+    assertFalse(isObject(TEST_VALUES.number));
+    assertFalse(isObject(TEST_VALUES.boolean));
+    assertFalse(isObject(TEST_VALUES.nullValue));
+    assertFalse(isObject(TEST_VALUES.undefinedValue));
+    assertFalse(isObject(TEST_VALUES.function));
+  });
+
+  await t.step("strict mode", () => {
+    // Valid inputs don't throw
+    isObject.strict(TEST_VALUES.object);
+    isObject.strict(TEST_VALUES.emptyObject);
+    isObject.strict(TEST_VALUES.date);
+    
+    // Invalid inputs throw
+    assertThrows(() => isObject.strict(TEST_VALUES.array));
+    assertThrows(() => isObject.strict(TEST_VALUES.string));
+    assertThrows(() => isObject.strict(TEST_VALUES.nullValue));
+  });
+
+  await t.step("assert mode", () => {
+    const assertIsObject: typeof isObject.assert = isObject.assert;
+    
+    // Valid inputs don't throw
+    assertIsObject(TEST_VALUES.object);
+    assertIsObject(TEST_VALUES.emptyObject);
+    assertIsObject(TEST_VALUES.date);
+    
+    // Invalid inputs throw
+    assertThrows(() => assertIsObject(TEST_VALUES.array));
+    assertThrows(() => assertIsObject(TEST_VALUES.string));
+  });
+
+  await t.step("optional mode", () => {
+    // Valid inputs
+    assert(isObject.optional(TEST_VALUES.object));
+    assert(isObject.optional(TEST_VALUES.emptyObject));
+    assert(isObject.optional(TEST_VALUES.undefinedValue));
+    
+    // Invalid inputs
+    assertFalse(isObject.optional(TEST_VALUES.array));
+    assertFalse(isObject.optional(TEST_VALUES.nullValue));
+  });
+
+  await t.step("notEmpty mode", () => {
+    // Valid inputs
+    assert(isObject.notEmpty(TEST_VALUES.object));
+    assert(isObject.notEmpty(TEST_VALUES.date)); // Date objects are not empty
+    
+    // Invalid inputs (empty object is considered empty)
+    assertFalse(isObject.notEmpty(TEST_VALUES.emptyObject));
+    assertFalse(isObject.notEmpty(TEST_VALUES.array));
+    assertFalse(isObject.notEmpty(TEST_VALUES.nullValue));
+    assertFalse(isObject.notEmpty(TEST_VALUES.undefinedValue));
   });
 });
 
-Deno.test("includes", () => {
-  const arr = [1, 2, 3] as const;
-  assert(includes(arr, 1));
-  assert(includes(arr, 2));
-  assertFalse(includes(arr, 4));
-  assertFalse(includes(arr, "1"));
-});
-
-Deno.test("isNumeric", async (t) => {
-  await t.step("returns true for numbers and numeric strings", () => {
-    assert(isNumeric(1));
-    assert(isNumeric(0));
-    assert(isNumeric("42"));
-    assert(isNumeric("3.14"));
+Deno.test("isArray", async (t) => {
+  await t.step("basic functionality", () => {
+    // Valid inputs
+    assert(isArray(TEST_VALUES.array));
+    assert(isArray(TEST_VALUES.emptyArray));
+    assert(isArray(new Array(5)));
+    
+    // Invalid inputs
+    assertFalse(isArray(TEST_VALUES.object));
+    assertFalse(isArray(TEST_VALUES.string));
+    assertFalse(isArray(TEST_VALUES.number));
+    assertFalse(isArray(TEST_VALUES.boolean));
+    assertFalse(isArray(TEST_VALUES.nullValue));
+    assertFalse(isArray(TEST_VALUES.undefinedValue));
+    assertFalse(isArray(TEST_VALUES.function));
   });
 
-  await t.step("returns false for non-numeric values", () => {
-    assertFalse(isNumeric("abc"));
-    assertFalse(isNumeric({}));
-    assertFalse(isNumeric([]));
-    assertFalse(isNumeric(null));
-    assertFalse(isNumeric(undefined));
+  await t.step("strict mode", () => {
+    // Valid inputs don't throw
+    isArray.strict(TEST_VALUES.array);
+    isArray.strict(TEST_VALUES.emptyArray);
+    
+    // Invalid inputs throw
+    assertThrows(() => isArray.strict(TEST_VALUES.object));
+    assertThrows(() => isArray.strict(TEST_VALUES.string));
+    assertThrows(() => isArray.strict(TEST_VALUES.nullValue));
+  });
+
+  await t.step("assert mode", () => {
+    const assertIsArray: typeof isArray.assert = isArray.assert;
+    
+    // Valid inputs don't throw
+    assertIsArray(TEST_VALUES.array);
+    assertIsArray(TEST_VALUES.emptyArray);
+    
+    // Invalid inputs throw
+    assertThrows(() => assertIsArray(TEST_VALUES.object));
+    assertThrows(() => assertIsArray(TEST_VALUES.string));
+  });
+
+  await t.step("optional mode", () => {
+    // Valid inputs
+    assert(isArray.optional(TEST_VALUES.array));
+    assert(isArray.optional(TEST_VALUES.emptyArray));
+    assert(isArray.optional(TEST_VALUES.undefinedValue));
+    
+    // Invalid inputs
+    assertFalse(isArray.optional(TEST_VALUES.object));
+    assertFalse(isArray.optional(TEST_VALUES.nullValue));
+  });
+
+  await t.step("notEmpty mode", () => {
+    // Valid inputs
+    assert(isArray.notEmpty(TEST_VALUES.array));
+    
+    // Invalid inputs (empty array is considered empty)
+    assertFalse(isArray.notEmpty(TEST_VALUES.emptyArray));
+    assertFalse(isArray.notEmpty(TEST_VALUES.object));
+    assertFalse(isArray.notEmpty(TEST_VALUES.nullValue));
+    assertFalse(isArray.notEmpty(TEST_VALUES.undefinedValue));
   });
 });
 
-Deno.test("isJsonPrimitive", () => {
-  assert(isJsonPrimitive(true));
-  assert(isJsonPrimitive(false));
-  assert(isJsonPrimitive(1));
-  assert(isJsonPrimitive("str"));
-  assert(isJsonPrimitive(null));
-  assertFalse(isJsonPrimitive(undefined));
-  assertFalse(isJsonPrimitive({}));
-  assertFalse(isJsonPrimitive([]));
-});
-
-Deno.test("isObject", () => {
-  assert(isObject({}));
-  assert(isObject({ a: 1 }));
-  assertFalse(isObject([]));
-  assertFalse(isObject(null));
-  assertFalse(isObject("str"));
-  assertFalse(isObject(1));
-});
-
-Deno.test("isArray", () => {
-  assert(isArray([]));
-  assert(isArray([1, 2, 3]));
-  assertFalse(isArray({}));
-  assertFalse(isArray("str"));
-  assertFalse(isArray(1));
-  assertFalse(isArray(null));
-});
-
-Deno.test("isJsonValue", () => {
-  assert(isJsonValue(true));
-  assert(isJsonValue(1));
-  assert(isJsonValue("str"));
-  assert(isJsonValue([]));
-  assert(isJsonValue([1, 2, 3]));
-  assert(isJsonValue({}));
-  assert(isJsonValue({ a: 1, b: "str", c: null }));
-  assertFalse(isJsonValue(undefined));
-  assertFalse(isJsonValue({ a: undefined }));
-  assertFalse(isJsonValue({ a: () => {} }));
-});
-
-Deno.test("isIterator", async (t) => {
-  await t.step("returns true for iterators", () => {
-    const arr = [1, 2, 3];
-    const iter = arr[Symbol.iterator]();
-    assert(isIterator(iter));
-  });
-
-  await t.step("returns false for non-iterators", () => {
-    assertFalse(isIterator({}));
-    assertFalse(isIterator(null));
-    assertFalse(isIterator(undefined));
-    assertFalse(isIterator("str"));
-  });
-
-  await t.step("strict mode throws on non-iterators", () => {
-    const arr = [1, 2, 3];
-    const iter = arr[Symbol.iterator]();
-    isIterator.strict(iter);
-    assertThrows(() => isIterator.strict({}));
-    assertThrows(() => isIterator.strict(null));
-    assertThrows(() => isIterator.strict(undefined));
-    assertThrows(() => isIterator.strict("str"));
-  });
-});
 Deno.test("isDate", async (t) => {
-  await t.step("returns true only for Date objects", () => {
-    const date = new Date();
-    assert(isDate(date));
-
-    assertFalse(isDate("2023-01-01"));
-    assertFalse(isDate(1672531200000)); // timestamp
-    assertFalse(isDate({}));
-    assertFalse(isDate(null));
-    assertFalse(isDate(undefined));
-    assertFalse(isDate(true));
-    assertFalse(isDate([]));
+  await t.step("basic functionality", () => {
+    // Valid inputs
+    assert(isDate(TEST_VALUES.date));
+    assert(isDate(new Date("2023-01-01")));
+    assert(isDate(new Date("2023-01-01T00:00:00.000Z")));
+    
+    // Invalid inputs
+    assertFalse(isDate("2023-01-01")); // String date
+    assertFalse(isDate(1672531200000)); // Timestamp
+    assertFalse(isDate(TEST_VALUES.object));
+    assertFalse(isDate(TEST_VALUES.string));
+    assertFalse(isDate(TEST_VALUES.number));
+    assertFalse(isDate(TEST_VALUES.nullValue));
+    assertFalse(isDate(TEST_VALUES.undefinedValue));
   });
 
-  await t.step("strict mode throws on non-Date values", () => {
-    const date = new Date();
-    isDate.strict(date);
-
+  await t.step("strict mode", () => {
+    // Valid inputs don't throw
+    isDate.strict(TEST_VALUES.date);
+    isDate.strict(new Date("2023-01-01"));
+    
+    // Invalid inputs throw
     assertThrows(() => isDate.strict("2023-01-01"));
     assertThrows(() => isDate.strict(1672531200000));
-    assertThrows(() => isDate.strict({}));
-    assertThrows(() => isDate.strict(null));
-    assertThrows(() => isDate.strict(undefined));
+    assertThrows(() => isDate.strict(TEST_VALUES.object));
+  });
+
+  await t.step("assert mode", () => {
+    const assertIsDate: typeof isDate.assert = isDate.assert;
+    
+    // Valid inputs don't throw
+    assertIsDate(TEST_VALUES.date);
+    assertIsDate(new Date("2023-01-01"));
+    
+    // Invalid inputs throw
+    assertThrows(() => assertIsDate("2023-01-01"));
+    assertThrows(() => assertIsDate(1672531200000));
+  });
+
+  await t.step("optional mode", () => {
+    // Valid inputs
+    assert(isDate.optional(TEST_VALUES.date));
+    assert(isDate.optional(TEST_VALUES.undefinedValue));
+    
+    // Invalid inputs
+    assertFalse(isDate.optional("2023-01-01"));
+    assertFalse(isDate.optional(TEST_VALUES.nullValue));
+  });
+
+  await t.step("notEmpty mode", () => {
+    // Valid inputs (dates are never considered empty)
+    assert(isDate.notEmpty(TEST_VALUES.date));
+    assert(isDate.notEmpty(new Date("2023-01-01")));
+    
+    // Invalid inputs
+    assertFalse(isDate.notEmpty("2023-01-01"));
+    assertFalse(isDate.notEmpty(TEST_VALUES.nullValue));
+    assertFalse(isDate.notEmpty(TEST_VALUES.undefinedValue));
   });
 });
-Deno.test("hasOptionalProperty", async (t) => {
-  await t.step("returns true if property exists and passes guard", () => {
-    const obj = { a: 1, b: "test" };
-    assert(hasOptionalProperty(obj, "a", isNumber));
-    assert(hasOptionalProperty(obj, "b", isString));
-    assertFalse(hasOptionalProperty(obj, "b", isNumber));
+
+Deno.test("isIterable", async (t) => {
+  await t.step("basic functionality", () => {
+    // Valid inputs
+    assert(isIterable(TEST_VALUES.iterator));
+    assert(isIterable(TEST_VALUES.array)); // Arrays are iterable
+    
+    // Invalid inputs
+    assertFalse(isIterable("string")); // Strings are iterable but this function requires objects
+    assertFalse(isIterable(TEST_VALUES.object));
+    assertFalse(isIterable(TEST_VALUES.number));
+    assertFalse(isIterable(TEST_VALUES.boolean));
+    assertFalse(isIterable(TEST_VALUES.nullValue));
+    assertFalse(isIterable(TEST_VALUES.undefinedValue));
   });
 
-  await t.step("returns true if property is undefined", () => {
-    const obj = { a: 1, b: undefined };
-    assert(hasOptionalProperty(obj, "b"));
-    assert(hasOptionalProperty(obj, "b", isString));
+  await t.step("strict mode", () => {
+    // Valid inputs don't throw
+    isIterable.strict(TEST_VALUES.iterator);
+    isIterable.strict(TEST_VALUES.array);
+    
+    // Invalid inputs throw
+    assertThrows(() => isIterable.strict(TEST_VALUES.object));
+    assertThrows(() => isIterable.strict(TEST_VALUES.number));
+    assertThrows(() => isIterable.strict(TEST_VALUES.nullValue));
+  });
+
+  await t.step("assert mode", () => {
+    const assertIsIterable: typeof isIterable.assert = isIterable.assert;
+    
+    // Valid inputs don't throw
+    assertIsIterable(TEST_VALUES.iterator);
+    assertIsIterable(TEST_VALUES.array);
+    
+    // Invalid inputs throw
+    assertThrows(() => assertIsIterable(TEST_VALUES.object));
+    assertThrows(() => assertIsIterable(TEST_VALUES.number));
+  });
+
+  await t.step("optional mode", () => {
+    // Valid inputs
+    assert(isIterable.optional(TEST_VALUES.iterator));
+    assert(isIterable.optional(TEST_VALUES.array));
+    assert(isIterable.optional(TEST_VALUES.undefinedValue));
+    
+    // Invalid inputs
+    assertFalse(isIterable.optional(TEST_VALUES.object));
+    assertFalse(isIterable.optional(TEST_VALUES.nullValue));
   });
 });
 
-Deno.test("isDate with ISO string conversion", async (t) => {
-  await t.step("can validate dates created from ISO strings", () => {
-    const isoString = "2023-01-01T00:00:00.000Z";
-    const dateFromISO = new Date(isoString);
+Deno.test("isTuple", async (t) => {
+  await t.step("basic functionality", () => {
+    // Valid inputs
+    assert(isTuple([], 0));
+    assert(isTuple([1], 1));
+    assert(isTuple([1, 2], 2));
+    assert(isTuple([1, 2, 3], 3));
+    assert(isTuple(TEST_VALUES.array, 3)); // [1, 2, 3] has length 3
+    
+    // Invalid inputs
+    assertFalse(isTuple([1, 2], 3)); // Wrong length
+    assertFalse(isTuple([1, 2, 3], 2)); // Wrong length
+    assertFalse(isTuple(TEST_VALUES.object, 0)); // Not an array
+    assertFalse(isTuple(TEST_VALUES.string, 4)); // Not an array
+    assertFalse(isTuple(TEST_VALUES.nullValue, 0));
+    assertFalse(isTuple(TEST_VALUES.undefinedValue, 0));
+  });
 
-    assert(isDate(dateFromISO));
-    assert(dateFromISO.toISOString() === isoString);
+  await t.step("strict mode", () => {
+    // Valid inputs don't throw
+    isTuple.strict([], 0);
+    isTuple.strict([1, 2], 2);
+    isTuple.strict(TEST_VALUES.array, 3);
+    
+    // Invalid inputs throw
+    assertThrows(() => isTuple.strict([1, 2], 3));
+    assertThrows(() => isTuple.strict(TEST_VALUES.object, 0));
+    assertThrows(() => isTuple.strict(TEST_VALUES.nullValue, 0));
+  });
 
-    assertFalse(isDate(isoString));
+  await t.step("assert mode", () => {
+    const assertIsTuple: typeof isTuple.assert = isTuple.assert;
+    
+    // Valid inputs don't throw
+    assertIsTuple([], 0);
+    assertIsTuple([1, 2], 2);
+    assertIsTuple(TEST_VALUES.array, 3);
+    
+    // Invalid inputs throw
+    assertThrows(() => assertIsTuple([1, 2], 3));
+    assertThrows(() => assertIsTuple(TEST_VALUES.object, 0));
+  });
+
+  await t.step("optional mode", () => {
+    // Valid inputs
+    assert(isTuple.optional([], 0));
+    assert(isTuple.optional([1, 2], 2));
+    assert(isTuple.optional(TEST_VALUES.undefinedValue, 5));
+    
+    // Invalid inputs
+    assertFalse(isTuple.optional([1, 2], 3));
+    assertFalse(isTuple.optional(TEST_VALUES.object, 0));
+    assertFalse(isTuple.optional(TEST_VALUES.nullValue, 0));
   });
 });
 
-Deno.test("isJsonValue with nested structures", async (t) => {
-  await t.step("validates complex nested JSON structures", () => {
-    const validJson = {
+// === JSON Type Guards ===
+
+Deno.test("isJsonPrimitive", async (t) => {
+  await t.step("basic functionality", () => {
+    // Valid inputs
+    assert(isJsonPrimitive(TEST_VALUES.boolean));
+    assert(isJsonPrimitive(TEST_VALUES.booleanFalse));
+    assert(isJsonPrimitive(TEST_VALUES.number));
+    assert(isJsonPrimitive(TEST_VALUES.string));
+    assert(isJsonPrimitive(TEST_VALUES.nullValue));
+    
+    // Invalid inputs
+    assertFalse(isJsonPrimitive(TEST_VALUES.undefinedValue)); // undefined is not JSON
+    assertFalse(isJsonPrimitive(TEST_VALUES.object));
+    assertFalse(isJsonPrimitive(TEST_VALUES.array));
+    assertFalse(isJsonPrimitive(TEST_VALUES.function));
+    assertFalse(isJsonPrimitive(TEST_VALUES.date));
+  });
+
+  await t.step("strict mode", () => {
+    // Valid inputs don't throw
+    isJsonPrimitive.strict(TEST_VALUES.boolean);
+    isJsonPrimitive.strict(TEST_VALUES.number);
+    isJsonPrimitive.strict(TEST_VALUES.string);
+    isJsonPrimitive.strict(TEST_VALUES.nullValue);
+    
+    // Invalid inputs throw
+    assertThrows(() => isJsonPrimitive.strict(TEST_VALUES.undefinedValue));
+    assertThrows(() => isJsonPrimitive.strict(TEST_VALUES.object));
+    assertThrows(() => isJsonPrimitive.strict(TEST_VALUES.function));
+  });
+
+  await t.step("assert mode", () => {
+    const assertIsJsonPrimitive: typeof isJsonPrimitive.assert = isJsonPrimitive.assert;
+    
+    // Valid inputs don't throw
+    assertIsJsonPrimitive(TEST_VALUES.boolean);
+    assertIsJsonPrimitive(TEST_VALUES.number);
+    assertIsJsonPrimitive(TEST_VALUES.string);
+    assertIsJsonPrimitive(TEST_VALUES.nullValue);
+    
+    // Invalid inputs throw
+    assertThrows(() => assertIsJsonPrimitive(TEST_VALUES.undefinedValue));
+    assertThrows(() => assertIsJsonPrimitive(TEST_VALUES.object));
+  });
+
+  await t.step("optional mode", () => {
+    // Valid inputs
+    assert(isJsonPrimitive.optional(TEST_VALUES.boolean));
+    assert(isJsonPrimitive.optional(TEST_VALUES.string));
+    assert(isJsonPrimitive.optional(TEST_VALUES.undefinedValue));
+    
+    // Invalid inputs
+    assertFalse(isJsonPrimitive.optional(TEST_VALUES.object));
+    assertFalse(isJsonPrimitive.optional(TEST_VALUES.function));
+  });
+
+  await t.step("notEmpty mode", () => {
+    // Valid inputs
+    assert(isJsonPrimitive.notEmpty(TEST_VALUES.boolean));
+    assert(isJsonPrimitive.notEmpty(TEST_VALUES.number));
+    assert(isJsonPrimitive.notEmpty(TEST_VALUES.string));
+    
+    // Invalid inputs (null is considered empty)
+    assertFalse(isJsonPrimitive.notEmpty(TEST_VALUES.nullValue));
+    assertFalse(isJsonPrimitive.notEmpty(TEST_VALUES.undefinedValue));
+    assertFalse(isJsonPrimitive.notEmpty(TEST_VALUES.object));
+  });
+});
+
+Deno.test("isJsonObject", async (t) => {
+  await t.step("basic functionality", () => {
+    // Valid inputs
+    assert(isJsonObject(TEST_VALUES.object));
+    assert(isJsonObject(TEST_VALUES.emptyObject));
+    assert(isJsonObject({ a: 1, b: "test", c: null, d: true }));
+    
+    // Invalid inputs
+    assertFalse(isJsonObject(TEST_VALUES.array)); // Arrays are not objects
+    assertFalse(isJsonObject(TEST_VALUES.string));
+    assertFalse(isJsonObject(TEST_VALUES.number));
+    assertFalse(isJsonObject(TEST_VALUES.nullValue));
+    assertFalse(isJsonObject(TEST_VALUES.undefinedValue));
+    assertFalse(isJsonObject(TEST_VALUES.date)); // Date objects are not JSON objects
+    assertFalse(isJsonObject({ func: TEST_VALUES.function })); // Functions not allowed
+    assertFalse(isJsonObject({ date: TEST_VALUES.date })); // Dates not allowed
+  });
+
+  await t.step("strict mode", () => {
+    // Valid inputs don't throw
+    isJsonObject.strict(TEST_VALUES.object);
+    isJsonObject.strict(TEST_VALUES.emptyObject);
+    
+    // Invalid inputs throw
+    assertThrows(() => isJsonObject.strict(TEST_VALUES.array));
+    assertThrows(() => isJsonObject.strict(TEST_VALUES.string));
+    assertThrows(() => isJsonObject.strict({ func: TEST_VALUES.function }));
+  });
+
+  await t.step("assert mode", () => {
+    const assertIsJsonObject: typeof isJsonObject.assert = isJsonObject.assert;
+    
+    // Valid inputs don't throw
+    assertIsJsonObject(TEST_VALUES.object);
+    assertIsJsonObject(TEST_VALUES.emptyObject);
+    
+    // Invalid inputs throw
+    assertThrows(() => assertIsJsonObject(TEST_VALUES.array));
+    assertThrows(() => assertIsJsonObject({ func: TEST_VALUES.function }));
+  });
+
+  await t.step("optional mode", () => {
+    // Valid inputs
+    assert(isJsonObject.optional(TEST_VALUES.object));
+    assert(isJsonObject.optional(TEST_VALUES.undefinedValue));
+    
+    // Invalid inputs
+    assertFalse(isJsonObject.optional(TEST_VALUES.array));
+    assertFalse(isJsonObject.optional(TEST_VALUES.nullValue));
+  });
+
+  await t.step("notEmpty mode", () => {
+    // Valid inputs
+    assert(isJsonObject.notEmpty(TEST_VALUES.object));
+    
+    // Invalid inputs (empty object is considered empty)
+    assertFalse(isJsonObject.notEmpty(TEST_VALUES.emptyObject));
+    assertFalse(isJsonObject.notEmpty(TEST_VALUES.array));
+    assertFalse(isJsonObject.notEmpty(TEST_VALUES.nullValue));
+    assertFalse(isJsonObject.notEmpty(TEST_VALUES.undefinedValue));
+  });
+});
+
+Deno.test("isJsonArray", async (t) => {
+  await t.step("basic functionality", () => {
+    // Valid inputs
+    assert(isJsonArray(TEST_VALUES.array));
+    assert(isJsonArray(TEST_VALUES.emptyArray));
+    assert(isJsonArray([1, "test", true, null]));
+    
+    // Invalid inputs
+    assertFalse(isJsonArray(TEST_VALUES.object));
+    assertFalse(isJsonArray(TEST_VALUES.string));
+    assertFalse(isJsonArray(TEST_VALUES.number));
+    assertFalse(isJsonArray(TEST_VALUES.boolean));
+    assertFalse(isJsonArray(TEST_VALUES.nullValue));
+    assertFalse(isJsonArray(TEST_VALUES.undefinedValue));
+  });
+
+  await t.step("strict mode", () => {
+    // Valid inputs don't throw
+    isJsonArray.strict(TEST_VALUES.array);
+    isJsonArray.strict(TEST_VALUES.emptyArray);
+    
+    // Invalid inputs throw
+    assertThrows(() => isJsonArray.strict(TEST_VALUES.object));
+    assertThrows(() => isJsonArray.strict(TEST_VALUES.string));
+    assertThrows(() => isJsonArray.strict(TEST_VALUES.nullValue));
+  });
+
+  await t.step("assert mode", () => {
+    const assertIsJsonArray: typeof isJsonArray.assert = isJsonArray.assert;
+    
+    // Valid inputs don't throw
+    assertIsJsonArray(TEST_VALUES.array);
+    assertIsJsonArray(TEST_VALUES.emptyArray);
+    
+    // Invalid inputs throw
+    assertThrows(() => assertIsJsonArray(TEST_VALUES.object));
+    assertThrows(() => assertIsJsonArray(TEST_VALUES.string));
+  });
+
+  await t.step("optional mode", () => {
+    // Valid inputs
+    assert(isJsonArray.optional(TEST_VALUES.array));
+    assert(isJsonArray.optional(TEST_VALUES.undefinedValue));
+    
+    // Invalid inputs
+    assertFalse(isJsonArray.optional(TEST_VALUES.object));
+    assertFalse(isJsonArray.optional(TEST_VALUES.nullValue));
+  });
+
+  await t.step("notEmpty mode", () => {
+    // Valid inputs
+    assert(isJsonArray.notEmpty(TEST_VALUES.array));
+    
+    // Invalid inputs (empty array is considered empty)
+    assertFalse(isJsonArray.notEmpty(TEST_VALUES.emptyArray));
+    assertFalse(isJsonArray.notEmpty(TEST_VALUES.object));
+    assertFalse(isJsonArray.notEmpty(TEST_VALUES.nullValue));
+    assertFalse(isJsonArray.notEmpty(TEST_VALUES.undefinedValue));
+  });
+});
+
+Deno.test("isJsonValue", async (t) => {
+  await t.step("basic functionality", () => {
+    // Valid inputs - primitives
+    assert(isJsonValue(TEST_VALUES.boolean));
+    assert(isJsonValue(TEST_VALUES.number));
+    assert(isJsonValue(TEST_VALUES.string));
+    assert(isJsonValue(TEST_VALUES.nullValue));
+    
+    // Valid inputs - arrays and objects
+    assert(isJsonValue(TEST_VALUES.array));
+    assert(isJsonValue(TEST_VALUES.emptyArray));
+    assert(isJsonValue(TEST_VALUES.object));
+    assert(isJsonValue(TEST_VALUES.emptyObject));
+    
+    // Valid inputs - complex nested structures
+    assert(isJsonValue({
       string: "value",
       number: 123,
       boolean: true,
       null: null,
       array: [1, "two", false, null],
-      object: {
-        nestedProp: "nested",
-        deepNesting: {
-          evenDeeper: [{ a: 1 }],
-        },
-      },
-    };
+      object: { nested: "value" },
+    }));
+    
+    // Invalid inputs
+    assertFalse(isJsonValue(TEST_VALUES.undefinedValue));
+    assertFalse(isJsonValue(TEST_VALUES.function));
+    assertFalse(isJsonValue(TEST_VALUES.date));
+    assertFalse(isJsonValue({ func: TEST_VALUES.function }));
+    assertFalse(isJsonValue({ date: TEST_VALUES.date }));
+    assertFalse(isJsonValue({ nested: { undef: TEST_VALUES.undefinedValue } }));
+  });
 
-    assert(isJsonValue(validJson));
+  await t.step("strict mode", () => {
+    // Valid inputs don't throw
+    isJsonValue.strict(TEST_VALUES.boolean);
+    isJsonValue.strict(TEST_VALUES.array);
+    isJsonValue.strict(TEST_VALUES.object);
+    
+    // Invalid inputs throw
+    assertThrows(() => isJsonValue.strict(TEST_VALUES.undefinedValue));
+    assertThrows(() => isJsonValue.strict(TEST_VALUES.function));
+    assertThrows(() => isJsonValue.strict({ func: TEST_VALUES.function }));
+  });
 
-    const invalidJson = {
-      func: () => {},
-      date: new Date(),
-      undef: undefined,
-      symbol: Symbol("test"),
-    };
+  await t.step("assert mode", () => {
+    const assertIsJsonValue: typeof isJsonValue.assert = isJsonValue.assert;
+    
+    // Valid inputs don't throw
+    assertIsJsonValue(TEST_VALUES.boolean);
+    assertIsJsonValue(TEST_VALUES.array);
+    assertIsJsonValue(TEST_VALUES.object);
+    
+    // Invalid inputs throw
+    assertThrows(() => assertIsJsonValue(TEST_VALUES.undefinedValue));
+    assertThrows(() => assertIsJsonValue({ func: TEST_VALUES.function }));
+  });
 
-    assertFalse(isJsonValue(invalidJson));
-    assertFalse(isJsonValue({ nested: { prop: undefined } }));
+  await t.step("optional mode", () => {
+    // Valid inputs
+    assert(isJsonValue.optional(TEST_VALUES.boolean));
+    assert(isJsonValue.optional(TEST_VALUES.array));
+    assert(isJsonValue.optional(TEST_VALUES.undefinedValue));
+    
+    // Invalid inputs
+    assertFalse(isJsonValue.optional(TEST_VALUES.function));
+    assertFalse(isJsonValue.optional({ func: TEST_VALUES.function }));
+  });
+
+  await t.step("notEmpty mode", () => {
+    // Valid inputs
+    assert(isJsonValue.notEmpty(TEST_VALUES.boolean));
+    assert(isJsonValue.notEmpty(TEST_VALUES.number));
+    assert(isJsonValue.notEmpty(TEST_VALUES.string));
+    assert(isJsonValue.notEmpty(TEST_VALUES.array));
+    assert(isJsonValue.notEmpty(TEST_VALUES.object));
+    
+    // Invalid inputs (empty values)
+    assertFalse(isJsonValue.notEmpty(TEST_VALUES.nullValue));
+    assertFalse(isJsonValue.notEmpty(TEST_VALUES.undefinedValue));
+    assertFalse(isJsonValue.notEmpty(TEST_VALUES.emptyString));
+    assertFalse(isJsonValue.notEmpty(TEST_VALUES.emptyArray));
+    assertFalse(isJsonValue.notEmpty(TEST_VALUES.emptyObject));
+    assertFalse(isJsonValue.notEmpty(TEST_VALUES.function));
   });
 });
 
-Deno.test("isTuple with strict mode", async (t) => {
-  await t.step("strict mode throws with correct error message", () => {
-    const tuple = [1, 2, 3] as const;
+// === Utility Functions ===
 
-    isTuple.strict(tuple, 3);
+Deno.test("createTypeGuard", async (t) => {
+  await t.step("basic functionality with helper injection", () => {
+    const testGuard = createTypeGuard<{ a: string }>((v, { has }) => {
+      if (isObject(v) && has(v, "a", isString)) {
+        return v;
+      }
+      return null;
+    });
 
-    assertThrows(() => isTuple.strict(tuple, 4), TypeError);
-
-    const customMsg = "Custom error message";
-    assertThrows(() => isTuple.strict(tuple, 2, customMsg), TypeError, customMsg);
+    assertEquals(testGuard({ a: "test" }), true);
+    assertEquals(testGuard({}), false);
+    assertEquals(testGuard({ a: 123 }), false);
   });
-});
 
-Deno.test("isNumeric with edge cases", async (t) => {
-  await t.step("handles numeric edge cases correctly", () => {
-    assert(isNumeric(0));
-    assert(isNumeric(-0));
-    assert(isNumeric(Infinity));
-    assert(isNumeric(-Infinity));
-    assert(isNumeric("0"));
-    assert(isNumeric("-1.5"));
-    assert(isNumeric("3.14159"));
+  await t.step("includes helper injection", () => {
+    const validValues = ["red", "green", "blue"] as const;
+    const colorGuard = createTypeGuard<typeof validValues[number]>((v, { includes }) => {
+      if (includes(validValues, v)) return v;
+      return null;
+    });
 
-    assertFalse(isNumeric(""));
-    assertFalse(isNumeric("abc123"));
-    assertFalse(isNumeric("123abc"));
+    assert(colorGuard("red"));
+    assert(colorGuard("green"));
+    assert(colorGuard("blue"));
+    assertFalse(colorGuard("yellow"));
+    assertFalse(colorGuard(123));
+    assertFalse(colorGuard(null));
   });
-});
 
-Deno.test("createTypeGuard with custom parser", async (t) => {
-  await t.step("creates custom type guards with complex logic", () => {
+  await t.step("custom complex parser", () => {
     // Custom type guard for positive integers
     const isPositiveInteger = createTypeGuard<number>((val) => {
       if (typeof val !== "number") return null;
@@ -544,460 +1261,96 @@ Deno.test("createTypeGuard with custom parser", async (t) => {
     assertFalse(isPositiveInteger(3.14));
     assertFalse(isPositiveInteger("5"));
 
-    // Test strict mode
+    // Test all modes
     isPositiveInteger.strict(5);
     assertThrows(() => isPositiveInteger.strict(-5));
-
-    // Test notEmpty (should work the same as regular for numbers)
+    
+    assert(isPositiveInteger.optional(10));
+    assert(isPositiveInteger.optional(TEST_VALUES.undefinedValue));
+    assertFalse(isPositiveInteger.optional(-5));
+    
     assert(isPositiveInteger.notEmpty(10));
     assertFalse(isPositiveInteger.notEmpty(0));
   });
 });
 
-// Assert tests for all guards
-Deno.test("assert method tests", async (t) => {
-  // Primitive type guards
-  await t.step("isBoolean.assert", () => {
-    const assertIsBoolean: typeof isBoolean.assert = isBoolean.assert;
-    assertIsBoolean(true);
-    assertIsBoolean(false);
-    assertThrows(() => assertIsBoolean("not a boolean"));
-    assertThrows(() => assertIsBoolean(1));
-    assertThrows(() => assertIsBoolean(null));
-    assertThrows(() => assertIsBoolean(undefined));
-    assertThrows(() => assertIsBoolean({}));
-    assertThrows(() => assertIsBoolean([]), TypeError, "Type guard failed");
+Deno.test("hasProperty", async (t) => {
+  await t.step("property existence check", () => {
+    const obj = { a: 1, b: "test", c: null };
+    
+    assert(hasProperty(obj, "a"));
+    assert(hasProperty(obj, "b"));
+    assert(hasProperty(obj, "c"));
+    assertFalse(hasProperty(obj, "d"));
   });
 
-  await t.step("isString.assert", () => {
-    const assertIsString: typeof isString.assert = isString.assert;
-    assertIsString("hello");
-    assertIsString("");
-    assertThrows(() => assertIsString(123));
-    assertThrows(() => assertIsString(true));
-    assertThrows(() => assertIsString(null));
-    assertThrows(() => assertIsString(undefined));
-    assertThrows(() => assertIsString({}));
-    assertThrows(() => assertIsString([]), TypeError, "Type guard failed");
-  });
-
-  await t.step("isNumber.assert", () => {
-    const assertIsNumber: typeof isNumber.assert = isNumber.assert;
-    assertIsNumber(0);
-    assertIsNumber(42);
-    assertIsNumber(-3.14);
-    assertIsNumber(Infinity);
-    assertThrows(() => assertIsNumber("123"));
-    assertThrows(() => assertIsNumber(true));
-    assertThrows(() => assertIsNumber(null));
-    assertThrows(() => assertIsNumber(undefined));
-    assertThrows(() => assertIsNumber({}));
-    assertThrows(() => assertIsNumber([]), TypeError, "Type guard failed");
-  });
-
-  await t.step("isBinary.assert", () => {
-    const assertIsBinary: typeof isBinary.assert = isBinary.assert;
-    assertIsBinary(0);
-    assertIsBinary(1);
-    assertThrows(() => assertIsBinary(2));
-    assertThrows(() => assertIsBinary(0.5));
-    assertThrows(() => assertIsBinary("1"));
-    assertThrows(() => assertIsBinary(true));
-    assertThrows(() => assertIsBinary(null));
-    assertThrows(() => assertIsBinary(undefined), TypeError, "Type guard failed");
-  });
-
-  await t.step("isNumeric.assert", () => {
-    const assertIsNumeric: typeof isNumeric.assert = isNumeric.assert;
-    assertIsNumeric(42);
-    assertIsNumeric("42");
-    assertIsNumeric("3.14");
-    assertIsNumeric(0);
-    assertThrows(() => assertIsNumeric("abc"));
-    assertThrows(() => assertIsNumeric(""));
-    assertThrows(() => assertIsNumeric(null));
-    assertThrows(() => assertIsNumeric(undefined));
-    assertThrows(() => assertIsNumeric({}), TypeError, "Type guard failed");
-  });
-
-  // Complex type guards
-  await t.step("isFunction.assert", () => {
-    const assertIsFunction: typeof isFunction.assert = isFunction.assert;
-    assertIsFunction(() => {});
-    assertIsFunction(function () {});
-    assertIsFunction(Math.max);
-    assertThrows(() => assertIsFunction(123));
-    assertThrows(() => assertIsFunction("function"));
-    assertThrows(() => assertIsFunction(null));
-    assertThrows(() => assertIsFunction(undefined));
-    assertThrows(() => assertIsFunction({}), TypeError, "Type guard failed");
-  });
-
-  await t.step("isObject.assert", () => {
-    const assertIsObject: typeof isObject.assert = isObject.assert;
-    assertIsObject({});
-    assertIsObject({ a: 1 });
-    assertIsObject(new Date());
-    assertThrows(() => assertIsObject([])); // Arrays are not objects in this guard
-    assertThrows(() => assertIsObject(null));
-    assertThrows(() => assertIsObject(undefined));
-    assertThrows(() => assertIsObject("object"));
-    assertThrows(() => assertIsObject(123), TypeError, "Type guard failed");
-  });
-
-  await t.step("isArray.assert", () => {
-    const assertIsArray: typeof isArray.assert = isArray.assert;
-    assertIsArray([]);
-    assertIsArray([1, 2, 3]);
-    assertIsArray(new Array(5));
-    assertThrows(() => assertIsArray({}));
-    assertThrows(() => assertIsArray("array"));
-    assertThrows(() => assertIsArray(null));
-    assertThrows(() => assertIsArray(undefined), TypeError, "Type guard failed");
-  });
-
-  await t.step("isDate.assert", () => {
-    const assertIsDate: typeof isDate.assert = isDate.assert;
-    assertIsDate(new Date());
-    assertIsDate(new Date("2023-01-01"));
-    assertThrows(() => assertIsDate("2023-01-01"));
-    assertThrows(() => assertIsDate(1672531200000));
-    assertThrows(() => assertIsDate({}));
-    assertThrows(() => assertIsDate(null), TypeError, "Type guard failed");
-  });
-
-  // Special type guards
-  await t.step("isNull.assert", () => {
-    const assertIsNull: typeof isNull.assert = isNull.assert;
-    assertIsNull(null);
-    assertThrows(() => assertIsNull(undefined));
-    assertThrows(() => assertIsNull(0));
-    assertThrows(() => assertIsNull(""));
-    assertThrows(() => assertIsNull(false), TypeError, "Type guard failed");
-  });
-
-  await t.step("isUndefined.assert", () => {
-    const assertIsUndefined: typeof isUndefined.assert = isUndefined.assert;
-    assertIsUndefined(undefined);
-    assertThrows(() => assertIsUndefined(null));
-    assertThrows(() => assertIsUndefined(0));
-    assertThrows(() => assertIsUndefined(""));
-    assertThrows(() => assertIsUndefined(false), TypeError, "Type guard failed");
-  });
-
-  await t.step("isNil.assert", () => {
-    const assertIsNil: typeof isNil.assert = isNil.assert;
-    assertIsNil(null);
-    assertIsNil(undefined);
-    assertThrows(() => assertIsNil(0));
-    assertThrows(() => assertIsNil(""));
-    assertThrows(() => assertIsNil(false), TypeError, "Type guard failed");
-  });
-
-  await t.step("isEmpty.assert", () => {
-    const assertIsEmpty: typeof isEmpty.assert = isEmpty.assert;
-    assertIsEmpty(null);
-    assertIsEmpty(undefined);
-    assertIsEmpty("");
-    assertIsEmpty([]);
-    assertIsEmpty({});
-    assertThrows(() => assertIsEmpty("a"));
-    assertThrows(() => assertIsEmpty([1]));
-    assertThrows(() => assertIsEmpty({ a: 1 }), TypeError, "Type guard failed");
-  });
-
-  // JSON type guards
-  await t.step("isJsonPrimitive.assert", () => {
-    const assertIsJsonPrimitive: typeof isJsonPrimitive.assert = isJsonPrimitive.assert;
-    assertIsJsonPrimitive(true);
-    assertIsJsonPrimitive(false);
-    assertIsJsonPrimitive(123);
-    assertIsJsonPrimitive("string");
-    assertIsJsonPrimitive(null);
-    assertThrows(() => assertIsJsonPrimitive(undefined));
-    assertThrows(() => assertIsJsonPrimitive({}));
-    assertThrows(() => assertIsJsonPrimitive([]), TypeError, "Type guard failed");
-  });
-
-  await t.step("isJsonObject.assert", () => {
-    const assertIsJsonObject: typeof isJsonObject.assert = isJsonObject.assert;
-    assertIsJsonObject({});
-    assertIsJsonObject({ a: 1, b: "test" });
-    assertIsJsonObject({ nested: { value: true } });
-    assertThrows(() => assertIsJsonObject([]));
-    assertThrows(() => assertIsJsonObject(null));
-    assertThrows(() => assertIsJsonObject("object"));
-    assertThrows(() => assertIsJsonObject({ func: () => {} }), TypeError, "Type guard failed");
-  });
-
-  await t.step("isJsonArray.assert", () => {
-    const assertIsJsonArray: typeof isJsonArray.assert = isJsonArray.assert;
-    assertIsJsonArray([]);
-    assertIsJsonArray([1, 2, 3]);
-    assertIsJsonArray(["a", "b", "c"]);
-    assertThrows(() => assertIsJsonArray({}));
-    assertThrows(() => assertIsJsonArray(null));
-    assertThrows(() => assertIsJsonArray("array"), TypeError, "Type guard failed");
-  });
-
-  await t.step("isJsonValue.assert", () => {
-    const assertIsJsonValue: typeof isJsonValue.assert = isJsonValue.assert;
-    assertIsJsonValue(true);
-    assertIsJsonValue(123);
-    assertIsJsonValue("string");
-    assertIsJsonValue(null);
-    assertIsJsonValue([]);
-    assertIsJsonValue({});
-    assertIsJsonValue({ a: [1, 2, { b: "test" }] });
-    assertThrows(() => assertIsJsonValue(undefined));
-    assertThrows(() => assertIsJsonValue({ func: () => {} }), TypeError, "Type guard failed");
-  });
-
-  // Other guards
-  await t.step("isIterator.assert", () => {
-    const assertIsIterator: typeof isIterator.assert = isIterator.assert;
-    const arr = [1, 2, 3];
-    const iter = arr[Symbol.iterator]();
-    assertIsIterator(iter);
-    assertIsIterator([]); // Arrays have Symbol.iterator property
-    assertThrows(() => assertIsIterator({}));
-    assertThrows(() => assertIsIterator(null), TypeError, "Type guard failed");
-  });
-
-  await t.step("isTuple.assert", () => {
-    const assertIsTuple: typeof isTuple.assert = isTuple.assert;
-    assertIsTuple([1, 2, 3], 3);
-    assertIsTuple([], 0);
-    assertThrows(() => assertIsTuple([1, 2], 3));
-    assertThrows(() => assertIsTuple({}, 0));
-    assertThrows(() => assertIsTuple(null, 0), TypeError, "Type guard failed");
+  await t.step("property existence with type guard", () => {
+    const obj = { a: 1, b: "test", c: null };
+    
+    assert(hasProperty(obj, "a", isNumber));
+    assert(hasProperty(obj, "b", isString));
+    assert(hasProperty(obj, "c", isNull));
+    
+    assertFalse(hasProperty(obj, "a", isString));
+    assertFalse(hasProperty(obj, "b", isNumber));
+    assertFalse(hasProperty(obj, "d", isString));
   });
 });
 
-// NotEmpty tests
-Deno.test("notEmpty.assert method tests", async (t) => {
-  await t.step("isString.notEmpty.assert", () => {
-    const assertIsNotEmptyString: typeof isString.notEmpty.assert = isString.notEmpty.assert;
-    assertIsNotEmptyString("hello");
-    assertIsNotEmptyString("a");
-    assertThrows(() => assertIsNotEmptyString(""));
-    assertThrows(() => assertIsNotEmptyString(null));
-    assertThrows(() => assertIsNotEmptyString(undefined));
-    assertThrows(() => assertIsNotEmptyString(123), TypeError, "Type guard failed");
+Deno.test("hasOptionalProperty", async (t) => {
+  await t.step("optional property with undefined", () => {
+    const obj = { a: 1, b: undefined };
+    
+    assert(hasOptionalProperty(obj, "a", isNumber));
+    assert(hasOptionalProperty(obj, "b")); // undefined is valid for optional
+    assert(hasOptionalProperty(obj, "b", isString)); // undefined passes optional check
   });
 
-  await t.step("isArray.notEmpty.assert", () => {
-    const assertIsNotEmptyArray: typeof isArray.notEmpty.assert = isArray.notEmpty.assert;
-    assertIsNotEmptyArray([1]);
-    assertIsNotEmptyArray([1, 2, 3]);
-    assertThrows(() => assertIsNotEmptyArray([]));
-    assertThrows(() => assertIsNotEmptyArray(null));
-    assertThrows(() => assertIsNotEmptyArray(undefined));
-    assertThrows(() => assertIsNotEmptyArray({}), TypeError, "Type guard failed");
-  });
-
-  await t.step("isObject.notEmpty.assert", () => {
-    const assertIsNotEmptyObject: typeof isObject.notEmpty.assert = isObject.notEmpty.assert;
-    assertIsNotEmptyObject({ a: 1 });
-    assertIsNotEmptyObject({ a: 1, b: 2 });
-    assertThrows(() => assertIsNotEmptyObject({}));
-    assertThrows(() => assertIsNotEmptyObject(null));
-    assertThrows(() => assertIsNotEmptyObject(undefined));
-    assertThrows(() => assertIsNotEmptyObject([]), TypeError, "Type guard failed");
-  });
-
-  await t.step("isNumber.notEmpty.assert", () => {
-    const assertIsNotEmptyNumber: typeof isNumber.notEmpty.assert = isNumber.notEmpty.assert;
-    assertIsNotEmptyNumber(1);
-    assertIsNotEmptyNumber(0); // 0 is not considered empty for numbers
-    assertIsNotEmptyNumber(-42);
-    assertThrows(() => assertIsNotEmptyNumber(null));
-    assertThrows(() => assertIsNotEmptyNumber(undefined));
-    assertThrows(() => assertIsNotEmptyNumber("42"), TypeError, "Type guard failed");
+  await t.step("optional property type validation", () => {
+    const obj = { a: 1, b: "test" };
+    
+    assert(hasOptionalProperty(obj, "a", isNumber));
+    assert(hasOptionalProperty(obj, "b", isString));
+    assertFalse(hasOptionalProperty(obj, "a", isString));
+    assertFalse(hasOptionalProperty(obj, "b", isNumber));
   });
 });
 
-// Optional tests
-Deno.test("optional.assert method tests", async (t) => {
-  await t.step("isString.optional.assert", () => {
-    const assertIsOptionalString: typeof isString.optional.assert = isString.optional.assert;
-    assertIsOptionalString("hello");
-    assertIsOptionalString("");
-    assertIsOptionalString(undefined);
-    assertThrows(() => assertIsOptionalString(null));
-    assertThrows(() => assertIsOptionalString(123));
-    assertThrows(() => assertIsOptionalString({}), TypeError, "Type guard failed");
-  });
-
-  await t.step("isNumber.optional.assert", () => {
-    const assertIsOptionalNumber: typeof isNumber.optional.assert = isNumber.optional.assert;
-    assertIsOptionalNumber(42);
-    assertIsOptionalNumber(0);
-    assertIsOptionalNumber(undefined);
-    assertThrows(() => assertIsOptionalNumber(null));
-    assertThrows(() => assertIsOptionalNumber("42"));
-    assertThrows(() => assertIsOptionalNumber({}), TypeError, "Type guard failed");
-  });
-
-  await t.step("isBoolean.optional.assert", () => {
-    const assertIsOptionalBoolean: typeof isBoolean.optional.assert = isBoolean.optional.assert;
-    assertIsOptionalBoolean(true);
-    assertIsOptionalBoolean(false);
-    assertIsOptionalBoolean(undefined);
-    assertThrows(() => assertIsOptionalBoolean(null));
-    assertThrows(() => assertIsOptionalBoolean(1));
-    assertThrows(() => assertIsOptionalBoolean("true"), TypeError, "Type guard failed");
-  });
-
-  await t.step("isArray.optional.assert", () => {
-    const assertIsOptionalArray: typeof isArray.optional.assert = isArray.optional.assert;
-    assertIsOptionalArray([]);
-    assertIsOptionalArray([1, 2, 3]);
-    assertIsOptionalArray(undefined);
-    assertThrows(() => assertIsOptionalArray(null));
-    assertThrows(() => assertIsOptionalArray({}));
-    assertThrows(() => assertIsOptionalArray("array"), TypeError, "Type guard failed");
-  });
-
-  await t.step("isObject.optional.assert", () => {
-    const assertIsOptionalObject: typeof isObject.optional.assert = isObject.optional.assert;
-    assertIsOptionalObject({});
-    assertIsOptionalObject({ a: 1 });
-    assertIsOptionalObject(undefined);
-    assertThrows(() => assertIsOptionalObject(null));
-    assertThrows(() => assertIsOptionalObject([]));
-    assertThrows(() => assertIsOptionalObject("object"), TypeError, "Type guard failed");
-  });
-
-  await t.step("isDate.optional.assert", () => {
-    const assertIsOptionalDate: typeof isDate.optional.assert = isDate.optional.assert;
-    assertIsOptionalDate(new Date());
-    assertIsOptionalDate(undefined);
-    assertThrows(() => assertIsOptionalDate(null));
-    assertThrows(() => assertIsOptionalDate("2023-01-01"));
-    assertThrows(() => assertIsOptionalDate(1672531200000), TypeError, "Type guard failed");
-  });
-
-  // Tests for newly added optional methods
-  await t.step("isNull.optional.assert", () => {
-    const assertIsOptionalNull: typeof isNull.optional.assert = isNull.optional.assert;
-    assertIsOptionalNull(null);
-    assertIsOptionalNull(undefined);
-    assertThrows(() => assertIsOptionalNull(0));
-    assertThrows(() => assertIsOptionalNull(""));
-    assertThrows(() => assertIsOptionalNull(false));
-    assertThrows(() => assertIsOptionalNull({}), TypeError, "Type guard failed");
-  });
-
-  await t.step("isIterator.optional.assert", () => {
-    const assertIsOptionalIterator: typeof isIterator.optional.assert = isIterator.optional.assert;
-    const arr = [1, 2, 3];
-    const iter = arr[Symbol.iterator]();
-    assertIsOptionalIterator(iter);
-    assertIsOptionalIterator(undefined);
-    assertThrows(() => assertIsOptionalIterator(null));
-    assertThrows(() => assertIsOptionalIterator({}));
-    assertThrows(() => assertIsOptionalIterator("not iterator"), TypeError, "Type guard failed");
-  });
-
-  await t.step("isTuple.optional.assert", () => {
-    const assertIsOptionalTuple: typeof isTuple.optional.assert = isTuple.optional.assert;
-    assertIsOptionalTuple([1, 2, 3], 3);
-    assertIsOptionalTuple([], 0);
-    assertIsOptionalTuple(undefined, 5);
-    assertThrows(() => assertIsOptionalTuple([1, 2], 3));
-    assertThrows(() => assertIsOptionalTuple({}, 0));
-    assertThrows(() => assertIsOptionalTuple(null, 0), TypeError, "Type guard failed");
+Deno.test("tupleHas", async (t) => {
+  await t.step("tuple index validation", () => {
+    const tuple = [1, "test", true] as const;
+    
+    assert(tupleHas(tuple, 0, isNumber));
+    assert(tupleHas(tuple, 1, isString));
+    assert(tupleHas(tuple, 2, isBoolean));
+    
+    assertFalse(tupleHas(tuple, 0, isString));
+    assertFalse(tupleHas(tuple, 1, isNumber));
+    assertFalse(tupleHas(tuple, 3, isString)); // Index out of bounds
   });
 });
 
-// Comprehensive tests for newly added optional methods
-Deno.test("isNull.optional", async (t) => {
-  await t.step("returns true for null and undefined", () => {
-    assert(isNull.optional(null));
-    assert(isNull.optional(undefined));
+Deno.test("includes", async (t) => {
+  await t.step("array membership check", () => {
+    const arr = [1, 2, 3] as const;
+    
+    assert(includes(arr, 1));
+    assert(includes(arr, 2));
+    assert(includes(arr, 3));
+    
+    assertFalse(includes(arr, 4));
+    assertFalse(includes(arr, "1")); // Type matters
+    assertFalse(includes(arr, null));
   });
 
-  await t.step("returns false for non-null defined values", () => {
-    assertFalse(isNull.optional(0));
-    assertFalse(isNull.optional(""));
-    assertFalse(isNull.optional(false));
-    assertFalse(isNull.optional({}));
-    assertFalse(isNull.optional([]));
-    assertFalse(isNull.optional("null"));
-  });
-
-  await t.step("strict mode", () => {
-    isNull.optional.strict(null);
-    isNull.optional.strict(undefined);
-    assertThrows(() => isNull.optional.strict(0));
-    assertThrows(() => isNull.optional.strict(""));
-    assertThrows(() => isNull.optional.strict(false));
-    assertThrows(() => isNull.optional.strict({}));
-    assertThrows(() => isNull.optional.strict([]));
-  });
-});
-
-Deno.test("isIterator.optional", async (t) => {
-  await t.step("returns true for iterators and undefined", () => {
-    const arr = [1, 2, 3];
-    const iter = arr[Symbol.iterator]();
-    assert(isIterator.optional(iter));
-    assert(isIterator.optional(undefined));
-
-    // Arrays are iterable
-    const iterableArray = [1, 2, 3];
-    assert(isIterator.optional(iterableArray));
-  });
-
-  await t.step("returns false for non-iterator defined values", () => {
-    assertFalse(isIterator.optional(null));
-    assertFalse(isIterator.optional({}));
-    assertFalse(isIterator.optional("string"));
-    assertFalse(isIterator.optional(123));
-    assertFalse(isIterator.optional(true));
-  });
-
-  await t.step("strict mode", () => {
-    const arr = [1, 2, 3];
-    const iter = arr[Symbol.iterator]();
-    isIterator.optional.strict(iter);
-    isIterator.optional.strict(undefined);
-
-    assertThrows(() => isIterator.optional.strict(null));
-    assertThrows(() => isIterator.optional.strict({}));
-    assertThrows(() => isIterator.optional.strict("not iterator"));
-    assertThrows(() => isIterator.optional.strict(123));
-  });
-});
-
-Deno.test("isTuple.optional", async (t) => {
-  await t.step("returns true for correct length tuples and undefined", () => {
-    assert(isTuple.optional([], 0));
-    assert(isTuple.optional([1], 1));
-    assert(isTuple.optional([1, 2, 3], 3));
-    assert(isTuple.optional(undefined, 0));
-    assert(isTuple.optional(undefined, 5));
-    assert(isTuple.optional(undefined, 10));
-  });
-
-  await t.step("returns false for incorrect length or non-arrays", () => {
-    assertFalse(isTuple.optional([1, 2], 3));
-    assertFalse(isTuple.optional([1, 2, 3], 2));
-    assertFalse(isTuple.optional(null, 0));
-    assertFalse(isTuple.optional({}, 0));
-    assertFalse(isTuple.optional("string", 6));
-    assertFalse(isTuple.optional(123, 0));
-  });
-
-  await t.step("strict mode", () => {
-    isTuple.optional.strict([], 0);
-    isTuple.optional.strict([1, 2], 2);
-    isTuple.optional.strict(undefined, 5);
-
-    assertThrows(() => isTuple.optional.strict([1, 2], 3));
-    assertThrows(() => isTuple.optional.strict(null, 0));
-    assertThrows(() => isTuple.optional.strict({}, 0));
-    assertThrows(() => isTuple.optional.strict("not tuple", 1));
+  await t.step("string array membership", () => {
+    const colors = ["red", "green", "blue"] as const;
+    
+    assert(includes(colors, "red"));
+    assert(includes(colors, "green"));
+    assert(includes(colors, "blue"));
+    
+    assertFalse(includes(colors, "yellow"));
+    assertFalse(includes(colors, "Red")); // Case sensitive
   });
 });

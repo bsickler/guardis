@@ -420,7 +420,10 @@ export const isObject: TypeGuard<object> = createTypeGuard((t): object | null =>
  */
 export const isJsonObject: TypeGuard<JsonObject> = createTypeGuard(
   (t): JsonObject | null => {
-    if (t && typeof t === "object" && !Array.isArray(t)) {
+    if (
+      t && typeof t === "object" &&
+      Object.getPrototypeOf(t) === Object.prototype
+    ) {
       for (const v of Object.values(t)) {
         if (!isJsonValue(v)) return null;
       }
@@ -567,7 +570,8 @@ const isEmpty = (t: unknown): t is null | undefined | "" | [] | Record<string, n
   if (
     t === null || isUndefined(t) || (t === "") ||
     (Array.isArray(t) && (t as unknown[]).length === 0) ||
-    (t && typeof t === "object" && Object.keys(t).length === 0)
+    (t && typeof t === "object" &&
+      Object.getPrototypeOf(t) === Object.prototype && Object.keys(t).length === 0)
   ) {
     return true;
   }
@@ -603,68 +607,66 @@ isEmpty.strict = (
 isEmpty.assert = createAssertTypeGuard(isEmpty.strict);
 
 /**
- * Returns true if the date type is an iterator. Does not
- * check the type contained within the iterator.
+ * Returns true if the value is iterable (has Symbol.iterator). Does not
+ * check the type contained within the iterable.
  * @param t
  * @returns
  */
-// deno-lint-ignore no-explicit-any
-const isIterator = <C = any>(t: unknown): t is Iterator<C> =>
+const isIterable = <C>(t: unknown): t is Iterable<C> =>
   typeof t === "object" && !isNil(t) && Symbol.iterator in t && isFunction(t[Symbol.iterator]);
 
 /**
- * Strict version of isIterator that throws a TypeError if the value is not an iterator.
- * @typeParam C - The type of values the iterator yields
+ * Strict version of isIterable that throws a TypeError if the value is not iterable.
+ * @typeParam C - The type of values the iterable yields
  * @param t - The value to check
  * @param errorMsg - Optional custom error message
- * @returns true if the value is an iterator
- * @throws {TypeError} If the value is not an iterator
+ * @returns true if the value is iterable
+ * @throws {TypeError} If the value is not iterable
  */
-// deno-lint-ignore no-explicit-any
-isIterator.strict = <C = any>(t: unknown, errorMsg?: string): t is Iterator<C> => {
-  if (!isIterator(t)) {
-    throw TypeError(errorMsg ?? "Type guard failed. Value is not an interator.");
+isIterable.strict = <C>(t: unknown, errorMsg?: string): t is Iterable<C> => {
+  if (!isIterable(t)) {
+    throw TypeError(errorMsg ?? "Type guard failed. Value is not iterable.");
   }
 
   return true;
 };
 
 /**
- * Assertion function that throws an error if the value is not an iterator.
- * TypeScript will narrow the type to Iterator<C> after this assertion.
- * @typeParam C - The type of values the iterator yields
+ * Assertion function that throws an error if the value is not iterable.
+ * TypeScript will narrow the type to Iterable<C> after this assertion.
+ * @typeParam C - The type of values the iterable yields
  * @param t - The value to check
  * @param errorMsg - Optional custom error message
- * @throws {TypeError} If the value is not an iterator
+ * @throws {TypeError} If the value is not iterable
  */
-isIterator.assert = isIterator.strict as <C>(
+isIterable.assert = isIterable.strict as <C>(
   t: unknown,
   errorMsg?: string,
-) => asserts t is Iterator<C>;
+) => asserts t is Iterable<C>;
 
-// Define the optional methods for isIterator
-const isIteratorOptional = <C>(t: unknown): t is Iterator<C> | undefined =>
-  isUndefined(t) || isIterator<C>(t);
+// Define the optional methods for isIterable
+const isIterableOptional = <C>(t: unknown): t is Iterable<C> | undefined =>
+  isUndefined(t) || isIterable<C>(t);
 
-isIteratorOptional.strict = <C>(t: unknown, errorMsg?: string): t is Iterator<C> | undefined => {
-  if (!isIteratorOptional<C>(t)) {
-    throw TypeError(errorMsg ?? "Type guard failed. Value is not an iterator or undefined.");
+isIterableOptional.strict = <C>(t: unknown, errorMsg?: string): t is Iterable<C> | undefined => {
+  if (!isIterableOptional<C>(t)) {
+    throw TypeError(errorMsg ?? "Type guard failed. Value is not iterable or undefined.");
   }
   return true;
 };
 
-isIteratorOptional.assert = isIteratorOptional.strict as <C>(
+isIterableOptional.assert = isIterableOptional.strict as <C>(
   t: unknown,
   errorMsg?: string,
-) => asserts t is Iterator<C> | undefined;
+) => asserts t is Iterable<C> | undefined;
 
 /**
- * Optional variant of isIterator that accepts undefined or Iterator<C>.
- * @typeParam C - The type of values the iterator yields
+ * Optional variant of isIterable that accepts undefined or Iterable<C>.
+ * @typeParam C - The type of values the iterable yields
  * @param t - The value to check
- * @returns true if the value is undefined or an Iterator<C>, otherwise false
+ * @returns true if the value is undefined or an Iterable<C>, otherwise false
  */
-isIterator.optional = isIteratorOptional;
+isIterable.optional = isIterableOptional;
 
 /**
  * Type guard that checks if a value is a tuple (array) of a specific length.
@@ -762,4 +764,4 @@ isTupleOptional.assert = isTupleOptional.strict;
  */
 isTuple.optional = isTupleOptional;
 
-export { isEmpty, isIterator, isNil, isNull, isTuple };
+export { isEmpty, isIterable, isNil, isNull, isTuple };
