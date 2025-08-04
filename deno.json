@@ -1,6 +1,6 @@
 {
   "name": "@mr-possumz/guardis",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "license": "MIT",
   "description": "Guardis is a modular library of type guards, built to be easy to use and extend.",
   "exports": {
