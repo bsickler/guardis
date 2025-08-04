@@ -114,6 +114,15 @@ export interface TypeGuard<T1> extends StandardSchemaV1<T1> {
    * @returns Asserts that the value is of type T
    */
   assert: (value: unknown, errorMsg?: string) => asserts value is T1;
+  /**
+   * Validates the value against the schema. If the value is of type T1,
+   * it returns a success result with the value, otherwise it returns a failure result with issues.
+   *
+   * Included as a shortcut to the `validate` method of the StandardSchemaV1 interface.
+   * @param value The value to validate
+   * @returns
+   */
+  validate: (value: unknown) => StandardSchemaV1.Result<T1>;
   notEmpty: {
     /**
      * A type guard that checks if the value is not empty and of type T.
@@ -274,14 +283,13 @@ export const createTypeGuard = <T1>(parse: Parser<T1>): TypeGuard<T1> => {
   };
 
   // StandardSchemaV1 compatibility
+  callback.validate = (value: unknown) =>
+    callback(value) ? { value } : { issues: [{ message: `Invalid type` }] };
+
   callback["~standard"] = {
     version: 1,
     vendor: "guardis",
-    validate: (value: unknown) => {
-      const result = callback(value);
-
-      return result ? { value } : { issues: [{ message: `Invalid type` }] };
-    },
+    validate: callback.validate,
   } as const;
 
   return callback;
