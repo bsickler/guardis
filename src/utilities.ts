@@ -66,7 +66,7 @@ export function tupleHas<T extends readonly any[], I extends number, G = unknown
  * @typeParam T - A readonly array of unknown elements.
  * @param t - The array to search within.
  * @param v - The value to search for in the array.
- * @returns `true` if `i` is found in `t`, otherwise `false`.
+ * @returns `true` if `v` is found in `t`, otherwise `false`.
  */
 export function includes<T extends readonly unknown[]>(t: T, v: unknown): v is T[number] {
   return t.includes(v);
