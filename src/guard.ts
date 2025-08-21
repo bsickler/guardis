@@ -2,7 +2,9 @@
  * guard.ts
  * @module
  */
+import type { StandardSchemaV1 } from "../specs/standard-schema-spec.v1.ts";
 import type { JsonArray, JsonObject, JsonPrimitive, JsonValue, TupleOfLength } from "./types.ts";
+import { hasOptionalProperty, hasProperty, includes, tupleHas } from "./utilities.ts";
 
 /** A parser is a function that takes an unknown and returns T or null */
 export type Parser<T = unknown> = (
@@ -14,78 +16,6 @@ export type Parser<T = unknown> = (
     includes: typeof includes;
   },
 ) => T | null;
-
-/**
- * Utility to verify if a property exists in an object. Checks that
- * k is a key in t. If a guard method is provided, it will also check
- * that the value at k passes the guard.
- * @param {object} t The object to check for property k.
- * @param {string|number|Symbol} k The key for property k.
- * @param {Function|undefined} guard The optional type guard to validate t[k].
- * @returns {boolean}
- */
-export function hasProperty<K extends PropertyKey, G = unknown>(
-  t: object,
-  k: K,
-  guard?: (v: unknown) => v is G,
-): t is { [K2 in K]: G } {
-  if (!(k in t)) return false;
-
-  return guard ? guard(t[k as keyof typeof t]) : true;
-}
-
-/**
- * Checks if an object has an optional property that passes a type guard.
- *
- * This function verifies if a property is either:
- * - Undefined (which is valid for optional properties)
- * - Present and passes the specified type guard
-
- * @param t - The object to check
- * @param k - The property key to look for
- * @param guard - Optional function that checks if the value is of type G
- * @returns Type predicate indicating if the object has the optional property of type G
- */
-export function hasOptionalProperty<K extends PropertyKey, G = unknown>(
-  t: object,
-  k: K,
-  guard?: (v: unknown) => v is G,
-): t is { [K2 in K]+?: G } {
-  if (isUndefined(t[k as keyof typeof t])) return true;
-
-  return hasProperty(t, k, guard);
-}
-
-/**
- * Utility to verify if a value is included in a tuple.
- * @param {array} t The tuple to check for the presence of index i.
- * @param {unknown} i The index to check.
- * @param {Function} guard The type guard to validate t[i].
- * @returns {boolean}
- */
-// deno-lint-ignore no-explicit-any
-export function tupleHas<T extends readonly any[], I extends number, G = unknown>(
-  t: T,
-  i: I,
-  guard: (v: unknown) => v is G,
-  // @ts-expect-error While TS doesn't understand this, we are
-  // explicitly validating that t[i] is of type G and returning a new type
-  // that replaces the type at index I with G, effectively narrowing the type.
-): t is { [K in keyof T]: K extends `${I}` ? G : T[K] } {
-  return (i in t) && guard(t[i]);
-}
-
-/**
- * Determines whether the specified value `i` is included in the array `t`.
- * Useful for checking if a value is part of a union type represented by a tuple.
- * @typeParam T - A readonly array of unknown elements.
- * @param t - The array to search within.
- * @param v - The value to search for in the array.
- * @returns `true` if `i` is found in `t`, otherwise `false`.
- */
-export function includes<T extends readonly unknown[]>(t: T, v: unknown): v is T[number] {
-  return t.includes(v);
-}
 
 /**
  * Creates a type guard that strictly checks the type, throwing
@@ -140,29 +70,29 @@ const createAssertTypeGuard = <T>(
  * - assertion functions that throw errors for invalid values
  * - utilities for handling non-empty and optional values
  *
- * @template T The type being guarded
+ * @template T1 The type being guarded
  */
-export type TypeGuard<T> = {
+export interface TypeGuard<T1> extends StandardSchemaV1<T1> {
   /**
    * A type guard function that checks if the value is of type T.
    * @param value The value to check
    * @returns true if the value is of type T, otherwise false
    */
-  (value: unknown): value is T;
+  (value: unknown): value is T1;
   /**
    * A type guard function that checks if the value is of type T or T2.
    * This is useful for creating unions of types.
    * @param guard A type guard for T2
    * @returns A new type guard that checks if the value is of type T or T2
    */
-  or: <T2>(guard: TypeGuard<T2>) => TypeGuard<T | T2>;
+  or: <T2>(guard: TypeGuard<T2>) => TypeGuard<T1 | T2>;
   /**
    * A strict type guard that throws an error if the value is not of type T.
    * @param value The value to check
    * @param errorMsg Optional error message to include in the thrown error
    * @returns true if the value is of type T, otherwise throws an error
    */
-  strict: StrictTypeGuard<T>;
+  strict: StrictTypeGuard<T1>;
   /**
    * An assertion function that throws an error if the value is not of type T.
    * This is useful for ensuring that a value meets the type requirements at runtime.
@@ -183,7 +113,16 @@ export type TypeGuard<T> = {
    * @param errorMsg Optional error message to include in the thrown error
    * @returns Asserts that the value is of type T
    */
-  assert: (value: unknown, errorMsg?: string) => asserts value is T;
+  assert: (value: unknown, errorMsg?: string) => asserts value is T1;
+  /**
+   * Validates the value against the schema. If the value is of type T1,
+   * it returns a success result with the value, otherwise it returns a failure result with issues.
+   *
+   * Included as a shortcut to the `validate` method of the StandardSchemaV1 interface.
+   * @param value The value to validate
+   * @returns
+   */
+  validate: (value: unknown) => StandardSchemaV1.Result<T1>;
   notEmpty: {
     /**
      * A type guard that checks if the value is not empty and of type T.
@@ -192,7 +131,7 @@ export type TypeGuard<T> = {
      * @param value The value to check
      * @returns true if the value is of type T and not empty, otherwise false
      */
-    (value: unknown): value is T;
+    (value: unknown): value is T1;
     /**
      * A strict type guard that throws an error if the value is not of type T
      * or if the value is empty (null, undefined, empty string, empty array, or empty object).
@@ -200,7 +139,7 @@ export type TypeGuard<T> = {
      * @param errorMsg Optional error message to include in the thrown error
      * @returns true if the value is of type T, otherwise throws an error
      */
-    strict: StrictTypeGuard<T>;
+    strict: StrictTypeGuard<T1>;
     /**
      * An assertion function that throws an error if the value is not of type T or if it is
      * empty. An empty value is defined as null, undefined, an empty string,
@@ -223,7 +162,7 @@ export type TypeGuard<T> = {
      * @param errorMsg Optional error message to include in the thrown error
      * @returns Asserts that the value is of type T
      */
-    assert: (value: unknown, errorMsg?: string) => asserts value is T;
+    assert: (value: unknown, errorMsg?: string) => asserts value is T1;
   };
   optional: {
     /**
@@ -231,14 +170,14 @@ export type TypeGuard<T> = {
      * @param value The value to check
      * @returns true if the value is of type T or undefined, otherwise false
      */
-    (value: unknown): value is T | undefined;
+    (value: unknown): value is T1 | undefined;
     /**
      * A strict type guard that throws an error if the value is defined but not of type T.
      * @param value The value to check
      * @param errorMsg Optional error message to include in the thrown error
      * @returns true if the value is of type T, otherwise throws an error
      */
-    strict: (value: unknown, errorMsg?: string) => value is T | undefined;
+    strict: (value: unknown, errorMsg?: string) => value is T1 | undefined;
     /**
      * An assertion function that throws an error if the value is defined but not of type T.
      * This is useful for ensuring that a value meets the type requirements at runtime.
@@ -259,9 +198,9 @@ export type TypeGuard<T> = {
      * @param errorMsg Optional error message to include in the thrown error
      * @returns Asserts that the value is of type T
      */
-    assert: (value: unknown, errorMsg?: string) => asserts value is T | undefined;
+    assert: (value: unknown, errorMsg?: string) => asserts value is T1 | undefined;
   };
-};
+}
 
 /** An internal type guard that includes the parser function. */
 type _TypeGuard<T> = TypeGuard<T> & { _: { parser: Parser<T> } };
@@ -342,6 +281,16 @@ export const createTypeGuard = <T1>(parse: Parser<T1>): TypeGuard<T1> => {
       return r1 !== null ? r1 : (guard as unknown as _TypeGuard<T2>)._.parser(v, helpers);
     });
   };
+
+  // StandardSchemaV1 compatibility
+  callback.validate = (value: unknown) =>
+    callback(value) ? { value } : { issues: [{ message: `Invalid type` }] };
+
+  callback["~standard"] = {
+    version: 1,
+    vendor: "guardis",
+    validate: callback.validate,
+  } as const;
 
   return callback;
 };
