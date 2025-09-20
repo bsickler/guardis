@@ -8,7 +8,7 @@ Use the included type guards to perform validation or quickly generate your own 
 code, using your existing type definitions.
 
 ```ts
-import { createTypeGuard, isString } from "jsr:@mr-possumz/guardis";
+import { createTypeGuard, isString } from "jsr:@spudlabs/guardis";
 
 // Use built-in guards
 if (isString(userInput)) {
@@ -36,10 +36,10 @@ const isUser = createTypeGuard<User>((val, { has }) =>
 
 ```bash
 # Deno
-deno install jsr:@mr-possumz/guardis;
+deno install jsr:@spudlabs/guardis;
 
 # Node.js/npm
-npx jsr add @mr-possumz/guardis
+npx jsr add @spudlabs/guardis
 ```
 
 
