@@ -27,7 +27,7 @@
     "@std/assert": "jsr:@std/assert@^1.0.0"
   },
   "publish": {
-    "include": ["mod.ts", "src/", "specs/"],
+    "include": ["mod.ts", "README.md", "deno.json", "src/", "specs/"],
     "exclude": ["**/*.test.ts", "**/*.bench.ts", "benchmarks/"]
   },
   "compilerOptions": {},
