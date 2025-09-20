@@ -132,6 +132,7 @@ export interface TypeGuard<T1> extends StandardSchemaV1<T1> {
      * @returns true if the value is of type T and not empty, otherwise false
      */
     (value: unknown): value is T1;
+    <T2 extends U[], U>(value: unknown): value is [U, ...U[]];
     /**
      * A strict type guard that throws an error if the value is not of type T
      * or if the value is empty (null, undefined, empty string, empty array, or empty object).
@@ -244,7 +245,7 @@ export const createTypeGuard = <T1>(parse: Parser<T1>): TypeGuard<T1> => {
 
   notEmpty.strict = createStrictTypeGuard(notEmpty);
   notEmpty.assert = createAssertTypeGuard(notEmpty.strict);
-  callback.notEmpty = notEmpty;
+  callback.notEmpty = notEmpty as TypeGuard<T1>["notEmpty"];
 
   /**
    * Returns true if the value is undefined or passes the parser.
