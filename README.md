@@ -70,7 +70,7 @@ npx jsr add @spudlabs/guardis
 Guardis provides type guards for all common JavaScript types:
 
 ```ts
-import { Is } from "jsr:@mr-possumz/guardis";
+import { Is } from "jsr:@spudlabs/guardis";
 
 // Primitives
 Is.String("hello"); // true
@@ -100,7 +100,7 @@ Is.JsonArray([1, "two", true]); // true
 Import specific guards to keep bundles small:
 
 ```ts
-import { isArray, isNumber, isString } from "jsr:@mr-possumz/guardis";
+import { isArray, isNumber, isString } from "jsr:@spudlabs/guardis";
 
 if (isString(userInput)) {
   console.log(userInput.trim());
@@ -183,7 +183,7 @@ Use `createTypeGuard` to build validators for your own types:
 ### Simple Types
 
 ```ts
-import { createTypeGuard } from "jsr:@mr-possumz/guardis";
+import { createTypeGuard } from "jsr:@spudlabs/guardis";
 
 type Status = "pending" | "complete" | "failed";
 
@@ -254,7 +254,7 @@ Guardis includes specialized modules for domain-specific types:
 ### HTTP Module
 
 ```ts
-import { isNativeURL, isRequest, isResponse } from "jsr:@mr-possumz/guardis/http";
+import { isNativeURL, isRequest, isResponse } from "jsr:@spudlabs/guardis/http";
 
 // Web API types
 isNativeURL(new URL("https://example.com")); // true
@@ -271,7 +271,7 @@ isResponse.optional(value); // allows undefined
 Generate multiple type guards at once:
 
 ```ts
-import { batch } from "jsr:@mr-possumz/guardis";
+import { batch } from "jsr:@spudlabs/guardis";
 
 const { isRed, isBlue, isGreen } = batch({
   Red: (val) => val === "red" ? val : null,
@@ -295,7 +295,7 @@ isBlue.optional(undefined); // true
 Add your own type guards to the `Is` namespace:
 
 ```ts
-import { extend, Is as BaseIs } from "jsr:@mr-possumz/guardis";
+import { extend, Is as BaseIs } from "jsr:@spudlabs/guardis";
 
 // Create new Is object with custom guards
 const Is = extend(BaseIs, {
