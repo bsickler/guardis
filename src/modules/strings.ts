@@ -1,4 +1,4 @@
-import { createTypeGuard } from "../guard.ts";
+import { createTypeGuard, type TypeGuard } from "../guard.ts";
 
 /** A regex statement to detect _most_ email formats. */
 const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*\.[a-zA-Z]{2,}$/;
@@ -21,7 +21,7 @@ const US_PHONE_REGEX = /^(?:\+?1[-. ]?)?\(?([0-9]{3})\)?[-. ]?([0-9]{3})[-. ]?([
  * @param t - The value to check.
  * @returns Boolean indicating whether the input is a valid email.
  */
-export const isEmail = createTypeGuard((t: unknown) => {
+export const isEmail: TypeGuard<string> = createTypeGuard((t: unknown) => {
   if (typeof t === "string" && EMAIL_REGEX.test(t)) {
     return t;
   }
@@ -36,7 +36,7 @@ export const isEmail = createTypeGuard((t: unknown) => {
  * @param t - The value to check.
  * @returns Boolean indicating whether the input is a valid international phone number.
  */
-export const isInternationalPhone = createTypeGuard((t: unknown) => {
+export const isInternationalPhone: TypeGuard<string> = createTypeGuard((t: unknown) => {
   if (typeof t === "string" && INT_PHONE_REGEX.test(t)) {
     return t;
   }
@@ -51,7 +51,7 @@ export const isInternationalPhone = createTypeGuard((t: unknown) => {
  * @param t - The value to check.
  * @returns Boolean indicating whether the input is a valid US phone number.
  */
-export const isUSPhone = createTypeGuard((t: unknown) => {
+export const isUSPhone: TypeGuard<string> = createTypeGuard((t: unknown) => {
   if (typeof t === "string" && US_PHONE_REGEX.test(t)) {
     return t;
   }
@@ -66,7 +66,7 @@ export const isUSPhone = createTypeGuard((t: unknown) => {
  * @param t - The value to check.
  * @returns Boolean indicating whether the input is a valid phone number.
  */
-export const isPhoneNumber = createTypeGuard((t: unknown) => {
+export const isPhoneNumber: TypeGuard<string> = createTypeGuard((t: unknown) => {
   if (typeof t === "string" && (INT_PHONE_REGEX.test(t) || US_PHONE_REGEX.test(t))) {
     return t;
   }

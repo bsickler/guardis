@@ -7,7 +7,7 @@
     ".": "./mod.ts",
     "./http": "./src/modules/http.ts",
     "./strings": "./src/modules/strings.ts",
-    "./strings-branded": "./src/modules/strings-branded.ts"
+    "./strings-branded": "./src/modules/strings.branded.ts"
   },
   "tasks": {
     "test": {
