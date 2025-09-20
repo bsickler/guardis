@@ -27,7 +27,7 @@
     "@std/assert": "jsr:@std/assert@^1.0.0"
   },
   "publish": {
-    "include": ["src/"],
+    "include": ["mod.ts", "src/", "specs/"],
     "exclude": ["**/*.test.ts", "**/*.bench.ts", "benchmarks/"]
   },
   "compilerOptions": {},
