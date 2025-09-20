@@ -36,7 +36,7 @@ const isUser = createTypeGuard<User>((val, { has }) =>
 
 ```bash
 # Deno
-deno install jsr:@spudlabs/guardis;
+deno install jsr:@spudlabs/guardis
 
 # Node.js/npm
 npx jsr add @spudlabs/guardis

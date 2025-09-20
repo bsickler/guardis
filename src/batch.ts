@@ -1,6 +1,6 @@
 import type { ParserRecords } from "./types.ts";
 import { createTypeGuard } from "./guard.ts";
-import { toPascalCase } from "jsr:@std/text@^1.0.0";
+import { toPascalCase } from "./helpers/strings.helpers.ts";
 
 type GuardRecords<E extends ParserRecords, K extends keyof E = keyof E> = {
   [key in K as `is${Capitalize<key & string>}`]: ReturnType<
