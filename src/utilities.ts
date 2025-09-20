@@ -53,10 +53,7 @@ export function tupleHas<T extends readonly any[], I extends number, G = unknown
   t: T,
   i: I,
   guard: (v: unknown) => v is G,
-  // @ts-expect-error While TS doesn't understand this, we are
-  // explicitly validating that t[i] is of type G and returning a new type
-  // that replaces the type at index I with G, effectively narrowing the type.
-): t is { [K in keyof T]: K extends `${I}` ? G : T[K] } {
+): t is T & { [K in I]: G } {
   return (i in t) && guard(t[i]);
 }
 
@@ -66,7 +63,7 @@ export function tupleHas<T extends readonly any[], I extends number, G = unknown
  * @typeParam T - A readonly array of unknown elements.
  * @param t - The array to search within.
  * @param v - The value to search for in the array.
- * @returns `true` if `i` is found in `t`, otherwise `false`.
+ * @returns `true` if `v` is found in `t`, otherwise `false`.
  */
 export function includes<T extends readonly unknown[]>(t: T, v: unknown): v is T[number] {
   return t.includes(v);
