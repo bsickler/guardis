@@ -28,7 +28,7 @@
   },
   "publish": {
     "include": ["src/"],
-    "exclude": ["**/*.test.ts", "**/*.bench.ts", "benchmarks/", "specs/"]
+    "exclude": ["**/*.test.ts", "**/*.bench.ts", "benchmarks/"]
   },
   "compilerOptions": {},
   "lock": false,
