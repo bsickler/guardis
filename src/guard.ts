@@ -473,40 +473,44 @@ export const isJsonValue: TypeGuard<JsonValue> = createTypeGuard(
  * }
  * ```
  */
-export const isDate = createTypeGuard((t) => t instanceof Date ? t : null);
+export const isDate: TypeGuard<Date> = createTypeGuard((t) => t instanceof Date ? t : null);
 
 /**
  * Returns true if input satisfies type null.
  * @param {unknown} t
  * @return {boolean}
  */
-const isNull = createTypeGuard<null>((t: unknown) => (t === null ? true : null) as null);
+const isNull: TypeGuard<null> = createTypeGuard<null>((t: unknown) =>
+  (t === null ? true : null) as null
+);
 
 /**
  * Returns true if input satisfies type null or undefined.
  * @param {unknown} t
  * @return {boolean}
  */
-const isNil = isNull.or(isUndefined);
+const isNil: TypeGuard<null | undefined> = isNull.or(isUndefined);
 
-const isEmptyRecord = createTypeGuard<Record<string, never>>((t): Record<string, never> | null => {
-  if (
-    t && typeof t === "object" && Object.getPrototypeOf(t) === Object.prototype &&
-    Object.keys(t).length === 0
-  ) {
-    return t as Record<string, never>;
-  }
-  return null;
-});
+const isEmptyRecord: TypeGuard<Record<string, never>> = createTypeGuard<Record<string, never>>(
+  (t): Record<string, never> | null => {
+    if (
+      t && typeof t === "object" && Object.getPrototypeOf(t) === Object.prototype &&
+      Object.keys(t).length === 0
+    ) {
+      return t as Record<string, never>;
+    }
+    return null;
+  },
+);
 
-const isEmptyArray = createTypeGuard<[]>((t): [] | null => {
+const isEmptyArray: TypeGuard<[]> = createTypeGuard<[]>((t): [] | null => {
   if (Array.isArray(t) && (t as unknown[]).length === 0) {
     return t as [];
   }
   return null;
 });
 
-const isEmptyString = createTypeGuard<"">((t): "" | null => {
+const isEmptyString: TypeGuard<""> = createTypeGuard<"">((t): "" | null => {
   return t === "" ? t : null;
 });
 
@@ -516,7 +520,11 @@ const isEmptyString = createTypeGuard<"">((t): "" | null => {
  * @param {unknown} t
  * @return {boolean}
  */
-const isEmpty = isNull.or(isUndefined).or(isEmptyString).or(isEmptyArray).or(isEmptyRecord);
+const isEmpty: TypeGuard<null | undefined | "" | [] | Record<string, never>> = isNull
+  .or(isUndefined)
+  .or(isEmptyString)
+  .or(isEmptyArray)
+  .or(isEmptyRecord);
 
 /**
  * Returns true if the value is iterable (has Symbol.iterator). Does not
@@ -524,7 +532,7 @@ const isEmpty = isNull.or(isUndefined).or(isEmptyString).or(isEmptyArray).or(isE
  * @param t
  * @returns
  */
-const isIterable = createTypeGuard<Iterable<unknown>>((t) => {
+const isIterable: TypeGuard<Iterable<unknown>> = createTypeGuard<Iterable<unknown>>((t) => {
   if (
     typeof t === "object" &&
     !isNil(t) &&
