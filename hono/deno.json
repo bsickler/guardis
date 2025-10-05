@@ -7,7 +7,6 @@
     ".": "./mod.ts"
   },
   "tasks": {},
-  "imports": {},
   "publish": {
     "include": ["mod.ts", "README.md", "deno.json"],
     "exclude": ["**/*.test.ts"]
