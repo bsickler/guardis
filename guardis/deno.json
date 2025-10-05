@@ -1,0 +1,35 @@
+{
+  "name": "@spudlabs/guardis",
+  "version": "0.3.4",
+  "license": "MIT",
+  "description": "Guardis is a modular library of type guards, built to be easy to use and extend.",
+  "exports": {
+    ".": "./mod.ts",
+    "./http": "./src/modules/http.ts",
+    "./strings": "./src/modules/strings.ts",
+    "./strings-branded": "./src/modules/strings.branded.ts"
+  },
+  "tasks": {
+    "test": {
+      "description": "Run unit tests.",
+      "command": "deno test"
+    },
+    "bench:all": {
+      "description": "Run all library benchmarks on the typeguards to detect slow parsing logic.",
+      "command": "deno bench benchmarks/guard*.bench.ts"
+    },
+    "bench:guards": {
+      "description": "Run library benchmarks on the typeguards to detect slow parsing logic.",
+      "command": "deno bench benchmarks/guard.bench.ts"
+    }
+  },
+  "publish": {
+    "include": ["mod.ts", "README.md", "deno.json", "src/", "specs/"],
+    "exclude": ["**/*.test.ts", "**/*.bench.ts", "benchmarks/"]
+  },
+  "compilerOptions": {},
+  "lock": false,
+  "fmt": {
+    "lineWidth": 100
+  }
+}
