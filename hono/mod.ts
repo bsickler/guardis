@@ -86,7 +86,6 @@ export const describeInput = <
   validator<InputType, P, M, U, OutputType, OutputTypeExcludeResponseType, P2, V, E>(
     target,
     (value, c) => {
-      console.log(`Validating input for target: ${target}`);
       if (fn(value)) return value;
 
       return c.json(

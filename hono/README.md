@@ -4,7 +4,9 @@ A type-safe input validation utility for Hono framework that integrates with Gua
 
 ## Overview
 
-`describeInput` is a higher-order function that creates Hono validators for different validation targets (json, form, query, etc.). It combines Hono's validator middleware with Guardis type guards to provide runtime type checking with compile-time type safety.
+`describeInput` is a higher-order function that creates Hono validators for different validation
+targets (json, form, query, etc.). It combines Hono's validator middleware with Guardis type guards
+to provide runtime type checking with compile-time type safety.
 
 ## Installation
 
@@ -43,7 +45,7 @@ app.post(
   (c) => {
     const data = c.req.valid("json"); // Fully typed as UserInput
     return c.json({ message: "User created", data });
-  }
+  },
 );
 ```
 
@@ -137,9 +139,9 @@ const customValidator = (target, guard) => {
       {
         error: "Validation Error",
         target,
-        details: "Custom error message"
+        details: "Custom error message",
       },
-      422
+      422,
     );
   });
 };
@@ -161,13 +163,13 @@ interface UserWithAddress {
   address: Address;
 }
 
-const isAddress = guard<Address>({
+const isAddress = createTypeGuard<Address>({
   street: "string",
   city: "string",
   zipCode: "string",
 });
 
-const isUserWithAddress = guard<UserWithAddress>({
+const isUserWithAddress = createTypeGuard<UserWithAddress>({
   name: "string",
   address: isAddress,
 });
@@ -179,7 +181,7 @@ app.post(
     const user = c.req.valid("json");
     // user.address.city is properly typed
     return c.json({ success: true });
-  }
+  },
 );
 ```
 
@@ -195,7 +197,7 @@ app.post(
     const body = c.req.valid("json");
     // Both are validated and typed
     return c.json({ results: [] });
-  }
+  },
 );
 ```
 
@@ -207,80 +209,20 @@ interface BatchRequest {
   metadata?: Record<string, string>;
 }
 
-const isBatchRequest = guard<BatchRequest>({
-  items: (value): value is Array<{ id: string; quantity: number }> =>
-    Array.isArray(value) &&
-    value.every(item =>
-      typeof item.id === "string" &&
-      typeof item.quantity === "number"
-    ),
-  metadata: (value): value is Record<string, string> | undefined =>
-    value === undefined ||
-    (typeof value === "object" &&
-     Object.values(value).every(v => typeof v === "string")),
-});
-
 app.post(
   "/batch",
   describeInput("json", isBatchRequest),
   (c) => {
     const batch = c.req.valid("json");
     return c.json({ processed: batch.items.length });
-  }
+  },
 );
-```
-
-## Type Parameters
-
-```typescript
-describeInput<
-  InputType,        // The expected input type
-  P,                // Path parameter type
-  M,                // HTTP method
-  U,                // Validation target
-  OutputType,       // Output type after validation
-  OutputTypeExcludeResponseType,
-  P2,
-  V,                // Validation schema
-  E                 // Environment type
->(target, typeGuard)
-```
-
-Most type parameters are inferred automatically. You typically only need to specify the validation target:
-
-```typescript
-describeInput("json", myTypeGuard)
-```
-
-## Integration with Guardis
-
-`describeInput` works seamlessly with all Guardis type guards:
-
-```typescript
-import { guard, batch, extend } from "@spudlabs/guardis";
-
-// Simple guards
-const isString = guard<string>("string");
-
-// Batch validation
-const isStringArray = batch(isString);
-
-// Extended guards
-const isUser = extend(
-  guard<{ name: string }>({ name: "string" }),
-  guard<{ email: string }>({ email: "string" })
-);
-
-// All work with describeInput
-describeInput("json", isUser);
 ```
 
 ## Performance Considerations
 
 - Type guards are executed on every request
-- Validation happens before your route handler
 - Failed validations short-circuit with a 400 response
-- Console logging is included for debugging (line 89 in mod.ts)
 
 ## TypeScript Support
 
