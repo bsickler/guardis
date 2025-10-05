@@ -1,6 +1,6 @@
 {
   "name": "@spudlabs/guardis-hono",
-  "version": "0.0.1",
+  "version": "0.0.3",
   "license": "MIT",
   "description": "Guardis utilities for use with the Hono API framework.",
   "exports": {

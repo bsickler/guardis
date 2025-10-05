@@ -12,7 +12,7 @@ to provide runtime type checking with compile-time type safety.
 
 ```typescript
 import { describeInput } from "@spudlabs/guardis-hono";
-import { guard } from "@spudlabs/guardis";
+import { createTypeGuard } from "@spudlabs/guardis";
 ```
 
 ## Basic Usage
@@ -20,7 +20,7 @@ import { guard } from "@spudlabs/guardis";
 ```typescript
 import { Hono } from "hono";
 import { describeInput } from "@spudlabs/guardis-hono";
-import { guard } from "@spudlabs/guardis";
+import { createTypeGuard } from "@spudlabs/guardis";
 
 const app = new Hono();
 
