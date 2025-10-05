@@ -1,5 +1,5 @@
 import { validator } from "hono/validator";
-import type { Env, TypedResponse, ValidationTargets } from "hono/types";
+import type { Env, MiddlewareHandler, TypedResponse, ValidationTargets } from "hono/types";
 import type { TypeGuard } from "@spudlabs/guardis";
 
 type ValidationTargetKeysWithBody = "form" | "json";
@@ -82,7 +82,7 @@ export const describeInput = <
 >(
   target: U,
   fn: TypeGuard<OutputType>,
-) =>
+): MiddlewareHandler<E, P, V> =>
   validator<InputType, P, M, U, OutputType, OutputTypeExcludeResponseType, P2, V, E>(
     target,
     (value, c) => {

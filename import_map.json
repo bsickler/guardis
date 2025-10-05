@@ -3,6 +3,7 @@
     "@std/assert": "jsr:@std/assert@^1.0.0",
 
     "hono": "npm:/hono@^4.9.9",
+    "hono/": "npm:/hono@^4.9.9/",
 
     "@spudlabs/guardis": "jsr:@spudlabs/guardis@^0.3.4",
     "@spudlabs/guardis-hono": "jsr:@spudlabs/guardis-hono@^0.0.1"
