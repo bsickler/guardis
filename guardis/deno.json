@@ -28,7 +28,6 @@
     "exclude": ["**/*.test.ts", "**/*.bench.ts", "benchmarks/"]
   },
   "compilerOptions": {},
-  "lock": false,
   "fmt": {
     "lineWidth": 100
   }

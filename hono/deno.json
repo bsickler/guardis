@@ -13,7 +13,6 @@
     "exclude": ["**/*.test.ts"]
   },
   "compilerOptions": {},
-  "lock": false,
   "fmt": {
     "lineWidth": 100
   }
