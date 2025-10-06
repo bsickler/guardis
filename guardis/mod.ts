@@ -4,7 +4,6 @@
  * "type guard" behavior.
  *
  * @module Guardis
- * @author MrPossumz
  */
 
 export * from "./src/guard.ts";
