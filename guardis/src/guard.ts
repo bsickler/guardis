@@ -3,7 +3,14 @@
  * @module
  */
 import type { StandardSchemaV1 } from "../specs/standard-schema-spec.v1.ts";
-import type { JsonArray, JsonObject, JsonPrimitive, JsonValue, TupleOfLength } from "./types.ts";
+import type {
+  canBeEmpty,
+  JsonArray,
+  JsonObject,
+  JsonPrimitive,
+  JsonValue,
+  TupleOfLength,
+} from "./types.ts";
 import { hasOptionalProperty, hasProperty, includes, tupleHas } from "./utilities.ts";
 
 /** A parser is a function that takes an unknown and returns T or null */
@@ -123,7 +130,43 @@ export interface TypeGuard<T1> extends StandardSchemaV1<T1> {
    * @returns
    */
   validate: (value: unknown) => StandardSchemaV1.Result<T1>;
-  notEmpty: {
+  optional: {
+    /**
+     * A type guard that checks if the value is either undefined or of type T.
+     * @param value The value to check
+     * @returns true if the value is of type T or undefined, otherwise false
+     */
+    (value: unknown): value is T1 | undefined;
+    /**
+     * A strict type guard that throws an error if the value is defined but not of type T.
+     * @param value The value to check
+     * @param errorMsg Optional error message to include in the thrown error
+     * @returns true if the value is of type T, otherwise throws an error
+     */
+    strict: (value: unknown, errorMsg?: string) => value is T1 | undefined;
+    /**
+     * An assertion function that throws an error if the value is defined but not of type T.
+     * This is useful for ensuring that a value meets the type requirements at runtime.
+     *
+     * Unfortunately, TypeScript does not support the inference of assertion functions
+     * so the function must be invoked by declaring an intermediate variable and specifying
+     * the type.
+     *
+     * Example:
+     * ```typescript
+     * const value: unknown = someValue();
+     *
+     * const assertIsOptionalString: typeof isString.optional.assert = isString.optional.assert;
+     * assertIsOptionalString(value, "Expected a string or undefined");
+     * // After this line, TypeScript knows that value is a string
+     * ```
+     * @param value The value to check
+     * @param errorMsg Optional error message to include in the thrown error
+     * @returns Asserts that the value is of type T
+     */
+    assert: (value: unknown, errorMsg?: string) => asserts value is T1 | undefined;
+  };
+  notEmpty: canBeEmpty<T1> extends false ? never : {
     /**
      * A type guard that checks if the value is not empty and of type T.
      * An empty value is defined as null, undefined, an empty string, an empty array,
@@ -163,42 +206,16 @@ export interface TypeGuard<T1> extends StandardSchemaV1<T1> {
      * @returns Asserts that the value is of type T
      */
     assert: (value: unknown, errorMsg?: string) => asserts value is T1;
-  };
-  optional: {
     /**
-     * A type guard that checks if the value is either undefined or of type T.
-     * @param value The value to check
-     * @returns true if the value is of type T or undefined, otherwise false
-     */
-    (value: unknown): value is T1 | undefined;
-    /**
-     * A strict type guard that throws an error if the value is defined but not of type T.
-     * @param value The value to check
-     * @param errorMsg Optional error message to include in the thrown error
-     * @returns true if the value is of type T, otherwise throws an error
-     */
-    strict: (value: unknown, errorMsg?: string) => value is T1 | undefined;
-    /**
-     * An assertion function that throws an error if the value is defined but not of type T.
-     * This is useful for ensuring that a value meets the type requirements at runtime.
+     * Validates the value against the schema, ensuring it is not empty. If the value is of
+     * type T1 and not empty, it returns a success result with the value, otherwise it
+     * returns a failure result with issues.
      *
-     * Unfortunately, TypeScript does not support the inference of assertion functions
-     * so the function must be invoked by declaring an intermediate variable and specifying
-     * the type.
-     *
-     * Example:
-     * ```typescript
-     * const value: unknown = someValue();
-     *
-     * const assertIsOptionalString: typeof isString.optional.assert = isString.optional.assert;
-     * assertIsOptionalString(value, "Expected a string or undefined");
-     * // After this line, TypeScript knows that value is a string
-     * ```
-     * @param value The value to check
-     * @param errorMsg Optional error message to include in the thrown error
-     * @returns Asserts that the value is of type T
+     * Included as a shortcut to the `validate` method of the StandardSchemaV1 interface.
+     * @param value The value to validate
+     * @returns
      */
-    assert: (value: unknown, errorMsg?: string) => asserts value is T1 | undefined;
+    validate: (value: unknown) => StandardSchemaV1.Result<T1>;
   };
 }
 
@@ -244,7 +261,9 @@ export const createTypeGuard = <T1>(parse: Parser<T1>): TypeGuard<T1> => {
 
   notEmpty.strict = createStrictTypeGuard(notEmpty);
   notEmpty.assert = createAssertTypeGuard(notEmpty.strict);
-  callback.notEmpty = notEmpty;
+  notEmpty.validate = (value: unknown) =>
+    notEmpty(value) ? { value } : { issues: [{ message: `Invalid type` }] };
+  callback.notEmpty = notEmpty as canBeEmpty<T1> extends false ? never : typeof notEmpty;
 
   /**
    * Returns true if the value is undefined or passes the parser.
@@ -423,7 +442,7 @@ export const isArray: TypeGuard<unknown[]> = createTypeGuard((
  * @param {unknown} t
  * @return {boolean}
  */
-export const isJsonArray: TypeGuard<JsonArray> = createTypeGuard((
+export const isJsonArray: TypeGuard<JsonValue[] | readonly JsonValue[]> = createTypeGuard((
   t,
 ): JsonArray | null => Array.isArray(t) ? t : null);
 

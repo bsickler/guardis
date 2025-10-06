@@ -138,17 +138,6 @@ Deno.test("extend function", async (t) => {
 
     // Verify notEmpty method exists
     assert("notEmpty" in Is.MySillyType);
-
-    // Valid inputs (numbers and non-empty strings are not empty)
-    assert(Is.MySillyType.notEmpty(TEST_VALUES.ten));
-    assert(Is.MySillyType.notEmpty(TEST_VALUES.meatball));
-
-    // Invalid inputs (empty values and wrong types)
-    assertFalse(Is.MySillyType.notEmpty(TEST_VALUES.nullValue));
-    assertFalse(Is.MySillyType.notEmpty(TEST_VALUES.undefinedValue));
-    assertFalse(Is.MySillyType.notEmpty(TEST_VALUES.emptyString));
-    assertFalse(Is.MySillyType.notEmpty(TEST_VALUES.sausage));
-    assertFalse(Is.MySillyType.notEmpty(TEST_VALUES.one));
   });
 });
 
@@ -248,26 +237,5 @@ Deno.test("extend iteration and chaining", async (t) => {
     assertFalse(IsTwo.Sausage.optional(TEST_VALUES.meatball));
     assertFalse(IsTwo.Meatball.optional(TEST_VALUES.nullValue));
     assertFalse(IsTwo.Sausage.optional(TEST_VALUES.nullValue));
-  });
-
-  await t.step("notEmpty mode", () => {
-    const Is = extend({
-      Meatball: (v: unknown) => v === "meatball" ? v : null,
-    });
-
-    const IsTwo = extend(Is, {
-      Sausage: (v: unknown) => v === "sausage" ? v : null,
-    });
-
-    // Valid inputs (strings are not empty)
-    assert(IsTwo.Meatball.notEmpty(TEST_VALUES.meatball));
-    assert(IsTwo.Sausage.notEmpty(TEST_VALUES.sausage));
-
-    // Invalid inputs (empty values and wrong types)
-    assertFalse(IsTwo.Meatball.notEmpty(TEST_VALUES.nullValue));
-    assertFalse(IsTwo.Meatball.notEmpty(TEST_VALUES.undefinedValue));
-    assertFalse(IsTwo.Meatball.notEmpty(TEST_VALUES.emptyString));
-    assertFalse(IsTwo.Meatball.notEmpty(TEST_VALUES.sausage));
-    assertFalse(IsTwo.Sausage.notEmpty(TEST_VALUES.meatball));
   });
 });

@@ -80,17 +80,6 @@ Deno.test("isNativeURL", async (t) => {
     assertFalse(isNativeURL.optional(TEST_VALUES.nullValue));
     assertFalse(isNativeURL.optional(TEST_VALUES.string));
   });
-
-  await t.step("notEmpty mode", () => {
-    // Valid inputs (URL objects are never considered empty)
-    assert(isNativeURL.notEmpty(TEST_VALUES.url));
-    assert(isNativeURL.notEmpty(new URL("https://google.com")));
-
-    // Invalid inputs
-    assertFalse(isNativeURL.notEmpty(TEST_VALUES.urlString));
-    assertFalse(isNativeURL.notEmpty(TEST_VALUES.nullValue));
-    assertFalse(isNativeURL.notEmpty(TEST_VALUES.undefinedValue));
-  });
 });
 
 Deno.test("isRequest", async (t) => {
@@ -148,17 +137,6 @@ Deno.test("isRequest", async (t) => {
     assertFalse(isRequest.optional(TEST_VALUES.url));
     assertFalse(isRequest.optional(TEST_VALUES.nullValue));
   });
-
-  await t.step("notEmpty mode", () => {
-    // Valid inputs (Request objects are never considered empty)
-    assert(isRequest.notEmpty(TEST_VALUES.request));
-    assert(isRequest.notEmpty(new Request("https://google.com")));
-
-    // Invalid inputs
-    assertFalse(isRequest.notEmpty(TEST_VALUES.urlString));
-    assertFalse(isRequest.notEmpty(TEST_VALUES.nullValue));
-    assertFalse(isRequest.notEmpty(TEST_VALUES.undefinedValue));
-  });
 });
 
 Deno.test("isResponse", async (t) => {
@@ -215,16 +193,5 @@ Deno.test("isResponse", async (t) => {
     assertFalse(isResponse.optional("Hello, world!"));
     assertFalse(isResponse.optional(TEST_VALUES.request));
     assertFalse(isResponse.optional(TEST_VALUES.nullValue));
-  });
-
-  await t.step("notEmpty mode", () => {
-    // Valid inputs (Response objects are never considered empty)
-    assert(isResponse.notEmpty(TEST_VALUES.response));
-    assert(isResponse.notEmpty(new Response("Different content")));
-
-    // Invalid inputs
-    assertFalse(isResponse.notEmpty("Hello, world!"));
-    assertFalse(isResponse.notEmpty(TEST_VALUES.nullValue));
-    assertFalse(isResponse.notEmpty(TEST_VALUES.undefinedValue));
   });
 });
