@@ -45,3 +45,6 @@ export type canBeEmpty<T> = T extends
   | readonly unknown[]
   | Record<PropertyKey, unknown> ? true
   : false;
+
+/** Utility type to determine if a type is extensible */
+export type isExtensible<T> = T extends null | undefined ? false : true;

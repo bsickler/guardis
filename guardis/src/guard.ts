@@ -5,6 +5,7 @@
 import type { StandardSchemaV1 } from "../specs/standard-schema-spec.v1.ts";
 import type {
   canBeEmpty,
+  isExtensible,
   JsonArray,
   JsonObject,
   JsonPrimitive,
@@ -23,6 +24,16 @@ export type Parser<T = unknown> = (
     includes: typeof includes;
   },
 ) => T | null;
+
+type ExtendedParser<T1, T2 extends T1 = T1> = (
+  val: T1,
+  helper: {
+    has: typeof hasProperty;
+    hasOptional: typeof hasOptionalProperty;
+    tupleHas: typeof tupleHas;
+    includes: typeof includes;
+  },
+) => T2 | null;
 
 /**
  * Creates a type guard that strictly checks the type, throwing
@@ -130,6 +141,17 @@ export interface TypeGuard<T1> extends StandardSchemaV1<T1> {
    * @returns
    */
   validate: (value: unknown) => StandardSchemaV1.Result<T1>;
+
+  /**
+   * Extends the current type guard with an additional parser, building upon
+   * the existing type guard. The new type guard will first check if the value
+   * passes the original type guard, and if it does, it will then apply the
+   * additional parser.
+   * @param {Function} parse An additional parser to further validate the type.
+   * @returns {Function} A new type guard that combines the original and additional parsers.
+   */
+  extend: isExtensible<T1> extends false ? never
+    : <T2 extends T1>(parse: ExtendedParser<T1, T2>) => TypeGuard<T2>;
   optional: {
     /**
      * A type guard that checks if the value is either undefined or of type T.
@@ -250,6 +272,17 @@ export const createTypeGuard = <T1>(parse: Parser<T1>): TypeGuard<T1> => {
 
   const callback = (value: unknown): value is T1 => parse(value, helpers) !== null;
   callback._ = { parser: parse };
+
+  /**
+   * Creates a new type guard by extending the current one with an additional parser.
+   * The new type guard will first check if the value passes the original type guard,
+   * and if it does, it will then apply the additional parser.
+   * @param {Function} parseTwo An additional parser to further validate the type.
+   * @returns {Function} A new type guard that combines the original and additional parsers.
+   */
+  const extend = <T2 extends T1>(parseTwo: ExtendedParser<T1, T2>): TypeGuard<T2> =>
+    createTypeGuard<T2>((v, h) => !callback(v) ? null : parseTwo(v, h));
+  callback.extend = extend as isExtensible<T1> extends false ? never : typeof extend;
 
   /**
    * Returns false if the value fails the "empty" type guard
