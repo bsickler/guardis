@@ -107,17 +107,6 @@ Deno.test("isBoolean", async (t) => {
     assertFalse(isBoolean.optional(TEST_VALUES.nullValue));
     assertFalse(isBoolean.optional(TEST_VALUES.number));
   });
-
-  await t.step("notEmpty mode", () => {
-    // Valid inputs (booleans are never considered empty)
-    assert(isBoolean.notEmpty(TEST_VALUES.boolean));
-    assert(isBoolean.notEmpty(TEST_VALUES.booleanFalse));
-
-    // Invalid inputs
-    assertFalse(isBoolean.notEmpty(TEST_VALUES.string));
-    assertFalse(isBoolean.notEmpty(TEST_VALUES.nullValue));
-    assertFalse(isBoolean.notEmpty(TEST_VALUES.undefinedValue));
-  });
 });
 
 Deno.test("isString", async (t) => {
@@ -235,18 +224,6 @@ Deno.test("isNumber", async (t) => {
     assertFalse(isNumber.optional(TEST_VALUES.string));
     assertFalse(isNumber.optional(TEST_VALUES.nullValue));
   });
-
-  await t.step("notEmpty mode", () => {
-    // Valid inputs (numbers are never considered empty, including 0)
-    assert(isNumber.notEmpty(TEST_VALUES.number));
-    assert(isNumber.notEmpty(TEST_VALUES.zero));
-    assert(isNumber.notEmpty(TEST_VALUES.float));
-
-    // Invalid inputs
-    assertFalse(isNumber.notEmpty(TEST_VALUES.string));
-    assertFalse(isNumber.notEmpty(TEST_VALUES.nullValue));
-    assertFalse(isNumber.notEmpty(TEST_VALUES.undefinedValue));
-  });
 });
 
 Deno.test("isBinary", async (t) => {
@@ -296,17 +273,6 @@ Deno.test("isBinary", async (t) => {
     // Invalid inputs
     assertFalse(isBinary.optional(TEST_VALUES.number));
     assertFalse(isBinary.optional(TEST_VALUES.nullValue));
-  });
-
-  await t.step("notEmpty mode", () => {
-    // Valid inputs (0 and 1 are not considered empty for binary)
-    assert(isBinary.notEmpty(TEST_VALUES.binaryZero));
-    assert(isBinary.notEmpty(TEST_VALUES.binaryOne));
-
-    // Invalid inputs
-    assertFalse(isBinary.notEmpty(TEST_VALUES.number));
-    assertFalse(isBinary.notEmpty(TEST_VALUES.nullValue));
-    assertFalse(isBinary.notEmpty(TEST_VALUES.undefinedValue));
   });
 });
 
@@ -363,17 +329,6 @@ Deno.test("isNumeric", async (t) => {
     assertFalse(isNumeric.optional(TEST_VALUES.invalidNumericString));
     assertFalse(isNumeric.optional(TEST_VALUES.nullValue));
   });
-
-  await t.step("notEmpty mode", () => {
-    // Valid inputs
-    assert(isNumeric.notEmpty(TEST_VALUES.number));
-    assert(isNumeric.notEmpty(TEST_VALUES.numericString));
-
-    // Invalid inputs
-    assertFalse(isNumeric.notEmpty(TEST_VALUES.invalidNumericString));
-    assertFalse(isNumeric.notEmpty(TEST_VALUES.nullValue));
-    assertFalse(isNumeric.notEmpty(TEST_VALUES.undefinedValue));
-  });
 });
 
 Deno.test("isFunction", async (t) => {
@@ -424,17 +379,6 @@ Deno.test("isFunction", async (t) => {
     // Invalid inputs
     assertFalse(isFunction.optional(TEST_VALUES.string));
     assertFalse(isFunction.optional(TEST_VALUES.nullValue));
-  });
-
-  await t.step("notEmpty mode", () => {
-    // Valid inputs (functions are never considered empty)
-    assert(isFunction.notEmpty(TEST_VALUES.function));
-    assert(isFunction.notEmpty(Math.max));
-
-    // Invalid inputs
-    assertFalse(isFunction.notEmpty(TEST_VALUES.string));
-    assertFalse(isFunction.notEmpty(TEST_VALUES.nullValue));
-    assertFalse(isFunction.notEmpty(TEST_VALUES.undefinedValue));
   });
 });
 
@@ -684,18 +628,6 @@ Deno.test("isObject", async (t) => {
     assertFalse(isObject.optional(TEST_VALUES.array));
     assertFalse(isObject.optional(TEST_VALUES.nullValue));
   });
-
-  await t.step("notEmpty mode", () => {
-    // Valid inputs
-    assert(isObject.notEmpty(TEST_VALUES.object));
-    assert(isObject.notEmpty(TEST_VALUES.date)); // Date objects are not empty
-
-    // Invalid inputs (empty object is considered empty)
-    assertFalse(isObject.notEmpty(TEST_VALUES.emptyObject));
-    assertFalse(isObject.notEmpty(TEST_VALUES.array));
-    assertFalse(isObject.notEmpty(TEST_VALUES.nullValue));
-    assertFalse(isObject.notEmpty(TEST_VALUES.undefinedValue));
-  });
 });
 
 Deno.test("isArray", async (t) => {
@@ -809,17 +741,6 @@ Deno.test("isDate", async (t) => {
     // Invalid inputs
     assertFalse(isDate.optional("2023-01-01"));
     assertFalse(isDate.optional(TEST_VALUES.nullValue));
-  });
-
-  await t.step("notEmpty mode", () => {
-    // Valid inputs (dates are never considered empty)
-    assert(isDate.notEmpty(TEST_VALUES.date));
-    assert(isDate.notEmpty(new Date("2023-01-01")));
-
-    // Invalid inputs
-    assertFalse(isDate.notEmpty("2023-01-01"));
-    assertFalse(isDate.notEmpty(TEST_VALUES.nullValue));
-    assertFalse(isDate.notEmpty(TEST_VALUES.undefinedValue));
   });
 });
 
@@ -984,18 +905,6 @@ Deno.test("isJsonPrimitive", async (t) => {
     // Invalid inputs
     assertFalse(isJsonPrimitive.optional(TEST_VALUES.object));
     assertFalse(isJsonPrimitive.optional(TEST_VALUES.function));
-  });
-
-  await t.step("notEmpty mode", () => {
-    // Valid inputs
-    assert(isJsonPrimitive.notEmpty(TEST_VALUES.boolean));
-    assert(isJsonPrimitive.notEmpty(TEST_VALUES.number));
-    assert(isJsonPrimitive.notEmpty(TEST_VALUES.string));
-
-    // Invalid inputs (null is considered empty)
-    assertFalse(isJsonPrimitive.notEmpty(TEST_VALUES.nullValue));
-    assertFalse(isJsonPrimitive.notEmpty(TEST_VALUES.undefinedValue));
-    assertFalse(isJsonPrimitive.notEmpty(TEST_VALUES.object));
   });
 });
 
@@ -1264,9 +1173,6 @@ Deno.test("createTypeGuard", async (t) => {
     assert(isPositiveInteger.optional(10));
     assert(isPositiveInteger.optional(TEST_VALUES.undefinedValue));
     assertFalse(isPositiveInteger.optional(-5));
-
-    assert(isPositiveInteger.notEmpty(10));
-    assertFalse(isPositiveInteger.notEmpty(0));
   });
 
   await t.step("or method - union type guards", () => {

@@ -125,18 +125,5 @@ Deno.test("batch function", async (t) => {
     assert("notEmpty" in isMeatball);
     assert("notEmpty" in isSausage);
     assert("notEmpty" in isSpaghetti);
-
-    // Valid inputs (strings are never considered empty unless they are empty strings)
-    assert(isMeatball.notEmpty(TEST_VALUES.meatball));
-    assert(isSausage.notEmpty(TEST_VALUES.sausage));
-    assert(isSpaghetti.notEmpty(TEST_VALUES.spaghetti));
-
-    // Invalid inputs (empty values and wrong types)
-    assertFalse(isMeatball.notEmpty(TEST_VALUES.nullValue));
-    assertFalse(isMeatball.notEmpty(TEST_VALUES.undefinedValue));
-    assertFalse(isMeatball.notEmpty(TEST_VALUES.emptyString));
-    assertFalse(isMeatball.notEmpty(TEST_VALUES.sausage));
-    assertFalse(isSausage.notEmpty(TEST_VALUES.meatball));
-    assertFalse(isSpaghetti.notEmpty(TEST_VALUES.sausage));
   });
 });

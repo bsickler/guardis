@@ -1,0 +1,18 @@
+{
+  "name": "@spudlabs/guardis-hono",
+  "version": "0.0.3",
+  "license": "MIT",
+  "description": "Guardis utilities for use with the Hono API framework.",
+  "exports": {
+    ".": "./mod.ts"
+  },
+  "tasks": {},
+  "publish": {
+    "include": ["mod.ts", "README.md", "deno.json"],
+    "exclude": ["**/*.test.ts"]
+  },
+  "compilerOptions": {},
+  "fmt": {
+    "lineWidth": 100
+  }
+}

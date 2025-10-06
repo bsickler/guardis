@@ -35,3 +35,13 @@ export type TupleOfLength<N extends number> = N extends 0 ? []
 export type ReplaceTupleIndex<T extends readonly unknown[], X extends number, R> = {
   readonly [K in keyof T]: K extends `${X}` ? R : T[K];
 };
+
+/** Utility type to determine if a type can be "empty" */
+export type canBeEmpty<T> = T extends
+  | null
+  | undefined
+  | string
+  | unknown[]
+  | readonly unknown[]
+  | Record<PropertyKey, unknown> ? true
+  : false;
