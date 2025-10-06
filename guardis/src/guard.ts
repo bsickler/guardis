@@ -14,26 +14,17 @@ import type {
 } from "./types.ts";
 import { hasOptionalProperty, hasProperty, includes, tupleHas } from "./utilities.ts";
 
-/** A parser is a function that takes an unknown and returns T or null */
-export type Parser<T = unknown> = (
-  val: unknown,
-  helper: {
-    has: typeof hasProperty;
-    hasOptional: typeof hasOptionalProperty;
-    tupleHas: typeof tupleHas;
-    includes: typeof includes;
-  },
-) => T | null;
+type Helpers = {
+  has: typeof hasProperty;
+  hasOptional: typeof hasOptionalProperty;
+  tupleHas: typeof tupleHas;
+  includes: typeof includes;
+};
 
-type ExtendedParser<T1, T2 extends T1 = T1> = (
-  val: T1,
-  helper: {
-    has: typeof hasProperty;
-    hasOptional: typeof hasOptionalProperty;
-    tupleHas: typeof tupleHas;
-    includes: typeof includes;
-  },
-) => T2 | null;
+/** A parser is a function that takes an unknown and returns T or null */
+export type Parser<T = unknown> = (val: unknown, helper: Helpers) => T | null;
+
+type ExtendedParser<T1, T2 extends T1 = T1> = (val: T1, helper: Helpers) => T2 | null;
 
 /**
  * Creates a type guard that strictly checks the type, throwing
@@ -91,6 +82,17 @@ const createAssertTypeGuard = <T>(
  * @template T1 The type being guarded
  */
 export interface TypeGuard<T1> extends StandardSchemaV1<T1> {
+  /**
+   * A utility to gain access to the type being guarded. Can be used
+   * to infer the type in other parts of the code.
+   *
+   * @example
+   * ```typescript
+   * type GuardedType = typeof isString._TYPE; // string
+   * ```
+   */
+  _TYPE: T1;
+
   /**
    * A type guard function that checks if the value is of type T.
    * @param value The value to check
@@ -344,7 +346,8 @@ export const createTypeGuard = <T1>(parse: Parser<T1>): TypeGuard<T1> => {
     validate: callback.validate,
   } as const;
 
-  return callback;
+  // Attach the type to the function for easy access
+  return (<T1>(t: unknown): TypeGuard<T1> => t as TypeGuard<T1>)(callback);
 };
 
 /**

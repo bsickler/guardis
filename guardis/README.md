@@ -524,6 +524,7 @@ Guardis is designed to work seamlessly with TypeScript:
 - **Assertion Functions**: `.assert()` methods work as TypeScript assertions
 - **Generic Support**: Create guards for generic types
 - **Strict Typing**: All guards are fully typed with proper inference
+- **Type Inference**: Extract types from guards using the `_TYPE` property
 
 ```ts
 function processData(input: unknown) {
@@ -537,4 +538,34 @@ function processData(input: unknown) {
   assertIsString(input);
   // TypeScript knows input is string after this line
 }
+```
+
+### Type Inference with `_TYPE`
+
+Every type guard includes a `_TYPE` property that allows you to extract the guarded type for use in other parts of your code:
+
+```ts
+// Extract the type from a built-in guard
+type StringType = typeof Is.String._TYPE; // string
+type NumberType = typeof Is.Number._TYPE; // number
+
+// Extract the type from a custom guard
+type User = { id: number; name: string };
+const isUser = createTypeGuard<User>((val, { has }) =>
+  has(val, "id", Is.Number) && has(val, "name", Is.String) ? val : null
+);
+
+// Use _TYPE to infer the type elsewhere
+type UserType = typeof isUser._TYPE; // { id: number; name: string }
+
+// Useful for creating related types
+type UserArray = Array<typeof isUser._TYPE>;
+type UserResponse = {
+  success: boolean;
+  user: typeof isUser._TYPE;
+};
+
+// Works with extended guards too
+const isAdult = isUser.extend((val) => val.age >= 18 ? val : null);
+type AdultType = typeof isAdult._TYPE; // inferred type from extension
 ```
