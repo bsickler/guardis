@@ -1287,4 +1287,218 @@ Deno.test("createTypeGuard", async (t) => {
     assertFalse(isStringOrNumber.notEmpty(TEST_VALUES.boolean));
     assertFalse(isStringOrNumber.notEmpty(TEST_VALUES.nullValue));
   });
+
+  await t.step("extend method - basic functionality", () => {
+    // Extend isString to only accept non-empty strings
+    const isNonEmptyString = isString.extend((val) => {
+      return val.length > 0 ? val : null;
+    });
+
+    // Valid inputs
+    assert(isNonEmptyString("test"));
+    assert(isNonEmptyString("hello world"));
+    assert(isNonEmptyString("a"));
+
+    // Invalid inputs - empty string fails extended validation
+    assertFalse(isNonEmptyString(""));
+
+    // Invalid inputs - non-strings fail base validation
+    assertFalse(isNonEmptyString(TEST_VALUES.number));
+    assertFalse(isNonEmptyString(TEST_VALUES.boolean));
+    assertFalse(isNonEmptyString(TEST_VALUES.nullValue));
+    assertFalse(isNonEmptyString(TEST_VALUES.undefinedValue));
+  });
+
+  await t.step("extend method - number with range validation", () => {
+    // Extend isNumber to only accept numbers between 1 and 100
+    const isPercentage = isNumber.extend((val) => {
+      return val >= 0 && val <= 100 ? val : null;
+    });
+
+    // Valid inputs
+    assert(isPercentage(0));
+    assert(isPercentage(50));
+    assert(isPercentage(100));
+    assert(isPercentage(25.5));
+
+    // Invalid inputs - outside range
+    assertFalse(isPercentage(-1));
+    assertFalse(isPercentage(101));
+    assertFalse(isPercentage(1000));
+
+    // Invalid inputs - non-numbers
+    assertFalse(isPercentage("50"));
+    assertFalse(isPercentage(TEST_VALUES.boolean));
+  });
+
+  await t.step("extend method - object with property validation", () => {
+    // Base type guard for objects with an 'age' property
+    const isAgeObject = createTypeGuard<{ age: number }>((v, { has }) => {
+      if (isObject(v) && has(v, "age", isNumber)) {
+        return v;
+      }
+      return null;
+    });
+
+    // Extend to only accept adults (age >= 18)
+    const isAdult = isAgeObject.extend((val) => {
+      return val.age >= 18 ? val : null;
+    });
+
+    // Valid inputs
+    assert(isAdult({ age: 18 }));
+    assert(isAdult({ age: 25 }));
+    assert(isAdult({ age: 100 }));
+
+    // Invalid inputs - age too low
+    assertFalse(isAdult({ age: 17 }));
+    assertFalse(isAdult({ age: 0 }));
+
+    // Invalid inputs - invalid structure
+    assertFalse(isAdult({ age: "25" }));
+    assertFalse(isAdult({}));
+    assertFalse(isAdult(TEST_VALUES.string));
+  });
+
+  await t.step("extend method - chained extensions", () => {
+    // Start with isString, extend to non-empty, then extend to minimum length
+    const isNonEmptyString = isString.extend((val) => {
+      return val.length > 0 ? val : null;
+    });
+
+    const isMinLength5 = isNonEmptyString.extend((val) => {
+      return val.length >= 5 ? val : null;
+    });
+
+    // Valid inputs
+    assert(isMinLength5("hello"));
+    assert(isMinLength5("testing"));
+    assert(isMinLength5("12345"));
+
+    // Invalid inputs - too short
+    assertFalse(isMinLength5("test"));
+    assertFalse(isMinLength5("abc"));
+    assertFalse(isMinLength5(""));
+
+    // Invalid inputs - non-strings
+    assertFalse(isMinLength5(TEST_VALUES.number));
+    assertFalse(isMinLength5(TEST_VALUES.nullValue));
+  });
+
+  await t.step("extend method - with helper functions", () => {
+    // Base type guard for person objects
+    const isPerson = createTypeGuard<{ name: string; age: number }>((v, { has }) => {
+      if (isObject(v) && has(v, "name", isString) && has(v, "age", isNumber)) {
+        return v;
+      }
+      return null;
+    });
+
+    // Extend to verify name is not empty and age is positive
+    const isValidPerson = isPerson.extend((val, { has }) => {
+      if (val.name.length === 0 || val.age < 0) return null;
+      return val;
+    });
+
+    // Valid inputs
+    assert(isValidPerson({ name: "Alice", age: 30 }));
+    assert(isValidPerson({ name: "Bob", age: 0 }));
+
+    // Invalid inputs
+    assertFalse(isValidPerson({ name: "", age: 30 }));
+    assertFalse(isValidPerson({ name: "Charlie", age: -1 }));
+    assertFalse(isValidPerson({ name: "", age: -1 }));
+  });
+
+  await t.step("extend method - all modes work on extended guards", () => {
+    const isPositiveNumber = isNumber.extend((val) => {
+      return val > 0 ? val : null;
+    });
+
+    // Basic functionality
+    assert(isPositiveNumber(1));
+    assert(isPositiveNumber(42));
+    assertFalse(isPositiveNumber(0));
+    assertFalse(isPositiveNumber(-5));
+
+    // Strict mode
+    isPositiveNumber.strict(1);
+    isPositiveNumber.strict(100);
+    assertThrows(() => isPositiveNumber.strict(0));
+    assertThrows(() => isPositiveNumber.strict(-1));
+    assertThrows(() => isPositiveNumber.strict(TEST_VALUES.string));
+
+    // Assert mode
+    const assertIsPositiveNumber: typeof isPositiveNumber.assert = isPositiveNumber.assert;
+    assertIsPositiveNumber(5);
+    assertIsPositiveNumber(999);
+    assertThrows(() => assertIsPositiveNumber(0));
+    assertThrows(() => assertIsPositiveNumber(-10));
+
+    // Optional mode
+    assert(isPositiveNumber.optional(10));
+    assert(isPositiveNumber.optional(TEST_VALUES.undefinedValue));
+    assertFalse(isPositiveNumber.optional(0));
+    assertFalse(isPositiveNumber.optional(-5));
+    assertFalse(isPositiveNumber.optional(TEST_VALUES.nullValue));
+  });
+
+  await t.step("extend method - with array validation", () => {
+    // Extend isArray to only accept arrays with at least one element
+    const isNonEmptyArray = isArray.extend((val) => {
+      return val.length > 0 ? val : null;
+    });
+
+    // Valid inputs
+    assert(isNonEmptyArray([1]));
+    assert(isNonEmptyArray([1, 2, 3]));
+    assert(isNonEmptyArray(["test"]));
+
+    // Invalid inputs
+    assertFalse(isNonEmptyArray([]));
+    assertFalse(isNonEmptyArray(TEST_VALUES.object));
+    assertFalse(isNonEmptyArray(TEST_VALUES.string));
+  });
+
+  await t.step("extend method - narrowing type with literal values", () => {
+    // Extend isString to only accept specific string literals
+    const validStatuses = ["active", "inactive", "pending"] as const;
+    const isStatus = isString.extend((val, { includes }) => {
+      if (includes(validStatuses, val)) return val as typeof validStatuses[number];
+      return null;
+    });
+
+    // Valid inputs
+    assert(isStatus("active"));
+    assert(isStatus("inactive"));
+    assert(isStatus("pending"));
+
+    // Invalid inputs
+    assertFalse(isStatus("completed"));
+    assertFalse(isStatus(""));
+    assertFalse(isStatus("ACTIVE"));
+    assertFalse(isStatus(TEST_VALUES.number));
+  });
+
+  await t.step("extend method - StandardSchemaV1 validate compatibility", () => {
+    // Create extended type guard
+    const isPositiveNumber = isNumber.extend((val) => {
+      return val > 0 ? val : null;
+    });
+
+    // Test validate method
+    const validResult = isPositiveNumber.validate(42);
+    assertEquals(validResult, { value: 42 });
+
+    const invalidResult1 = isPositiveNumber.validate(0);
+    assertEquals(invalidResult1, { issues: [{ message: "Invalid type" }] });
+
+    const invalidResult2 = isPositiveNumber.validate("test");
+    assertEquals(invalidResult2, { issues: [{ message: "Invalid type" }] });
+
+    // Verify ~standard property exists
+    assert(isPositiveNumber["~standard"]);
+    assertEquals(isPositiveNumber["~standard"].version, 1);
+    assertEquals(isPositiveNumber["~standard"].vendor, "guardis");
+  });
 });

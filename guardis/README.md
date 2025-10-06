@@ -29,7 +29,7 @@ const isUser = createTypeGuard<User>((val, { has }) =>
 - **Zero Dependencies**: No runtime dependencies
 - **Multiple Modes**: Basic, strict (throws), assert, optional, and notEmpty variants
 - **Helper Functions**: Built-in utilities for object, array and tuple validation
-- **Extensible**: Create custom guards and extend the core library
+- **Extensible**: Create custom guards, extend existing guards, and extend the core library
 - **Modular**: Import only what you need
 
 ## Installation
@@ -55,6 +55,7 @@ npx jsr add @spudlabs/guardis
   - [Optional Mode](#optional-mode)
   - [NotEmpty Mode](#notempty-mode)
 - [Creating Custom Type Guards](#creating-custom-type-guards)
+- [Extending Type Guards](#extending-type-guards)
 - [Specialized Modules](#specialized-modules)
 - [Batch Creation](#batch-creation)
 - [Extending the Is Object](#extending-the-is-object)
@@ -245,6 +246,138 @@ const isExample = createTypeGuard((val, helpers) => {
 
   return val;
 });
+```
+
+## Extending Type Guards
+
+The `extend` method allows you to build upon existing type guards by adding additional validation rules. This is particularly useful when you need to add constraints or refinements to a base type.
+
+### Basic Extension
+
+```ts
+// Extend isString to validate email format
+const isEmail = isString.extend((val) => {
+  return val.includes("@") && val.includes(".") ? val : null;
+});
+
+isEmail("user@example.com"); // true
+isEmail("invalid-email"); // false
+isEmail(123); // false (fails base validation)
+```
+
+### Number Range Validation
+
+```ts
+// Extend isNumber to create a percentage validator (0-100)
+const isPercentage = isNumber.extend((val) => {
+  return val >= 0 && val <= 100 ? val : null;
+});
+
+isPercentage(50); // true
+isPercentage(150); // false
+isPercentage("50"); // false
+```
+
+### String Pattern Validation
+
+```ts
+// Extend isString to validate phone numbers
+const isPhoneNumber = isString.extend((val) => {
+  return /^\d{3}-\d{3}-\d{4}$/.test(val) ? val : null;
+});
+
+isPhoneNumber("555-123-4567"); // true
+isPhoneNumber("invalid"); // false
+```
+
+### Object Property Refinement
+
+```ts
+type User = { name: string; age: number };
+
+const isUser = createTypeGuard<User>((val, { has }) => {
+  if (Is.Object(val) && has(val, "name", Is.String) && has(val, "age", Is.Number)) {
+    return val;
+  }
+  return null;
+});
+
+// Extend to only accept adults
+const isAdult = isUser.extend((val) => {
+  return val.age >= 18 ? val : null;
+});
+
+isAdult({ name: "Alice", age: 25 }); // true
+isAdult({ name: "Bob", age: 16 }); // false
+```
+
+### Chained Extensions
+
+Extensions can be chained to create increasingly specific validators:
+
+```ts
+const isPositiveNumber = isNumber.extend((val) =>
+  val > 0 ? val : null
+);
+
+const isPositiveInteger = isPositiveNumber.extend((val) =>
+  Number.isInteger(val) ? val : null
+);
+
+const isEvenPositiveInteger = isPositiveInteger.extend((val) =>
+  val % 2 === 0 ? val : null
+);
+
+isEvenPositiveInteger(10); // true
+isEvenPositiveInteger(9); // false (not even)
+isEvenPositiveInteger(3.5); // false (not integer)
+isEvenPositiveInteger(-2); // false (not positive)
+```
+
+### Extensions with Helper Functions
+
+Extended validators have access to the same helper functions as the base validators:
+
+```ts
+// Create a status type with specific allowed values
+const validStatuses = ["active", "inactive", "pending"] as const;
+
+const isStatus = isString.extend((val, { includes }) => {
+  if (includes(validStatuses, val)) {
+    return val as typeof validStatuses[number];
+  }
+  return null;
+});
+
+isStatus("active"); // true
+isStatus("completed"); // false
+```
+
+### All Modes Work with Extensions
+
+Extended type guards support all the same modes as base type guards:
+
+```ts
+const isPositiveNumber = isNumber.extend((val) =>
+  val > 0 ? val : null
+);
+
+// Basic mode
+isPositiveNumber(10); // true
+
+// Strict mode (throws on failure)
+isPositiveNumber.strict(10); // passes
+isPositiveNumber.strict(-5); // throws TypeError
+
+// Assert mode
+const assertIsPositive: typeof isPositiveNumber.assert = isPositiveNumber.assert;
+assertIsPositive(10); // passes
+// assertIsPositive(-5); // throws
+
+// Optional mode
+isPositiveNumber.optional(10); // true
+isPositiveNumber.optional(undefined); // true
+isPositiveNumber.optional(-5); // false
 ```
 
 ## Specialized Modules
