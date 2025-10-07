@@ -1,5 +1,5 @@
 import { assert, assertFalse } from "@std/assert";
-import { isEmail, isInternationalPhone } from "./strings.ts";
+import { isEmail, isInternationalPhone, isUUIDv4 } from "./strings.ts";
 
 Deno.test("isEmail: returns true for valid emails", () => {
   assert(isEmail("test@example.com"));
@@ -95,4 +95,46 @@ Deno.test("isInternationalPhone: returns false for invalid international phone n
   assertFalse(isInternationalPhone({}));
   assertFalse(isInternationalPhone([]));
   assertFalse(isInternationalPhone(true));
+});
+
+Deno.test("isUUIDv4: returns true for valid UUID v4 strings", () => {
+  assert(isUUIDv4("550e8400-e29b-41d4-a716-446655440000"));
+  assert(isUUIDv4("6ba7b810-9dad-41d1-80b4-00c04fd430c8"));
+  assert(isUUIDv4("7c9e6679-7425-40de-944b-e07fc1f90ae7"));
+  assert(isUUIDv4("a1b2c3d4-e5f6-47a8-b9c0-d1e2f3a4b5c6"));
+  // Case insensitive
+  assert(isUUIDv4("550E8400-E29B-41D4-A716-446655440000"));
+  assert(isUUIDv4("6BA7B810-9DAD-41D1-80B4-00C04FD430C8"));
+});
+
+Deno.test("isUUIDv4: returns false for invalid UUID v4 strings", () => {
+  // Not a UUID v4 (wrong version digit)
+  assertFalse(isUUIDv4("550e8400-e29b-31d4-a716-446655440000")); // version 3
+  assertFalse(isUUIDv4("550e8400-e29b-51d4-a716-446655440000")); // version 5
+
+  // Wrong variant digit
+  assertFalse(isUUIDv4("550e8400-e29b-41d4-c716-446655440000")); // should be 8, 9, a, or b
+  assertFalse(isUUIDv4("550e8400-e29b-41d4-0716-446655440000")); // should be 8, 9, a, or b
+
+  // Wrong format
+  assertFalse(isUUIDv4("550e8400e29b41d4a716446655440000")); // missing hyphens
+  assertFalse(isUUIDv4("550e8400-e29b-41d4-a716-44665544000")); // too short
+  assertFalse(isUUIDv4("550e8400-e29b-41d4-a716-4466554400000")); // too long
+  assertFalse(isUUIDv4("550e8400-e29b-41d4-a716")); // incomplete
+
+  // Invalid characters
+  assertFalse(isUUIDv4("550e8400-e29b-41d4-a716-446655440zzz"));
+  assertFalse(isUUIDv4("550e8400-e29b-41d4-a716-44665544000g"));
+
+  // Non-string types
+  assertFalse(isUUIDv4(null));
+  assertFalse(isUUIDv4(undefined));
+  assertFalse(isUUIDv4(123));
+  assertFalse(isUUIDv4({}));
+  assertFalse(isUUIDv4([]));
+  assertFalse(isUUIDv4(true));
+
+  // Empty or malformed
+  assertFalse(isUUIDv4(""));
+  assertFalse(isUUIDv4("not a uuid"));
 });

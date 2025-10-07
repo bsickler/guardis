@@ -9,6 +9,7 @@ import {
   isInternationalPhone as _isInternationalPhone,
   isPhoneNumber as _isPhoneNumber,
   isUSPhone as _isUSPhone,
+  isUUIDv4 as _isUUIDv4,
 } from "./strings.ts";
 
 export type Email = Brand<string, "Email">;
@@ -64,3 +65,17 @@ export type PhoneNumber = USPhone | InternationalPhone;
  * @returns Boolean indicating whether the input is a valid phone number.
  */
 export const isPhoneNumber = _isPhoneNumber as TypeGuard<PhoneNumber>;
+
+
+export type UUIDv4 = Brand<string, "UUIDv4">;
+
+/**
+ * Type guard for validating whether a given value is a valid UUIDv4 string.
+ * Uses a branded type to ensure type safety and distinguish it from other strings.
+ *
+ * Uses a regex pattern to test if the input is a string that matches the UUIDv4 format.
+ *
+ * @param t - The value to test for UUIDv4 validity.
+ * @returns Boolean indicating whether the input is a valid UUIDv4.
+ */
+export const isUUIDv4 = _isUUIDv4 as TypeGuard<UUIDv4>;

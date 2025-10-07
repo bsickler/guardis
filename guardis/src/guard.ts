@@ -566,12 +566,16 @@ const isEmptyArray: TypeGuard<[]> = createTypeGuard<[]>((t): [] | null => {
 });
 
 const isEmptyString: TypeGuard<""> = createTypeGuard<"">((t): "" | null => {
-  return t === "" ? t : null;
+  // @ts-expect-error We're accepting t may not be of type string but using
+  // a null safety check to invoke it.
+  return t === "" ? t : t?.trim?.() === "" ? t as "" : null;
 });
 
 /**
  * Returns true if input is undefined, null, empty string, object with length
  * of 0 or object without enumerable keys.
+ *
+ * Strings are trimmed when evaluated.
  * @param {unknown} t
  * @return {boolean}
  */

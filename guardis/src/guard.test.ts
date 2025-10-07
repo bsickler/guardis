@@ -27,6 +27,7 @@ const TEST_VALUES = {
   // Primitive values
   string: "test",
   emptyString: "",
+  whitespaceString: " ",
   number: 42,
   zero: 0,
   float: 3.14,
@@ -533,6 +534,7 @@ Deno.test("isEmpty", async (t) => {
     assert(isEmpty(TEST_VALUES.emptyString));
     assert(isEmpty(TEST_VALUES.emptyObject));
     assert(isEmpty(TEST_VALUES.emptyArray));
+    assert(isEmpty(TEST_VALUES.whitespaceString));
 
     // Invalid inputs (non-empty values)
     assertFalse(isEmpty(TEST_VALUES.string));
