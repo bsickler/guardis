@@ -9,6 +9,7 @@
 export * from "./src/guard.ts";
 export * from "./src/extend.ts";
 export * from "./src/batch.ts";
+export * from "./src/brand.ts";
 export * from "./src/types.ts";
 
 import * as g from "./src/guard.ts";
