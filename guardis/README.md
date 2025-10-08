@@ -399,6 +399,22 @@ isRequest.strict(value); // throws if not Request
 isResponse.optional(value); // allows undefined
 ```
 
+### Async Module
+
+```ts
+import { isAsyncFunction, isPromise, isPromiseLike, isThenable } from "jsr:@spudlabs/guardis/async";
+
+// Async types
+isAsyncFunction(async () => {}); // true
+isPromise(Promise.resolve(42)); // true
+isPromiseLike({ then: () => {} }); // true (checks for .then method)
+isThenable({ then: () => {} }); // true (alias for isPromiseLike)
+
+// All modes available
+isPromise.strict(value); // throws if not Promise
+isAsyncFunction.optional(value); // allows undefined
+```
+
 ## Batch Creation
 
 Generate multiple type guards at once:
