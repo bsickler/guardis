@@ -1,11 +1,13 @@
-import { createTypeGuard } from "../guard.ts";
+import { createTypeGuard, type TypeGuard } from "../guard.ts";
 
 /**
  * Returns true if input is an async function.
  * @param {unknown} t
  * @return {boolean}
  */
-export const isAsyncFunction = createTypeGuard(
+export const isAsyncFunction: TypeGuard<(...args: unknown[]) => Promise<unknown>> = createTypeGuard<
+  (...args: unknown[]) => Promise<unknown>
+>(
   (t: unknown) => {
     return typeof t === "function" && t.constructor.name === "AsyncFunction"
       ? (t as (...args: unknown[]) => Promise<unknown>)
@@ -18,7 +20,7 @@ export const isAsyncFunction = createTypeGuard(
  * @param {unknown} t
  * @return {boolean}
  */
-export const isPromise = createTypeGuard(<T>(t: unknown) =>
+export const isPromise: TypeGuard<Promise<unknown>> = createTypeGuard(<T>(t: unknown) =>
   t instanceof Promise ? t as Promise<T> : null
 );
 
@@ -27,7 +29,7 @@ export const isPromise = createTypeGuard(<T>(t: unknown) =>
  * @param {unknown} t
  * @return {boolean}
  */
-export const isPromiseLike = createTypeGuard(<T>(t: unknown) => {
+export const isPromiseLike: TypeGuard<PromiseLike<unknown>> = createTypeGuard(<T>(t: unknown) => {
   if (
     t &&
     typeof t === "object" &&
