@@ -159,6 +159,17 @@ Deno.test("isString", async (t) => {
     assertFalse(isString.optional(TEST_VALUES.nullValue));
   });
 
+  await t.step("optional.notEmpty mode", () => {
+    // Valid inputs
+    assert(isString.optional.notEmpty(TEST_VALUES.string));
+    assert(isString.optional.notEmpty(TEST_VALUES.undefinedValue));
+
+    // Invalid inputs
+    assertFalse(isString.optional.notEmpty(TEST_VALUES.number));
+    assertFalse(isString.optional.notEmpty(TEST_VALUES.nullValue));
+    assertFalse(isString.optional.notEmpty(TEST_VALUES.emptyString));
+  });
+
   await t.step("notEmpty mode", () => {
     // Valid inputs
     assert(isString.notEmpty(TEST_VALUES.string));
@@ -168,6 +179,17 @@ Deno.test("isString", async (t) => {
     assertFalse(isString.notEmpty(TEST_VALUES.number));
     assertFalse(isString.notEmpty(TEST_VALUES.nullValue));
     assertFalse(isString.notEmpty(TEST_VALUES.undefinedValue));
+  });
+
+  await t.step("notEmpty.optional mode", () => {
+    // Valid inputs
+    assert(isString.notEmpty.optional(TEST_VALUES.string));
+    assert(isString.notEmpty.optional(TEST_VALUES.undefinedValue));
+
+    // Invalid inputs
+    assertFalse(isString.notEmpty.optional(TEST_VALUES.emptyString));
+    assertFalse(isString.notEmpty.optional(TEST_VALUES.number));
+    assertFalse(isString.notEmpty.optional(TEST_VALUES.nullValue));
   });
 });
 
@@ -692,6 +714,28 @@ Deno.test("isArray", async (t) => {
     assertFalse(isArray.notEmpty(TEST_VALUES.object));
     assertFalse(isArray.notEmpty(TEST_VALUES.nullValue));
     assertFalse(isArray.notEmpty(TEST_VALUES.undefinedValue));
+  });
+
+  await t.step("optional.notEmpty mode", () => {
+    // Valid inputs
+    assert(isArray.optional.notEmpty(TEST_VALUES.array));
+    assert(isArray.optional.notEmpty(TEST_VALUES.undefinedValue));
+
+    // Invalid inputs
+    assertFalse(isArray.optional.notEmpty(TEST_VALUES.emptyArray));
+    assertFalse(isArray.optional.notEmpty(TEST_VALUES.object));
+    assertFalse(isArray.optional.notEmpty(TEST_VALUES.nullValue));
+  });
+
+  await t.step("notEmpty.optional mode", () => {
+    // Valid inputs
+    assert(isArray.notEmpty.optional(TEST_VALUES.array));
+    assert(isArray.notEmpty.optional(TEST_VALUES.undefinedValue));
+
+    // Invalid inputs
+    assertFalse(isArray.notEmpty.optional(TEST_VALUES.emptyArray));
+    assertFalse(isArray.notEmpty.optional(TEST_VALUES.object));
+    assertFalse(isArray.notEmpty.optional(TEST_VALUES.nullValue));
   });
 });
 

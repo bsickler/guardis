@@ -189,6 +189,17 @@ export interface TypeGuard<T1> extends StandardSchemaV1<T1> {
      * @returns Asserts that the value is of type T
      */
     assert: (value: unknown, errorMsg?: string) => asserts value is T1 | undefined;
+    /**
+     * A type guard that checks if the value is not empty and of type T | undefined.
+     * An empty value is defined as null, an empty string, an empty array,
+     * or an empty object.
+     * @param value The value to check
+     * @returns true if the value is of type T and not empty, otherwise false
+     *
+     * @note This method is equivalent to calling `isString.notEmpty.optional`
+     * on a type guard named `isString`.
+     */
+    notEmpty: canBeEmpty<T1> extends false ? never : TypeGuard<T1 | undefined>["notEmpty"];
   };
   notEmpty: canBeEmpty<T1> extends false ? never : {
     /**
@@ -240,6 +251,17 @@ export interface TypeGuard<T1> extends StandardSchemaV1<T1> {
      * @returns
      */
     validate: (value: unknown) => StandardSchemaV1.Result<T1>;
+    /**
+     * A type guard that checks if the value is not empty and of type T | undefined.
+     * An empty value is defined as null, an empty string, an empty array,
+     * or an empty object.
+     * @param value The value to check
+     * @returns true if the value is of type T and not empty, otherwise false
+     *
+     * @note This method is equivalent to calling `isString.optional.notEmpty`
+     * on a type guard named `isString`.
+     */
+    optional: TypeGuard<T1 | undefined>["optional"];
   };
 }
 
@@ -298,6 +320,8 @@ export const createTypeGuard = <T1>(parse: Parser<T1>): TypeGuard<T1> => {
   notEmpty.assert = createAssertTypeGuard(notEmpty.strict);
   notEmpty.validate = (value: unknown) =>
     notEmpty(value) ? { value } : { issues: [{ message: `Invalid type` }] };
+  notEmpty.optional = (value: unknown): value is T1 | undefined =>
+    callback(value) ? notEmpty(value) : isUndefined(value);
   callback.notEmpty = notEmpty as canBeEmpty<T1> extends false ? never : typeof notEmpty;
 
   /**
@@ -310,6 +334,7 @@ export const createTypeGuard = <T1>(parse: Parser<T1>): TypeGuard<T1> => {
 
   optional.strict = createStrictTypeGuard(optional);
   optional.assert = createAssertTypeGuard(optional.strict);
+  optional.notEmpty = notEmpty.optional;
   callback.optional = optional;
 
   /**
@@ -400,6 +425,8 @@ export const isNumeric: TypeGuard<number> = createTypeGuard((t): number | null =
 
   return (!isNaN(_t) && isNumber(_t)) ? t as number : null;
 });
+
+isNumber.optional;
 
 /**
  * Returns true if input satisfies type Function.
