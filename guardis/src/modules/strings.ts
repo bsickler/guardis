@@ -79,17 +79,18 @@ const UUID_4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0
 export const isUUIDv4: TypeGuard<string> = isString.extend((t) => UUID_4_REGEX.test(t) ? t : null);
 
 /**
- * A regular expression used to match individual components of a comma-delimited string.
+ * A regular expression used to validate comma-delimited strings.
  *
  * - Matches strings enclosed in double quotes, allowing for escaped characters within the quotes.
  * - Matches unquoted segments that do not contain commas, double quotes, or backslashes.
  * - Useful for parsing CSV-like strings where fields may be quoted or unquoted.
+ * - Validates the entire string structure, allowing empty strings, single values, or comma-separated values.
  *
  * Example:
  * Input: `"value1","value2,with,commas",unquotedValue`
- * Matches: ["value1", "value2,with,commas", "unquotedValue"]
+ * Matches: entire string as valid comma-delimited format
  */
-const COMMA_DELIMITED_REGEX = /(?:"(?:[^"\\]|\\.)*"|(?:[^,"\\]|\\.)*)/;
+const COMMA_DELIMITED_REGEX = /^(?:(?:"(?:[^"\\]|\\.)*"|[^,"\\]+)(?:,(?:"(?:[^"\\]|\\.)*"|[^,"\\]+))*)?$/;
 
 export const isCommaDelimited: TypeGuard<string> = isString.extend((t) =>
   COMMA_DELIMITED_REGEX.test(t) ? t : null
