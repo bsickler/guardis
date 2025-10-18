@@ -384,6 +384,22 @@ isPositiveNumber.optional(-5); // false
 
 Guardis includes specialized modules for domain-specific types:
 
+### Async Module
+
+```ts
+import { isAsyncFunction, isPromise, isPromiseLike, isThenable } from "jsr:@spudlabs/guardis/async";
+
+// Async types
+isAsyncFunction(async () => {}); // true
+isPromise(Promise.resolve(42)); // true
+isPromiseLike({ then: () => {} }); // true (checks for .then method)
+isThenable({ then: () => {} }); // true (alias for isPromiseLike)
+
+// All modes available
+isPromise.strict(value); // throws if not Promise
+isAsyncFunction.optional(value); // allows undefined
+```
+
 ### HTTP Module
 
 ```ts
@@ -399,20 +415,31 @@ isRequest.strict(value); // throws if not Request
 isResponse.optional(value); // allows undefined
 ```
 
-### Async Module
+### String Module
 
 ```ts
-import { isAsyncFunction, isPromise, isPromiseLike, isThenable } from "jsr:@spudlabs/guardis/async";
+import { isEmail, isInternationalPhone, isUSPhone, isPhoneNumber, isUUIDv4, isCommaDelimited } from "jsr:@spudlabs/guardis/strings";
 
-// Async types
-isAsyncFunction(async () => {}); // true
-isPromise(Promise.resolve(42)); // true
-isPromiseLike({ then: () => {} }); // true (checks for .then method)
-isThenable({ then: () => {} }); // true (alias for isPromiseLike)
+// Email validation
+isEmail("user@example.com"); // true
+isEmail("invalid-email"); // false
+
+// Phone number validation
+isInternationalPhone("+1 234 567 8901"); // true (international format)
+isUSPhone("555-123-4567"); // true (US format)
+isPhoneNumber("+44 20 7946 0958"); // true (accepts both formats)
+
+// UUID v4 validation
+isUUIDv4("550e8400-e29b-41d4-a716-446655440000"); // true
+isUUIDv4("invalid-uuid"); // false
+
+// Comma-delimited string validation (for CSV-like data)
+isCommaDelimited("value1,value2,value3"); // true
+isCommaDelimited('"quoted,value",unquoted'); // true (supports quoted values)
 
 // All modes available
-isPromise.strict(value); // throws if not Promise
-isAsyncFunction.optional(value); // allows undefined
+isEmail.strict(value); // throws if not a valid email
+isPhoneNumber.optional(value); // allows undefined
 ```
 
 ## Batch Creation
