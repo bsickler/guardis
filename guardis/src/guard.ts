@@ -394,12 +394,16 @@ export const isString: TypeGuard<string> = createTypeGuard((t): string | null =>
 );
 
 /**
- * Returns true if input satisfies type number.
+ * Returns true if input satisfies type number. Returns false if `NaN` is passed.
+ *
+ * While `NaN` is technically a number in JavaScript, it is not a valid value for many applications
+ * and will fail if used with common numeric operations.
+ *
  * @param {unknown} t
  * @return {boolean}
  */
 export const isNumber: TypeGuard<number> = createTypeGuard((t): number | null =>
-  typeof t === "number" ? t : null
+  typeof t === "number" && !Number.isNaN(t) ? t : null
 );
 
 /**
