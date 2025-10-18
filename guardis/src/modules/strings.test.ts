@@ -1,5 +1,5 @@
 import { assert, assertFalse } from "@std/assert";
-import { isCommaDelimited, isEmail, isInternationalPhone, isUUIDv4 } from "./strings.ts";
+import { isCommaDelimited, isEmail, isInternationalPhone, isPeriodDelimited, isUUIDv4 } from "./strings.ts";
 
 Deno.test("isEmail", async (t) => {
   await t.step("returns true for valid emails", () => {
@@ -192,5 +192,55 @@ Deno.test("isCommaDelimited", async (t) => {
     assertFalse(isCommaDelimited({}));
     assertFalse(isCommaDelimited([]));
     assertFalse(isCommaDelimited(true));
+  });
+});
+
+Deno.test("isPeriodDelimited", async (t) => {
+  await t.step("returns true for valid period-delimited strings", () => {
+    // Simple unquoted values
+    assert(isPeriodDelimited("value1"));
+    assert(isPeriodDelimited("value1.value2"));
+    assert(isPeriodDelimited("value1.value2.value3"));
+
+    // Numerical values
+    assert(isPeriodDelimited("123.456.789"));
+    assert(isPeriodDelimited("1-23.4-56.7-89"));
+
+    // Quoted values
+    assert(isPeriodDelimited('"value1"'));
+    assert(isPeriodDelimited('"value1"."value2"'));
+    assert(isPeriodDelimited('"value1"."value2"."value3"'));
+
+    // Quoted values with periods inside
+    assert(isPeriodDelimited('"value1.with.periods"'));
+    assert(isPeriodDelimited('"value1.with.periods"."value2"'));
+
+    // Mixed quoted and unquoted
+    assert(isPeriodDelimited('"value1".value2'));
+    assert(isPeriodDelimited('value1."value2"'));
+    assert(isPeriodDelimited('"value1".value2."value3"'));
+
+    // Escaped characters within quotes
+    assert(isPeriodDelimited('"value\\"with\\"quotes"'));
+    assert(isPeriodDelimited('"value\\\\with\\\\backslash"'));
+
+    // Empty string (matches the regex as it's technically a valid component)
+    assert(isPeriodDelimited(""));
+
+    // Single values with various characters
+    assert(isPeriodDelimited("abc123"));
+    assert(isPeriodDelimited("hello-world"));
+    assert(isPeriodDelimited("test_value"));
+    assert(isPeriodDelimited("value,with,commas"));
+  });
+
+  await t.step("returns false for invalid inputs", () => {
+    // Non-string types
+    assertFalse(isPeriodDelimited(null));
+    assertFalse(isPeriodDelimited(undefined));
+    assertFalse(isPeriodDelimited(123));
+    assertFalse(isPeriodDelimited({}));
+    assertFalse(isPeriodDelimited([]));
+    assertFalse(isPeriodDelimited(true));
   });
 });

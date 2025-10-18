@@ -8,6 +8,7 @@ import {
   isCommaDelimited as _isCommaDelimited,
   isEmail as _isEmail,
   isInternationalPhone as _isInternationalPhone,
+  isPeriodDelimited as _isPeriodDelimited,
   isPhoneNumber as _isPhoneNumber,
   isUSPhone as _isUSPhone,
   isUUIDv4 as _isUUIDv4,
@@ -122,3 +123,21 @@ export type CommaDelimitedString = Brand<string, "CommaDelimitedString">;
  * @returns Boolean indicating whether the input is a valid comma-delimited string.
  */
 export const isCommaDelimited = _isCommaDelimited as TypeGuard<CommaDelimitedString>;
+
+/**
+ * Represents a branded type for a period-delimited string.
+ * This type ensures that a string is explicitly marked as a "PeriodDelimitedString"
+ * to provide additional type safety and clarity in the codebase.
+ */
+export type PeriodDelimitedString = Brand<string, "PeriodDelimitedString">;
+
+/**
+ * Type guard for validating whether a given value is a valid period-delimited string.
+ * Uses a branded type to ensure type safety and distinguish it from other strings.
+ *
+ * Uses a regex pattern to test if the input is a string that matches the period-delimited format.
+ *
+ * @param t - The value to test for period-delimited string validity.
+ * @returns Boolean indicating whether the input is a valid period-delimited string.
+ */
+export const isPeriodDelimited = _isPeriodDelimited as TypeGuard<PeriodDelimitedString>;

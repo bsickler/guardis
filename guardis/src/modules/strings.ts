@@ -74,7 +74,7 @@ const UUID_4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0
  * A type guard function that checks if a given value is a valid UUID version 4 string.
  *
  * @param t - The value to be checked.
- * @returns The input string if it is a valid UUID v4, otherwise `null`.
+ * @returns  Boolean indicating whether the input is a valid UUID v4 string.
  */
 export const isUUIDv4: TypeGuard<string> = isString.extend((t) => UUID_4_REGEX.test(t) ? t : null);
 
@@ -90,8 +90,34 @@ export const isUUIDv4: TypeGuard<string> = isString.extend((t) => UUID_4_REGEX.t
  * Input: `"value1","value2,with,commas",unquotedValue`
  * Matches: entire string as valid comma-delimited format
  */
-const COMMA_DELIMITED_REGEX = /^(?:(?:"(?:[^"\\]|\\.)*"|[^,"\\]+)(?:,(?:"(?:[^"\\]|\\.)*"|[^,"\\]+))*)?$/;
+const COMMA_DELIMITED_REGEX =
+  /^(?:(?:"(?:[^"\\]|\\.)*"|[^,"\\]+)(?:,(?:"(?:[^"\\]|\\.)*"|[^,"\\]+))*)?$/;
 
+/**
+ * A type guard function that checks if a given string matches the pattern of a comma-delimited string.
+ *
+ * This function extends the `isString` type guard and applies an additional validation
+ * using the `COMMA_DELIMITED_REGEX` regular expression. If the string matches the pattern,
+ * it is returned; otherwise, `null` is returned.
+ *
+ * @param t - The input value to be checked.
+ * @returns  Boolean indicating whether the input is a valid comma-delimited string.
+ */
 export const isCommaDelimited: TypeGuard<string> = isString.extend((t) =>
   COMMA_DELIMITED_REGEX.test(t) ? t : null
+);
+
+const PERIOD_DELIMITED_REGEX =
+  /^(?:(?:"(?:[^"\\]|\\.)*"|[^."\\""]+)(?:.(?:"(?:[^"\\]|\\.)*"|[^."\\""]+))*)?$/;
+
+/**
+ * Checks if a given string matches the period-delimited format.
+ * This function extends the `isString` type guard to validate
+ * whether the input string conforms to the `PERIOD_DELIMITED_REGEX`.
+ *
+ * @param t - The string to be validated.
+ * @returns  Boolean indicating whether the input is a valid period-delimited string.
+ */
+export const isPeriodDelimited: TypeGuard<string> = isString.extend((t) =>
+  PERIOD_DELIMITED_REGEX.test(t) ? t : null
 );
