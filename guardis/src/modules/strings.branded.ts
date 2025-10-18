@@ -6,6 +6,8 @@ import type { Brand } from "../brand.ts";
 import type { TypeGuard } from "../guard.ts";
 import {
   isCommaDelimited as _isCommaDelimited,
+  isCommaDelimitedIntegers as _isCommaDelimitedIntegers,
+  isCommaDelimitedNumbers as _isCommaDelimitedNumbers,
   isEmail as _isEmail,
   isInternationalPhone as _isInternationalPhone,
   isPeriodDelimited as _isPeriodDelimited,
@@ -141,3 +143,56 @@ export type PeriodDelimitedString = Brand<string, "PeriodDelimitedString">;
  * @returns Boolean indicating whether the input is a valid period-delimited string.
  */
 export const isPeriodDelimited = _isPeriodDelimited as TypeGuard<PeriodDelimitedString>;
+
+/**
+ * Represents a branded type for a comma-delimited string of integers.
+ * This type ensures that a string is explicitly marked as a "CommaDelimitedIntegers"
+ * to provide additional type safety and clarity in the codebase.
+ */
+export type CommaDelimitedIntegers = Brand<string, "CommaDelimitedIntegers">;
+
+/**
+ * A type guard function that checks if a given string matches the pattern of a comma-delimited
+ * string of integers.
+ *
+ * - Matches one or more integers (positive or negative) separated by commas.
+ * - Does not allow empty values between commas.
+ * - Does not allow any whitespace (between digits or after commas).
+ * - Does not match empty strings.
+ *
+ * @param t - The value to test for comma-delimited integers validity.
+ * @returns Boolean indicating whether the input is a valid comma-delimited string of integers.
+ *
+ * @example
+ * - Valid: "1,2,3", "123,456,789", "-1,2,-3"
+ * - Invalid: "1,,3", "1, 2, 3", "1 2,3", "", "1.5,2"
+ */
+export const isCommaDelimitedIntegers = _isCommaDelimitedIntegers as TypeGuard<CommaDelimitedIntegers>;
+
+/**
+ * Represents a branded type for a comma-delimited string of numbers.
+ * This type ensures that a string is explicitly marked as a "CommaDelimitedNumbers"
+ * to provide additional type safety and clarity in the codebase.
+ */
+export type CommaDelimitedNumbers = Brand<string, "CommaDelimitedNumbers">;
+
+/**
+ * A type guard function that checks if a given string matches the pattern of a comma-delimited
+ * string of numbers.
+ *
+ * - Matches one or more numbers (integers, floats, decimals, or percentages) separated by commas.
+ * - Supports positive and negative numbers.
+ * - Supports decimal values (e.g., "1.5", "3.14159").
+ * - Supports percentage values (e.g., "50%", "12.5%").
+ * - Does not allow empty values between commas.
+ * - Does not allow any whitespace (between digits or after commas).
+ * - Does not match empty strings.
+ *
+ * @param t - The value to test for comma-delimited numbers validity.
+ * @returns Boolean indicating whether the input is a valid comma-delimited string of numbers.
+ *
+ * @example
+ * - Valid: "1,2,3", "1.5,2.5,3.5", "-1.5,2,3.14", "50%,75%,100%", "1.5%,2,3%"
+ * - Invalid: "1,,3", "1, 2, 3", "1 2,3", "", "1..5,2", "1.5.5,2"
+ */
+export const isCommaDelimitedNumbers = _isCommaDelimitedNumbers as TypeGuard<CommaDelimitedNumbers>;
