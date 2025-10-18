@@ -1,5 +1,13 @@
 import { assert, assertFalse } from "@std/assert";
-import { isCommaDelimited, isEmail, isInternationalPhone, isPeriodDelimited, isUUIDv4 } from "./strings.ts";
+import {
+  isCommaDelimited,
+  isCommaDelimitedIntegers,
+  isCommaDelimitedNumbers,
+  isEmail,
+  isInternationalPhone,
+  isPeriodDelimited,
+  isUUIDv4,
+} from "./strings.ts";
 
 Deno.test("isEmail", async (t) => {
   await t.step("returns true for valid emails", () => {
@@ -242,5 +250,182 @@ Deno.test("isPeriodDelimited", async (t) => {
     assertFalse(isPeriodDelimited({}));
     assertFalse(isPeriodDelimited([]));
     assertFalse(isPeriodDelimited(true));
+  });
+});
+
+Deno.test("isCommaDelimitedIntegers", async (t) => {
+  await t.step("returns true for valid comma-delimited integer strings", () => {
+    // Single integers
+    assert(isCommaDelimitedIntegers("1"));
+    assert(isCommaDelimitedIntegers("123"));
+    assert(isCommaDelimitedIntegers("-456"));
+    assert(isCommaDelimitedIntegers("0"));
+
+    // Multiple comma-separated integers (no whitespace)
+    assert(isCommaDelimitedIntegers("1,2,3"));
+    assert(isCommaDelimitedIntegers("123,456,789"));
+    assert(isCommaDelimitedIntegers("10,20,30,40,50"));
+
+    // Negative integers
+    assert(isCommaDelimitedIntegers("-1,2,-3"));
+    assert(isCommaDelimitedIntegers("-123,-456,-789"));
+    assert(isCommaDelimitedIntegers("-1,-2,-3,-4"));
+
+    // Mixed positive and negative
+    assert(isCommaDelimitedIntegers("1,-2,3,-4,5"));
+    assert(isCommaDelimitedIntegers("-100,200,-300"));
+
+    // Large integers
+    assert(isCommaDelimitedIntegers("1000000,2000000,3000000"));
+    assert(isCommaDelimitedIntegers("-999999999,0,999999999"));
+  });
+
+  await t.step("returns false for invalid inputs", () => {
+    // Empty string
+    assertFalse(isCommaDelimitedIntegers(""));
+
+    // Empty values between commas
+    assertFalse(isCommaDelimitedIntegers("1,,3"));
+    assertFalse(isCommaDelimitedIntegers(",1,2"));
+    assertFalse(isCommaDelimitedIntegers("1,2,"));
+
+    // Any whitespace (not allowed)
+    assertFalse(isCommaDelimitedIntegers("1, 2, 3"));
+    assertFalse(isCommaDelimitedIntegers("1,2, 3"));
+    assertFalse(isCommaDelimitedIntegers("1, 2,3"));
+    assertFalse(isCommaDelimitedIntegers("1,  2,  3")); // Multiple spaces
+    assertFalse(isCommaDelimitedIntegers("1,\t2,\t3")); // Tabs
+    assertFalse(isCommaDelimitedIntegers("1 2,3")); // Whitespace between digits
+    assertFalse(isCommaDelimitedIntegers("12 3,456"));
+    assertFalse(isCommaDelimitedIntegers(" 1,2,3")); // Leading whitespace
+    assertFalse(isCommaDelimitedIntegers("1,2,3 ")); // Trailing whitespace
+    assertFalse(isCommaDelimitedIntegers(" 1,2,3 "));
+
+    // Decimal numbers
+    assertFalse(isCommaDelimitedIntegers("1.5,2"));
+    assertFalse(isCommaDelimitedIntegers("1,2.5,3"));
+    assertFalse(isCommaDelimitedIntegers("1.0,2.0"));
+
+    // Non-numeric characters
+    assertFalse(isCommaDelimitedIntegers("1,a,3"));
+    assertFalse(isCommaDelimitedIntegers("abc,def"));
+    assertFalse(isCommaDelimitedIntegers("1,2,three"));
+
+    // Just commas
+    assertFalse(isCommaDelimitedIntegers(","));
+    assertFalse(isCommaDelimitedIntegers(",,"));
+    assertFalse(isCommaDelimitedIntegers("1, ,3"));
+
+    // Non-string types
+    assertFalse(isCommaDelimitedIntegers(null));
+    assertFalse(isCommaDelimitedIntegers(undefined));
+    assertFalse(isCommaDelimitedIntegers(123));
+    assertFalse(isCommaDelimitedIntegers({}));
+    assertFalse(isCommaDelimitedIntegers([]));
+    assertFalse(isCommaDelimitedIntegers(true));
+  });
+});
+
+Deno.test("isCommaDelimitedNumbers", async (t) => {
+  await t.step("returns true for valid comma-delimited number strings", () => {
+    // Single numbers
+    assert(isCommaDelimitedNumbers("1"));
+    assert(isCommaDelimitedNumbers("123"));
+    assert(isCommaDelimitedNumbers("-456"));
+    assert(isCommaDelimitedNumbers("0"));
+
+    // Decimal numbers
+    assert(isCommaDelimitedNumbers("1.5"));
+    assert(isCommaDelimitedNumbers("3.14"));
+    assert(isCommaDelimitedNumbers("-2.718"));
+    assert(isCommaDelimitedNumbers("0.5"));
+
+    // Multiple comma-separated numbers (integers)
+    assert(isCommaDelimitedNumbers("1,2,3"));
+    assert(isCommaDelimitedNumbers("123,456,789"));
+    assert(isCommaDelimitedNumbers("10,20,30,40,50"));
+
+    // Multiple comma-separated decimals
+    assert(isCommaDelimitedNumbers("1.5,2.5,3.5"));
+    assert(isCommaDelimitedNumbers("3.14,2.718,1.414"));
+    assert(isCommaDelimitedNumbers("0.1,0.2,0.3"));
+
+    // Mixed integers and decimals
+    assert(isCommaDelimitedNumbers("1,2.5,3"));
+    assert(isCommaDelimitedNumbers("-1.5,2,3.14"));
+    assert(isCommaDelimitedNumbers("100,99.99,50.5,-25"));
+
+    // Percentages
+    assert(isCommaDelimitedNumbers("50%"));
+    assert(isCommaDelimitedNumbers("100%"));
+    assert(isCommaDelimitedNumbers("12.5%"));
+    assert(isCommaDelimitedNumbers("50%,75%,100%"));
+    assert(isCommaDelimitedNumbers("10%,20%,30%"));
+
+    // Mixed numbers with percentages
+    assert(isCommaDelimitedNumbers("1,50%,3"));
+    assert(isCommaDelimitedNumbers("1.5%,2,3%"));
+    assert(isCommaDelimitedNumbers("100%,50,25.5%"));
+
+    // Negative numbers
+    assert(isCommaDelimitedNumbers("-1,2,-3"));
+    assert(isCommaDelimitedNumbers("-1.5,-2.5,-3.5"));
+    assert(isCommaDelimitedNumbers("-100,200,-300.5"));
+
+    // Large numbers
+    assert(isCommaDelimitedNumbers("1000000,2000000,3000000"));
+    assert(isCommaDelimitedNumbers("999999.99,0.01,123456.789"));
+  });
+
+  await t.step("returns false for invalid inputs", () => {
+    // Empty string
+    assertFalse(isCommaDelimitedNumbers(""));
+
+    // Empty values between commas
+    assertFalse(isCommaDelimitedNumbers("1,,3"));
+    assertFalse(isCommaDelimitedNumbers(",1,2"));
+    assertFalse(isCommaDelimitedNumbers("1,2,"));
+
+    // Any whitespace (not allowed)
+    assertFalse(isCommaDelimitedNumbers("1, 2, 3"));
+    assertFalse(isCommaDelimitedNumbers("1.5, 2.5, 3.5"));
+    assertFalse(isCommaDelimitedNumbers("1,2, 3"));
+    assertFalse(isCommaDelimitedNumbers("1, 2,3"));
+    assertFalse(isCommaDelimitedNumbers("1,  2,  3")); // Multiple spaces
+    assertFalse(isCommaDelimitedNumbers("1,\t2,\t3")); // Tabs
+    assertFalse(isCommaDelimitedNumbers("1 2,3")); // Whitespace between digits
+    assertFalse(isCommaDelimitedNumbers("1.5 ,2"));
+    assertFalse(isCommaDelimitedNumbers(" 1,2,3")); // Leading whitespace
+    assertFalse(isCommaDelimitedNumbers("1,2,3 ")); // Trailing whitespace
+    assertFalse(isCommaDelimitedNumbers(" 1.5,2,3 "));
+
+    // Invalid decimal formats
+    assertFalse(isCommaDelimitedNumbers("1..5,2")); // Double decimal
+    assertFalse(isCommaDelimitedNumbers("1.5.5,2")); // Multiple decimals
+    assertFalse(isCommaDelimitedNumbers(".5,2")); // Leading decimal without digit
+    assertFalse(isCommaDelimitedNumbers("1.,2")); // Trailing decimal without digit
+
+    // Multiple percentage signs
+    assertFalse(isCommaDelimitedNumbers("50%%,100"));
+    assertFalse(isCommaDelimitedNumbers("50%50,100"));
+
+    // Non-numeric characters
+    assertFalse(isCommaDelimitedNumbers("1,a,3"));
+    assertFalse(isCommaDelimitedNumbers("abc,def"));
+    assertFalse(isCommaDelimitedNumbers("1,2,three"));
+    assertFalse(isCommaDelimitedNumbers("1.5px,2"));
+
+    // Just commas
+    assertFalse(isCommaDelimitedNumbers(","));
+    assertFalse(isCommaDelimitedNumbers(",,"));
+    assertFalse(isCommaDelimitedNumbers("1, ,3"));
+
+    // Non-string types
+    assertFalse(isCommaDelimitedNumbers(null));
+    assertFalse(isCommaDelimitedNumbers(undefined));
+    assertFalse(isCommaDelimitedNumbers(123));
+    assertFalse(isCommaDelimitedNumbers({}));
+    assertFalse(isCommaDelimitedNumbers([]));
+    assertFalse(isCommaDelimitedNumbers(true));
   });
 });

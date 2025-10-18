@@ -121,3 +121,50 @@ const PERIOD_DELIMITED_REGEX =
 export const isPeriodDelimited: TypeGuard<string> = isString.extend((t) =>
   PERIOD_DELIMITED_REGEX.test(t) ? t : null
 );
+
+const COMMA_DELIMITED_INTEGERS_REGEX = /^-?\d+(?:,-?\d+)*$/;
+
+/**
+ * A type guard function that checks if a given string matches the pattern of a comma-delimited
+ * string of integers.
+ *
+ * - Matches one or more integers (positive or negative) separated by commas.
+ * - Does not allow empty values between commas.
+ * - Does not allow any whitespace (between digits or after commas).
+ * - Does not match empty strings.
+ *
+ * @param t - The value to test for comma-delimited integers validity.
+ * @returns Boolean indicating whether the input is a valid comma-delimited string of integers.
+ *
+ * @example
+ * - Valid: "1,2,3", "123,456,789", "-1,2,-3"
+ * - Invalid: "1,,3", "1, 2, 3", "1 2,3", "", "1.5,2"
+ */
+export const isCommaDelimitedIntegers: TypeGuard<string> = isString.extend((t) =>
+  COMMA_DELIMITED_INTEGERS_REGEX.test(t) ? t : null
+);
+
+const COMMA_DELIMITED_NUMBERS_REGEX = /^-?\d+(?:\.\d+)?%?(?:,-?\d+(?:\.\d+)?%?)*$/;
+
+/**
+ * A type guard function that checks if a given string matches the pattern of a comma-delimited
+ * string of numbers.
+ *
+ * - Matches one or more numbers (integers, floats, decimals, or percentages) separated by commas.
+ * - Supports positive and negative numbers.
+ * - Supports decimal values (e.g., "1.5", "3.14159").
+ * - Supports percentage values (e.g., "50%", "12.5%").
+ * - Does not allow empty values between commas.
+ * - Does not allow any whitespace (between digits or after commas).
+ * - Does not match empty strings.
+ *
+ * @param t - The value to test for comma-delimited numbers validity.
+ * @returns Boolean indicating whether the input is a valid comma-delimited string of numbers.
+ *
+ * @example
+ * - Valid: "1,2,3", "1.5,2.5,3.5", "-1.5,2,3.14", "50%,75%,100%", "1.5%,2,3%"
+ * - Invalid: "1,,3", "1, 2, 3", "1 2,3", "", "1..5,2", "1.5.5,2"
+ */
+export const isCommaDelimitedNumbers: TypeGuard<string> = isString.extend((t) =>
+  COMMA_DELIMITED_NUMBERS_REGEX.test(t) ? t : null
+);
