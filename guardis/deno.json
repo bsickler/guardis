@@ -5,6 +5,7 @@
   "description": "Guardis is a modular library of type guards, built to be easy to use and extend.",
   "exports": {
     ".": "./mod.ts",
+    "./async": "./src/modules/async.ts",
     "./http": "./src/modules/http.ts",
     "./strings": "./src/modules/strings.ts",
     "./strings-branded": "./src/modules/strings.branded.ts"
