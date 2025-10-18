@@ -33,6 +33,7 @@ const TEST_VALUES = {
   float: 3.14,
   infinity: Infinity,
   negativeInfinity: -Infinity,
+  nan: NaN,
   boolean: true,
   booleanFalse: false,
   nullValue: null,
@@ -210,6 +211,7 @@ Deno.test("isNumber", async (t) => {
     assertFalse(isNumber(TEST_VALUES.undefinedValue));
     assertFalse(isNumber(TEST_VALUES.object));
     assertFalse(isNumber(TEST_VALUES.array));
+    assertFalse(isNumber(TEST_VALUES.nan));
   });
 
   await t.step("strict mode", () => {
@@ -258,6 +260,7 @@ Deno.test("isBinary", async (t) => {
     // Invalid inputs
     assertFalse(isBinary(TEST_VALUES.number)); // 42
     assertFalse(isBinary(TEST_VALUES.float));
+    assertFalse(isBinary(TEST_VALUES.nan));
     assertFalse(isBinary(TEST_VALUES.string));
     assertFalse(isBinary(TEST_VALUES.boolean));
     assertFalse(isBinary(TEST_VALUES.nullValue));
@@ -311,6 +314,7 @@ Deno.test("isNumeric", async (t) => {
     assert(isNumeric("3.14"));
 
     // Invalid inputs
+    assertFalse(isNumeric(TEST_VALUES.nan)); // NaN is not numeric
     assertFalse(isNumeric(TEST_VALUES.invalidNumericString));
     assertFalse(isNumeric(TEST_VALUES.emptyString));
     assertFalse(isNumeric(TEST_VALUES.boolean));
@@ -908,6 +912,7 @@ Deno.test("isJsonPrimitive", async (t) => {
     assert(isJsonPrimitive(TEST_VALUES.nullValue));
 
     // Invalid inputs
+    assertFalse(isJsonPrimitive(TEST_VALUES.nan)); // NaN is not valid JSON
     assertFalse(isJsonPrimitive(TEST_VALUES.undefinedValue)); // undefined is not JSON
     assertFalse(isJsonPrimitive(TEST_VALUES.object));
     assertFalse(isJsonPrimitive(TEST_VALUES.array));
@@ -1441,7 +1446,7 @@ Deno.test("createTypeGuard", async (t) => {
     });
 
     // Extend to verify name is not empty and age is positive
-    const isValidPerson = isPerson.extend((val, { has }) => {
+    const isValidPerson = isPerson.extend((val) => {
       if (val.name.length === 0 || val.age < 0) return null;
       return val;
     });
