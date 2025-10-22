@@ -9,7 +9,12 @@ export type Brand<T, B extends string> = T & { readonly __brand: B };
 /**
  * Removes the property with the key `brand` from the given type `T`.
  */
-export type RemoveBrand<T> = T[Exclude<keyof T, "__brand">];
+export type RemoveBrand<T> = T extends string ? string
+  : T extends number ? number
+  : T extends Record<infer K, infer V> ? Record<Exclude<K, "__brand">, V>
+  : T extends (infer U)[] ? U[]
+  : T extends object ? { [P in Exclude<keyof T, "__brand">]: T[P] }
+  : T[Exclude<keyof T, "__brand">];
 
 /**
  * Creates a type guard for branded types, allowing runtime validation of nominal types.
