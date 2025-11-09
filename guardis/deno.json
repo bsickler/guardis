@@ -1,6 +1,6 @@
 {
   "name": "@spudlabs/guardis",
-  "version": "0.3.15",
+  "version": "0.3.16",
   "license": "MIT",
   "description": "Guardis is a modular library of type guards, built to be easy to use and extend.",
   "exports": {

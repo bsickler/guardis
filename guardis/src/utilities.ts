@@ -48,8 +48,7 @@ export function hasOptionalProperty<K extends PropertyKey, G = unknown>(
  * @param {Function} guard The type guard to validate t[i].
  * @returns {boolean}
  */
-// deno-lint-ignore no-explicit-any
-export function tupleHas<T extends readonly any[], I extends number, G = unknown>(
+export function tupleHas<T extends readonly unknown[], I extends number, G = unknown>(
   t: T,
   i: I,
   guard: (v: unknown) => v is G,
@@ -67,4 +66,20 @@ export function tupleHas<T extends readonly any[], I extends number, G = unknown
  */
 export function includes<T extends readonly unknown[]>(t: T, v: unknown): v is T[number] {
   return t.includes(v);
+}
+
+/**
+ * Determines if a given property key exists as a key in the specified object.
+ *
+ * @template T - The type of the object to check against.
+ * @param k - The property key to check.
+ * @param t - The object to check the property key against.
+ * @returns A boolean indicating whether the property key exists in the object.
+ */
+export function keyOf<T extends object>(k: unknown, t: T): k is keyof T {
+  if (typeof k !== "string" && typeof k !== "number" && typeof k !== "symbol") {
+    return false;
+  }
+
+  return k in t;
 }

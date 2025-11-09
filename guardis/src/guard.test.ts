@@ -17,7 +17,9 @@ import {
   isNumber,
   isNumeric,
   isObject,
+  isPropertyKey,
   isString,
+  isSymbol,
   isTuple,
   isUndefined,
 } from "./guard.ts";
@@ -53,6 +55,9 @@ const TEST_VALUES = {
   numericString: "123",
   invalidNumericString: "abc",
   iterator: [1, 2, 3][Symbol.iterator](),
+  symbol: Symbol("test"),
+  symbolFor: Symbol.for("shared"),
+  symbolIterator: Symbol.iterator,
 } as const;
 
 // === Core Type Guards ===
@@ -406,6 +411,141 @@ Deno.test("isFunction", async (t) => {
     // Invalid inputs
     assertFalse(isFunction.optional(TEST_VALUES.string));
     assertFalse(isFunction.optional(TEST_VALUES.nullValue));
+  });
+});
+
+Deno.test("isSymbol", async (t) => {
+  await t.step("basic functionality", () => {
+    // Valid inputs
+    assert(isSymbol(TEST_VALUES.symbol));
+    assert(isSymbol(TEST_VALUES.symbolFor));
+    assert(isSymbol(TEST_VALUES.symbolIterator));
+    assert(isSymbol(Symbol("another")));
+    assert(isSymbol(Symbol.asyncIterator));
+
+    // Invalid inputs
+    assertFalse(isSymbol(TEST_VALUES.string));
+    assertFalse(isSymbol(TEST_VALUES.number));
+    assertFalse(isSymbol(TEST_VALUES.boolean));
+    assertFalse(isSymbol(TEST_VALUES.nullValue));
+    assertFalse(isSymbol(TEST_VALUES.undefinedValue));
+    assertFalse(isSymbol(TEST_VALUES.object));
+    assertFalse(isSymbol(TEST_VALUES.array));
+    assertFalse(isSymbol(TEST_VALUES.function));
+  });
+
+  await t.step("strict mode", () => {
+    // Valid inputs don't throw
+    isSymbol.strict(TEST_VALUES.symbol);
+    isSymbol.strict(TEST_VALUES.symbolFor);
+    isSymbol.strict(TEST_VALUES.symbolIterator);
+
+    // Invalid inputs throw
+    assertThrows(() => isSymbol.strict(TEST_VALUES.string));
+    assertThrows(() => isSymbol.strict(TEST_VALUES.number));
+    assertThrows(() => isSymbol.strict(TEST_VALUES.boolean));
+    assertThrows(() => isSymbol.strict(TEST_VALUES.nullValue));
+  });
+
+  await t.step("assert mode", () => {
+    const assertIsSymbol: typeof isSymbol.assert = isSymbol.assert;
+
+    // Valid inputs don't throw
+    assertIsSymbol(TEST_VALUES.symbol);
+    assertIsSymbol(TEST_VALUES.symbolFor);
+    assertIsSymbol(TEST_VALUES.symbolIterator);
+
+    // Invalid inputs throw
+    assertThrows(() => assertIsSymbol(TEST_VALUES.string));
+    assertThrows(() => assertIsSymbol(TEST_VALUES.number));
+    assertThrows(() => assertIsSymbol(TEST_VALUES.boolean));
+  });
+
+  await t.step("optional mode", () => {
+    // Valid inputs
+    assert(isSymbol.optional(TEST_VALUES.symbol));
+    assert(isSymbol.optional(TEST_VALUES.symbolFor));
+    assert(isSymbol.optional(TEST_VALUES.undefinedValue));
+
+    // Invalid inputs
+    assertFalse(isSymbol.optional(TEST_VALUES.string));
+    assertFalse(isSymbol.optional(TEST_VALUES.number));
+    assertFalse(isSymbol.optional(TEST_VALUES.nullValue));
+  });
+});
+
+Deno.test("isPropertyKey", async (t) => {
+  await t.step("basic functionality", () => {
+    // Valid inputs - strings
+    assert(isPropertyKey(TEST_VALUES.string));
+    assert(isPropertyKey(TEST_VALUES.emptyString));
+    assert(isPropertyKey("propertyName"));
+
+    // Valid inputs - numbers
+    assert(isPropertyKey(TEST_VALUES.number));
+    assert(isPropertyKey(TEST_VALUES.zero));
+    assert(isPropertyKey(TEST_VALUES.float));
+    assert(isPropertyKey(42));
+
+    // Valid inputs - symbols
+    assert(isPropertyKey(TEST_VALUES.symbol));
+    assert(isPropertyKey(TEST_VALUES.symbolFor));
+    assert(isPropertyKey(TEST_VALUES.symbolIterator));
+    assert(isPropertyKey(Symbol("key")));
+
+    // Invalid inputs
+    assertFalse(isPropertyKey(TEST_VALUES.boolean));
+    assertFalse(isPropertyKey(TEST_VALUES.nullValue));
+    assertFalse(isPropertyKey(TEST_VALUES.undefinedValue));
+    assertFalse(isPropertyKey(TEST_VALUES.object));
+    assertFalse(isPropertyKey(TEST_VALUES.array));
+    assertFalse(isPropertyKey(TEST_VALUES.function));
+    assertFalse(isPropertyKey(TEST_VALUES.nan));
+  });
+
+  await t.step("strict mode", () => {
+    // Valid inputs don't throw
+    isPropertyKey.strict(TEST_VALUES.string);
+    isPropertyKey.strict(TEST_VALUES.number);
+    isPropertyKey.strict(TEST_VALUES.symbol);
+    isPropertyKey.strict(TEST_VALUES.symbolFor);
+
+    // Invalid inputs throw
+    assertThrows(() => isPropertyKey.strict(TEST_VALUES.boolean));
+    assertThrows(() => isPropertyKey.strict(TEST_VALUES.nullValue));
+    assertThrows(() => isPropertyKey.strict(TEST_VALUES.undefinedValue));
+    assertThrows(() => isPropertyKey.strict(TEST_VALUES.object));
+    assertThrows(() => isPropertyKey.strict(TEST_VALUES.array));
+  });
+
+  await t.step("assert mode", () => {
+    const assertIsPropertyKey: typeof isPropertyKey.assert = isPropertyKey.assert;
+
+    // Valid inputs don't throw
+    assertIsPropertyKey(TEST_VALUES.string);
+    assertIsPropertyKey(TEST_VALUES.number);
+    assertIsPropertyKey(TEST_VALUES.symbol);
+    assertIsPropertyKey(TEST_VALUES.symbolIterator);
+
+    // Invalid inputs throw
+    assertThrows(() => assertIsPropertyKey(TEST_VALUES.boolean));
+    assertThrows(() => assertIsPropertyKey(TEST_VALUES.nullValue));
+    assertThrows(() => assertIsPropertyKey(TEST_VALUES.undefinedValue));
+    assertThrows(() => assertIsPropertyKey(TEST_VALUES.object));
+  });
+
+  await t.step("optional mode", () => {
+    // Valid inputs
+    assert(isPropertyKey.optional(TEST_VALUES.string));
+    assert(isPropertyKey.optional(TEST_VALUES.number));
+    assert(isPropertyKey.optional(TEST_VALUES.symbol));
+    assert(isPropertyKey.optional(TEST_VALUES.undefinedValue));
+
+    // Invalid inputs
+    assertFalse(isPropertyKey.optional(TEST_VALUES.boolean));
+    assertFalse(isPropertyKey.optional(TEST_VALUES.nullValue));
+    assertFalse(isPropertyKey.optional(TEST_VALUES.object));
+    assertFalse(isPropertyKey.optional(TEST_VALUES.array));
   });
 });
 
