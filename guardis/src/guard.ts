@@ -12,13 +12,14 @@ import type {
   JsonValue,
   TupleOfLength,
 } from "./types.ts";
-import { hasOptionalProperty, hasProperty, includes, tupleHas } from "./utilities.ts";
+import { hasOptionalProperty, hasProperty, includes, keyOf, tupleHas } from "./utilities.ts";
 
 type Helpers = {
   has: typeof hasProperty;
   hasOptional: typeof hasOptionalProperty;
   tupleHas: typeof tupleHas;
   includes: typeof includes;
+  keyOf: typeof keyOf;
 };
 
 /** A parser is a function that takes an unknown and returns T or null */
@@ -291,6 +292,7 @@ export const createTypeGuard = <T1>(parse: Parser<T1>): TypeGuard<T1> => {
     has: hasProperty,
     hasOptional: hasOptionalProperty,
     includes,
+    keyOf,
     tupleHas,
   };
 
@@ -407,6 +409,15 @@ export const isNumber: TypeGuard<number> = createTypeGuard((t): number | null =>
 );
 
 /**
+ * Returns true if input satisfies type symbol.
+ * @param {unknown} t
+ * @return {boolean}
+ */
+export const isSymbol: TypeGuard<symbol> = createTypeGuard((t): symbol | null =>
+  typeof t === "symbol" ? t : null
+);
+
+/**
  * Returns true if input satisfies type binary.
  * @param {unknown} t
  * @return {boolean}
@@ -469,6 +480,14 @@ export const isJsonPrimitive: TypeGuard<JsonPrimitive> = createTypeGuard((
  */
 export const isObject: TypeGuard<object> = createTypeGuard((t): object | null =>
   t && typeof t === "object" && !Array.isArray(t) ? t : null
+);
+
+/** Returns true if input satisfies type PropertyKey.
+ * @param {unknown} t
+ * @return {boolean}
+ */
+export const isPropertyKey: TypeGuard<PropertyKey> = createTypeGuard((t): PropertyKey | null =>
+  isString(t) || isNumber(t) || isSymbol(t) ? t : null
 );
 
 /**
@@ -715,6 +734,7 @@ isTuple.or = <N extends number, T2>(
       has: hasProperty,
       hasOptional: hasOptionalProperty,
       includes,
+      keyOf,
       tupleHas,
     })
   );
