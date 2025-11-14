@@ -883,6 +883,250 @@ Deno.test("isArray", async (t) => {
   });
 });
 
+Deno.test("isArray.of", async (t) => {
+  await t.step("basic functionality - array of strings", () => {
+    const isStringArray = isArray.of(isString);
+
+    // Valid inputs
+    assert(isStringArray(["hello"]));
+    assert(isStringArray(["a", "b", "c"]));
+    assert(isStringArray(TEST_VALUES.emptyArray)); // Empty arrays are valid
+    assert(isStringArray(["test", "another", "string"]));
+
+    // Invalid inputs - mixed types
+    assertFalse(isStringArray([1, 2, 3]));
+    assertFalse(isStringArray(["string", 123]));
+    assertFalse(isStringArray([true, false]));
+    assertFalse(isStringArray([null]));
+    assertFalse(isStringArray([TEST_VALUES.object]));
+
+    // Invalid inputs - not arrays
+    assertFalse(isStringArray(TEST_VALUES.string));
+    assertFalse(isStringArray(TEST_VALUES.object));
+    assertFalse(isStringArray(TEST_VALUES.nullValue));
+    assertFalse(isStringArray(TEST_VALUES.undefinedValue));
+  });
+
+  await t.step("basic functionality - array of numbers", () => {
+    const isNumberArray = isArray.of(isNumber);
+
+    // Valid inputs
+    assert(isNumberArray([1, 2, 3]));
+    assert(isNumberArray([TEST_VALUES.zero]));
+    assert(isNumberArray([3.14, 2.71, 1.41]));
+    assert(isNumberArray([TEST_VALUES.infinity]));
+    assert(isNumberArray(TEST_VALUES.emptyArray));
+
+    // Invalid inputs - mixed types
+    assertFalse(isNumberArray(["1", "2", "3"]));
+    assertFalse(isNumberArray([1, "2", 3]));
+    assertFalse(isNumberArray([TEST_VALUES.nan])); // NaN is not a valid number in isNumber
+    assertFalse(isNumberArray([true, false]));
+
+    // Invalid inputs - not arrays
+    assertFalse(isNumberArray(TEST_VALUES.number));
+    assertFalse(isNumberArray(TEST_VALUES.string));
+  });
+
+  await t.step("basic functionality - array of booleans", () => {
+    const isBooleanArray = isArray.of(isBoolean);
+
+    // Valid inputs
+    assert(isBooleanArray([true, false]));
+    assert(isBooleanArray([TEST_VALUES.boolean]));
+    assert(isBooleanArray([false, false, true]));
+    assert(isBooleanArray(TEST_VALUES.emptyArray));
+
+    // Invalid inputs
+    assertFalse(isBooleanArray([1, 0]));
+    assertFalse(isBooleanArray(["true", "false"]));
+    assertFalse(isBooleanArray([true, "false"]));
+  });
+
+  await t.step("basic functionality - array of objects", () => {
+    const isObjectArray = isArray.of(isObject);
+
+    // Valid inputs
+    assert(isObjectArray([TEST_VALUES.object]));
+    assert(isObjectArray([{ a: 1 }, { b: 2 }]));
+    assert(isObjectArray([TEST_VALUES.emptyObject]));
+    assert(isObjectArray(TEST_VALUES.emptyArray));
+
+    // Invalid inputs - arrays within array
+    assertFalse(isObjectArray([[1, 2, 3]]));
+    assertFalse(isObjectArray([TEST_VALUES.object, TEST_VALUES.array]));
+    assertFalse(isObjectArray([{ a: 1 }, "string"]));
+  });
+
+  await t.step("basic functionality - nested arrays", () => {
+    const isStringArray = isArray.of(isString);
+    const isNestedStringArray = isArray.of(isStringArray);
+
+    // Valid inputs
+    assert(isNestedStringArray([["a", "b"], ["c", "d"]]));
+    assert(isNestedStringArray([["hello"], ["world"]]));
+    assert(isNestedStringArray([[]]));
+    assert(isNestedStringArray(TEST_VALUES.emptyArray));
+
+    // Invalid inputs
+    assertFalse(isNestedStringArray([["a", "b"], [1, 2]]));
+    assertFalse(isNestedStringArray([[1, 2, 3]]));
+    assertFalse(isNestedStringArray(["not", "nested"]));
+  });
+
+  await t.step("basic functionality - with custom type guards", () => {
+    // Custom type guard for positive numbers
+    const isPositive = createTypeGuard<number>((val) => {
+      if (typeof val !== "number" || val <= 0) return null;
+      return val;
+    });
+
+    const isPositiveArray = isArray.of(isPositive);
+
+    // Valid inputs
+    assert(isPositiveArray([1, 2, 3]));
+    assert(isPositiveArray([3.14, 2.71]));
+    assert(isPositiveArray([100, 200, 300]));
+    assert(isPositiveArray(TEST_VALUES.emptyArray));
+
+    // Invalid inputs
+    assertFalse(isPositiveArray([1, 2, 0]));
+    assertFalse(isPositiveArray([-1, -2, -3]));
+    assertFalse(isPositiveArray([1, -1]));
+  });
+
+  await t.step("strict mode", () => {
+    const isStringArray = isArray.of(isString);
+
+    // Valid inputs don't throw
+    isStringArray.strict(["a", "b", "c"]);
+    isStringArray.strict(TEST_VALUES.emptyArray);
+
+    // Invalid inputs throw
+    assertThrows(() => isStringArray.strict([1, 2, 3]));
+    assertThrows(() => isStringArray.strict(["a", 1]));
+    assertThrows(() => isStringArray.strict(TEST_VALUES.object));
+    assertThrows(() => isStringArray.strict(TEST_VALUES.nullValue));
+  });
+
+  await t.step("assert mode", () => {
+    const isNumberArray = isArray.of(isNumber);
+    const assertIsNumberArray: typeof isNumberArray.assert = isNumberArray.assert;
+
+    // Valid inputs don't throw
+    assertIsNumberArray([1, 2, 3]);
+    assertIsNumberArray(TEST_VALUES.emptyArray);
+
+    // Invalid inputs throw
+    assertThrows(() => assertIsNumberArray(["1", "2", "3"]));
+    assertThrows(() => assertIsNumberArray([1, "2", 3]));
+    assertThrows(() => assertIsNumberArray(TEST_VALUES.object));
+  });
+
+  await t.step("optional mode", () => {
+    const isStringArray = isArray.of(isString);
+
+    // Valid inputs
+    assert(isStringArray.optional(["a", "b", "c"]));
+    assert(isStringArray.optional(TEST_VALUES.emptyArray));
+    assert(isStringArray.optional(TEST_VALUES.undefinedValue));
+
+    // Invalid inputs
+    assertFalse(isStringArray.optional([1, 2, 3]));
+    assertFalse(isStringArray.optional(TEST_VALUES.nullValue));
+  });
+
+  await t.step("notEmpty mode", () => {
+    const isStringArray = isArray.of(isString);
+
+    // Valid inputs
+    assert(isStringArray.notEmpty(["a", "b", "c"]));
+    assert(isStringArray.notEmpty(["test"]));
+
+    // Invalid inputs - empty array is considered empty
+    assertFalse(isStringArray.notEmpty(TEST_VALUES.emptyArray));
+    assertFalse(isStringArray.notEmpty([1, 2, 3]));
+    assertFalse(isStringArray.notEmpty(TEST_VALUES.nullValue));
+    assertFalse(isStringArray.notEmpty(TEST_VALUES.undefinedValue));
+  });
+
+  await t.step("optional.notEmpty mode", () => {
+    const isNumberArray = isArray.of(isNumber);
+
+    // Valid inputs
+    assert(isNumberArray.optional.notEmpty([1, 2, 3]));
+    assert(isNumberArray.optional.notEmpty(TEST_VALUES.undefinedValue));
+
+    // Invalid inputs
+    assertFalse(isNumberArray.optional.notEmpty(TEST_VALUES.emptyArray));
+    assertFalse(isNumberArray.optional.notEmpty(["1", "2", "3"]));
+    assertFalse(isNumberArray.optional.notEmpty(TEST_VALUES.nullValue));
+  });
+
+  await t.step("notEmpty.optional mode", () => {
+    const isStringArray = isArray.of(isString);
+
+    // Valid inputs
+    assert(isStringArray.notEmpty.optional(["a", "b", "c"]));
+    assert(isStringArray.notEmpty.optional(TEST_VALUES.undefinedValue));
+
+    // Invalid inputs
+    assertFalse(isStringArray.notEmpty.optional(TEST_VALUES.emptyArray));
+    assertFalse(isStringArray.notEmpty.optional([1, 2, 3]));
+    assertFalse(isStringArray.notEmpty.optional(TEST_VALUES.nullValue));
+  });
+
+  await t.step("validate method - StandardSchemaV1 compatibility", () => {
+    const isStringArray = isArray.of(isString);
+
+    // Valid inputs
+    const validResult = isStringArray.validate(["a", "b", "c"]);
+    assertEquals(validResult, { value: ["a", "b", "c"] });
+
+    const emptyResult = isStringArray.validate(TEST_VALUES.emptyArray);
+    assertEquals(emptyResult, { value: [] });
+
+    // Invalid inputs
+    const invalidResult1 = isStringArray.validate([1, 2, 3]);
+    assertEquals(invalidResult1, { issues: [{ message: "Invalid type" }] });
+
+    const invalidResult2 = isStringArray.validate(["a", 1, "c"]);
+    assertEquals(invalidResult2, { issues: [{ message: "Invalid type" }] });
+
+    const invalidResult3 = isStringArray.validate(TEST_VALUES.object);
+    assertEquals(invalidResult3, { issues: [{ message: "Invalid type" }] });
+  });
+
+  await t.step("complex scenario - array of specific object types", () => {
+    // Create a type guard for person objects
+    const isPerson = createTypeGuard<{ name: string; age: number }>((v, { has }) => {
+      if (isObject(v) && has(v, "name", isString) && has(v, "age", isNumber)) {
+        return v;
+      }
+      return null;
+    });
+
+    const isPeopleArray = isArray.of(isPerson);
+
+    // Valid inputs
+    assert(isPeopleArray([{ name: "Alice", age: 30 }]));
+    assert(isPeopleArray([
+      { name: "Alice", age: 30 },
+      { name: "Bob", age: 25 },
+    ]));
+    assert(isPeopleArray(TEST_VALUES.emptyArray));
+
+    // Invalid inputs
+    assertFalse(isPeopleArray([{ name: "Alice" }])); // Missing age
+    assertFalse(isPeopleArray([{ age: 30 }])); // Missing name
+    assertFalse(isPeopleArray([{ name: "Alice", age: "30" }])); // Wrong type
+    assertFalse(isPeopleArray([
+      { name: "Alice", age: 30 },
+      { name: "Bob" }, // Invalid person
+    ]));
+  });
+});
+
 Deno.test("isDate", async (t) => {
   await t.step("basic functionality", () => {
     // Valid inputs
