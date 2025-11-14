@@ -514,14 +514,27 @@ export const isJsonObject: TypeGuard<JsonObject> = createTypeGuard(
   },
 );
 
+type ArrayOfSignature = <T>(guard: TypeGuard<T>) => TypeGuard<T[]>;
+
 /**
  * Returns true if input satisfies type array.
  * @param {unknown} t
  * @return {boolean}
  */
-export const isArray: TypeGuard<unknown[]> = createTypeGuard((
-  t,
-): unknown[] | null => Array.isArray(t) ? t : null);
+// @ts-ignore: We're modifying the function to add the 'of' method.
+export const isArray: TypeGuard<unknown[]> & {
+  /**
+   * Returns true if input satisfies type array of T.
+   * @param guard The type guard for the array elements
+   * @returns {boolean}
+   */
+  of: ArrayOfSignature;
+} = createTypeGuard(
+  (t): unknown[] | null => Array.isArray(t) ? t : null,
+);
+
+isArray.of = <T>(guard: TypeGuard<T>): TypeGuard<T[]> =>
+  createTypeGuard((v) => isArray(v) && v.every((item) => guard(item)) ? v as T[] : null);
 
 /**
  * Returns true if input satisfies type array.
