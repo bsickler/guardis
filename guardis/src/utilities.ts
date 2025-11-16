@@ -20,6 +20,25 @@ export function hasProperty<K extends PropertyKey, G = unknown>(
 }
 
 /**
+ * Checks if an object does not have a specific property.
+ *
+ * This function determines whether the given property key `k` does not exist
+ * in the object `t`. It uses TypeScript's type guard feature to refine the type
+ * of the object, ensuring that the property `k` is absent or explicitly `undefined`.
+ *
+ * @template K - The type of the property key to check.
+ * @param t - The object to check for the absence of the property.
+ * @param k - The property key to verify.
+ * @returns A boolean indicating whether the property `k` does not exist in the object `t`.
+ */
+export function doesNotHaveProperty<K extends PropertyKey>(
+  t: object,
+  k: K,
+): t is { [K2 in K]: never } {
+  return !(k in t);
+}
+
+/**
  * Checks if an object has an optional property that passes a type guard.
  *
  * This function verifies if a property is either:

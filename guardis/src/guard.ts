@@ -12,10 +12,18 @@ import type {
   JsonValue,
   TupleOfLength,
 } from "./types.ts";
-import { hasOptionalProperty, hasProperty, includes, keyOf, tupleHas } from "./utilities.ts";
+import {
+  doesNotHaveProperty,
+  hasOptionalProperty,
+  hasProperty,
+  includes,
+  keyOf,
+  tupleHas,
+} from "./utilities.ts";
 
 type Helpers = {
   has: typeof hasProperty;
+  hasNot: typeof doesNotHaveProperty;
   hasOptional: typeof hasOptionalProperty;
   tupleHas: typeof tupleHas;
   includes: typeof includes;
@@ -290,6 +298,7 @@ type _TypeGuard<T> = TypeGuard<T> & { _: { parser: Parser<T> } };
 export const createTypeGuard = <T1>(parse: Parser<T1>): TypeGuard<T1> => {
   const helpers = {
     has: hasProperty,
+    hasNot: doesNotHaveProperty,
     hasOptional: hasOptionalProperty,
     includes,
     keyOf,
@@ -745,6 +754,7 @@ isTuple.or = <N extends number, T2>(
   return createTypeGuard<TupleOfLength<N> | T2>((v: unknown) =>
     isTuple(v, length) ? v : (guard as _TypeGuard<T2>)._.parser(v, {
       has: hasProperty,
+      hasNot: doesNotHaveProperty,
       hasOptional: hasOptionalProperty,
       includes,
       keyOf,
