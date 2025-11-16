@@ -1125,6 +1125,39 @@ Deno.test("isArray.of", async (t) => {
       { name: "Bob" }, // Invalid person
     ]));
   });
+
+  await t.step("complex scenario - using hasNot to exclude properties", () => {
+    // Create a type guard for person objects that explicitly excludes 'id' property
+    const isPersonWithoutId = createTypeGuard<{ name: string; age: number }>(
+      (v, { has, hasNot }) => {
+        if (
+          isObject(v) &&
+          has(v, "name", isString) &&
+          has(v, "age", isNumber) &&
+          hasNot(v, "id")
+        ) {
+          return v;
+        }
+        return null;
+      },
+    );
+
+    const isPeopleArray = isArray.of(isPersonWithoutId);
+
+    // Valid inputs - objects without 'id' property
+    assert(isPeopleArray([{ name: "Alice", age: 30 }]));
+    assert(isPeopleArray([
+      { name: "Alice", age: 30 },
+      { name: "Bob", age: 25 },
+    ]));
+
+    // Invalid inputs - objects with 'id' property should be rejected
+    assertFalse(isPeopleArray([{ name: "Alice", age: 30, id: 1 }]));
+    assertFalse(isPeopleArray([
+      { name: "Alice", age: 30 },
+      { name: "Bob", age: 25, id: 2 }, // Has id
+    ]));
+  });
 });
 
 Deno.test("isDate", async (t) => {
@@ -1570,6 +1603,26 @@ Deno.test("createTypeGuard", async (t) => {
     assertEquals(testGuard({ a: 123 }), false);
   });
 
+  await t.step("hasNot helper injection", () => {
+    // Guard that ensures object has 'a' but NOT 'b'
+    const testGuard = createTypeGuard<{ a: string }>((v, { has, hasNot }) => {
+      if (isObject(v) && has(v, "a", isString) && hasNot(v, "b")) {
+        return v;
+      }
+      return null;
+    });
+
+    // Valid - has 'a' and no 'b'
+    assertEquals(testGuard({ a: "test" }), true);
+    assertEquals(testGuard({ a: "test", c: "other" }), true);
+
+    // Invalid - missing 'a' or has 'b'
+    assertEquals(testGuard({}), false);
+    assertEquals(testGuard({ a: 123 }), false);
+    assertEquals(testGuard({ a: "test", b: "value" }), false);
+    assertEquals(testGuard({ b: "value" }), false);
+  });
+
   await t.step("includes helper injection", () => {
     const validValues = ["red", "green", "blue"] as const;
     const colorGuard = createTypeGuard<typeof validValues[number]>((v, { includes }) => {
@@ -1843,6 +1896,39 @@ Deno.test("createTypeGuard", async (t) => {
     assertFalse(isValidPerson({ name: "", age: 30 }));
     assertFalse(isValidPerson({ name: "Charlie", age: -1 }));
     assertFalse(isValidPerson({ name: "", age: -1 }));
+  });
+
+  await t.step("extend method - with hasNot helper", () => {
+    // Create a guard for public user objects (no sensitive fields)
+    const isPublicUser = createTypeGuard<{ name: string; email: string }>((v, { has, hasNot }) => {
+      if (
+        isObject(v) &&
+        has(v, "name", isString) &&
+        has(v, "email", isString) &&
+        hasNot(v, "password") &&
+        hasNot(v, "apiKey")
+      ) {
+        return v;
+      }
+      return null;
+    });
+
+    // Valid inputs - no sensitive fields
+    assert(isPublicUser({ name: "Alice", email: "alice@example.com" }));
+    assert(isPublicUser({ name: "Bob", email: "bob@example.com", role: "admin" }));
+
+    // Invalid inputs - contain sensitive fields
+    assertFalse(isPublicUser({ name: "Alice", email: "alice@example.com", password: "secret" }));
+    assertFalse(isPublicUser({ name: "Bob", email: "bob@example.com", apiKey: "key123" }));
+    assertFalse(
+      isPublicUser({
+        name: "Charlie",
+        email: "charlie@example.com",
+        password: "pw",
+        apiKey: "key",
+      }),
+    );
+    assertFalse(isPublicUser({ name: "Alice" })); // Missing email
   });
 
   await t.step("extend method - all modes work on extended guards", () => {

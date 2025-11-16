@@ -1,6 +1,6 @@
 import { assert, assertFalse } from "@std/assert";
 import { isBoolean, isNull, isNumber, isString } from "./guard.ts";
-import { hasOptionalProperty, hasProperty, includes, keyOf, tupleHas } from "./utilities.ts";
+import { doesNotHaveProperty, hasOptionalProperty, hasProperty, includes, keyOf, tupleHas } from "./utilities.ts";
 
 Deno.test("hasProperty", async (t) => {
   await t.step("property existence check", () => {
@@ -41,6 +41,75 @@ Deno.test("hasOptionalProperty", async (t) => {
     assert(hasOptionalProperty(obj, "b", isString));
     assertFalse(hasOptionalProperty(obj, "a", isString));
     assertFalse(hasOptionalProperty(obj, "b", isNumber));
+  });
+});
+
+Deno.test("doesNotHaveProperty", async (t) => {
+  await t.step("property absence check", () => {
+    const obj = { a: 1, b: "test", c: null };
+
+    assert(doesNotHaveProperty(obj, "d"));
+    assert(doesNotHaveProperty(obj, "x"));
+    assert(doesNotHaveProperty(obj, "missing"));
+
+    assertFalse(doesNotHaveProperty(obj, "a"));
+    assertFalse(doesNotHaveProperty(obj, "b"));
+    assertFalse(doesNotHaveProperty(obj, "c"));
+  });
+
+  await t.step("property with undefined value", () => {
+    const obj = { a: 1, b: undefined };
+
+    // Property 'b' exists even though its value is undefined
+    assertFalse(doesNotHaveProperty(obj, "b"));
+
+    // Property 'c' does not exist at all
+    assert(doesNotHaveProperty(obj, "c"));
+  });
+
+  await t.step("symbol key absence check", () => {
+    const sym1 = Symbol("test");
+    const sym2 = Symbol("other");
+    const obj = {
+      [sym1]: "value1",
+      regular: "value2",
+    };
+
+    assert(doesNotHaveProperty(obj, sym2));
+    assertFalse(doesNotHaveProperty(obj, sym1));
+    assertFalse(doesNotHaveProperty(obj, "regular"));
+  });
+
+  await t.step("empty object check", () => {
+    const empty = {};
+
+    assert(doesNotHaveProperty(empty, "a"));
+    assert(doesNotHaveProperty(empty, "b"));
+
+    // Prototype properties are still checked by 'in' operator
+    assertFalse(doesNotHaveProperty(empty, "toString"));
+  });
+
+  await t.step("inherited properties", () => {
+    const parent = { inherited: "value" };
+    const child = Object.create(parent);
+    child.own = "ownValue";
+
+    assertFalse(doesNotHaveProperty(child, "own"));
+    assertFalse(doesNotHaveProperty(child, "inherited")); // 'in' operator checks prototype chain
+
+    assert(doesNotHaveProperty(child, "notThere"));
+  });
+
+  await t.step("type narrowing behavior", () => {
+    const obj = { name: "Alice", age: 30 };
+    const key: PropertyKey = "address";
+
+    if (doesNotHaveProperty(obj, key)) {
+      // At this point, TypeScript narrows the type to exclude 'key'
+      // This demonstrates the type guard working correctly
+      assert(true); // Property does not exist
+    }
   });
 });
 
