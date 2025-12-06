@@ -167,7 +167,7 @@ export interface TypeGuard<T1> extends StandardSchemaV1<T1> {
    * @param guard A type guard for T2
    * @returns A new type guard that checks if the value is of type T or T2
    */
-  or: <T2>(guard: TypeGuard<T2>) => TypeGuard<T1 | T2>;
+  or: <T2>(guard: Predicate<T2>) => TypeGuard<T1 | T2>;
   /**
    * A strict type guard that throws an error if the value is not of type T.
    * @param value The value to check
