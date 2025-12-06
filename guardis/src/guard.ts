@@ -78,8 +78,7 @@ type StrictTypeGuard<T> = (value: unknown, errorMsg?: string) => value is T;
  * ```
  */
 const createOrTypeGuard =
-  <T1>(guard: Predicate<T1>) =>
-  <T2>(guardTwo: TypeGuard<T2>): TypeGuard<T1 | T2> =>
+  <T1>(guard: Predicate<T1>) => <T2>(guardTwo: TypeGuard<T2>): TypeGuard<T1 | T2> =>
     createTypeGuard<T1 | T2>((v: unknown) => {
       if (guard(v) || guardTwo(v)) return v === null ? (true as T1 | T2) : v;
 
@@ -584,9 +583,7 @@ export const isArray: TypeGuard<unknown[]> & {
    * @returns {boolean}
    */
   of: ArrayOfSignature;
-} = createTypeGuard(
-  (t): unknown[] | null => Array.isArray(t) ? t : null,
-);
+} = createTypeGuard((t): unknown[] | null => Array.isArray(t) ? t : null);
 
 isArray.of = <T>(guard: TypeGuard<T>): TypeGuard<T[]> =>
   createTypeGuard((v) => isArray(v) && v.every((item) => guard(item)) ? v as T[] : null);
@@ -596,9 +593,9 @@ isArray.of = <T>(guard: TypeGuard<T>): TypeGuard<T[]> =>
  * @param {unknown} t
  * @return {boolean}
  */
-export const isJsonArray: TypeGuard<JsonValue[] | readonly JsonValue[]> = createTypeGuard((
-  t,
-): JsonArray | null => Array.isArray(t) ? t : null);
+export const isJsonArray: TypeGuard<JsonValue[] | readonly JsonValue[]> = createTypeGuard(
+  (t): JsonArray | null => Array.isArray(t) ? t : null,
+);
 
 /**
  * Checks if a given value is a valid JSON value.
