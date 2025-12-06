@@ -1776,6 +1776,93 @@ Deno.test("createTypeGuard", async (t) => {
     assertFalse(isStringOrNumber.notEmpty(TEST_VALUES.nullValue));
   });
 
+  await t.step("or method - notEmpty guards can be chained", () => {
+    // Create a union of notEmpty guards
+    const isNonEmptyStringOrNumber = isString.notEmpty.or(isNumber);
+
+    // Valid inputs
+    assert(isNonEmptyStringOrNumber(TEST_VALUES.string));
+    assert(isNonEmptyStringOrNumber(TEST_VALUES.number));
+    assert(isNonEmptyStringOrNumber(TEST_VALUES.zero));
+    assert(isNonEmptyStringOrNumber(TEST_VALUES.float));
+
+    // Invalid inputs - empty string should fail
+    assertFalse(isNonEmptyStringOrNumber(TEST_VALUES.emptyString));
+    assertFalse(isNonEmptyStringOrNumber(TEST_VALUES.whitespaceString));
+    assertFalse(isNonEmptyStringOrNumber(TEST_VALUES.boolean));
+    assertFalse(isNonEmptyStringOrNumber(TEST_VALUES.nullValue));
+    assertFalse(isNonEmptyStringOrNumber(TEST_VALUES.undefinedValue));
+    assertFalse(isNonEmptyStringOrNumber(TEST_VALUES.object));
+  });
+
+  await t.step("or method - chained notEmpty guards", () => {
+    // Chain multiple notEmpty guards
+    const isNonEmptyStringOrArray = isString.notEmpty.or(isArray.notEmpty);
+
+    // Valid inputs
+    assert(isNonEmptyStringOrArray(TEST_VALUES.string));
+    assert(isNonEmptyStringOrArray(TEST_VALUES.array));
+    assert(isNonEmptyStringOrArray(["test"]));
+
+    // Invalid inputs - empty values should fail
+    assertFalse(isNonEmptyStringOrArray(TEST_VALUES.emptyString));
+    assertFalse(isNonEmptyStringOrArray(TEST_VALUES.emptyArray));
+    assertFalse(isNonEmptyStringOrArray(TEST_VALUES.nullValue));
+    assertFalse(isNonEmptyStringOrArray(TEST_VALUES.undefinedValue));
+  });
+
+  await t.step("or method - notEmpty unions with all modes", () => {
+    const isNonEmptyStringOrObject = isString.notEmpty.or(isObject.notEmpty);
+
+    // Basic functionality
+    assert(isNonEmptyStringOrObject(TEST_VALUES.string));
+    assert(isNonEmptyStringOrObject(TEST_VALUES.object));
+    assertFalse(isNonEmptyStringOrObject(TEST_VALUES.emptyString));
+    assertFalse(isNonEmptyStringOrObject(TEST_VALUES.emptyObject));
+
+    // Strict mode
+    isNonEmptyStringOrObject.strict(TEST_VALUES.string);
+    isNonEmptyStringOrObject.strict(TEST_VALUES.object);
+    assertThrows(() => isNonEmptyStringOrObject.strict(TEST_VALUES.emptyString));
+    assertThrows(() => isNonEmptyStringOrObject.strict(TEST_VALUES.emptyObject));
+    assertThrows(() => isNonEmptyStringOrObject.strict(TEST_VALUES.boolean));
+
+    // Assert mode
+    const assertIsNonEmptyStringOrObject: typeof isNonEmptyStringOrObject.assert = isNonEmptyStringOrObject.assert;
+    assertIsNonEmptyStringOrObject(TEST_VALUES.string);
+    assertIsNonEmptyStringOrObject(TEST_VALUES.object);
+    assertThrows(() => assertIsNonEmptyStringOrObject(TEST_VALUES.emptyString));
+    assertThrows(() => assertIsNonEmptyStringOrObject(TEST_VALUES.emptyObject));
+
+    // Optional mode
+    assert(isNonEmptyStringOrObject.optional(TEST_VALUES.string));
+    assert(isNonEmptyStringOrObject.optional(TEST_VALUES.object));
+    assert(isNonEmptyStringOrObject.optional(TEST_VALUES.undefinedValue));
+    assertFalse(isNonEmptyStringOrObject.optional(TEST_VALUES.emptyString));
+    assertFalse(isNonEmptyStringOrObject.optional(TEST_VALUES.nullValue));
+  });
+
+  await t.step("or method - complex notEmpty union chains", () => {
+    // Create a complex chain of notEmpty guards
+    const isNonEmptyValue = isString.notEmpty.or(isArray.notEmpty).or(isObject.notEmpty);
+
+    // Valid inputs - all non-empty values
+    assert(isNonEmptyValue(TEST_VALUES.string));
+    assert(isNonEmptyValue(TEST_VALUES.array));
+    assert(isNonEmptyValue(TEST_VALUES.object));
+    assert(isNonEmptyValue(["test"]));
+    assert(isNonEmptyValue({ key: "value" }));
+
+    // Invalid inputs - all empty values and other types
+    assertFalse(isNonEmptyValue(TEST_VALUES.emptyString));
+    assertFalse(isNonEmptyValue(TEST_VALUES.emptyArray));
+    assertFalse(isNonEmptyValue(TEST_VALUES.emptyObject));
+    assertFalse(isNonEmptyValue(TEST_VALUES.number));
+    assertFalse(isNonEmptyValue(TEST_VALUES.boolean));
+    assertFalse(isNonEmptyValue(TEST_VALUES.nullValue));
+    assertFalse(isNonEmptyValue(TEST_VALUES.undefinedValue));
+  });
+
   await t.step("extend method - basic functionality", () => {
     // Extend isString to only accept non-empty strings
     const isNonEmptyString = isString.extend((val) => {
