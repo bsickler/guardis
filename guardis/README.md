@@ -344,8 +344,9 @@ const validStatuses = ["active", "inactive", "pending"] as const;
 
 const isStatus = isString.extend((val, { includes }) => {
   if (includes(validStatuses, val)) {
-    return val as typeof validStatuses[number];
+    return val;
   }
+  
   return null;
 });
 
