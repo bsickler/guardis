@@ -4,8 +4,8 @@
  */
 import type { StandardSchemaV1 } from "../specs/standard-schema-spec.v1.ts";
 import type {
-  canBeEmpty,
-  isExtensible,
+  CanBeEmpty,
+  IsExtensible,
   JsonArray,
   JsonObject,
   JsonPrimitive,
@@ -35,6 +35,8 @@ export type Parser<T = unknown> = (val: unknown, helper: Helpers) => T | null;
 
 type ExtendedParser<T1, T2 extends T1 = T1> = (val: T1, helper: Helpers) => T2 | null;
 
+type Predicate<T> = (val: unknown) => val is T;
+
 /**
  * Creates a type guard that strictly checks the type, throwing
  *  a TypeError if it fails.
@@ -52,6 +54,56 @@ const createStrictTypeGuard = <T>(parse: (v: unknown) => v is T): StrictTypeGuar
 };
 
 type StrictTypeGuard<T> = (value: unknown, errorMsg?: string) => value is T;
+
+/**
+ * Creates a callback to construct a union type guard from two existing type guards.
+ *
+ * @template T1 - The type checked by the first type guard.
+ * @template T2 - The type checked by the second type guard.
+ *
+ * @param guard - A type guard function that checks if a value is of type `T1`.
+ * @returns A function that takes a second type guard `guardTwo` and returns a new
+ * type guard that checks if a value is of type `T1 | T2`.
+ *
+ * @example
+ * ```typescript
+ * const isString = (value: unknown): value is string => typeof value === 'string';
+ * const isNumber = (value: unknown): value is number => typeof value === 'number';
+ *
+ * const isStringOrNumber = createOrTypeGuard(isString)(isNumber);
+ *
+ * console.log(isStringOrNumber("hello")); // true
+ * console.log(isStringOrNumber(42)); // true
+ * console.log(isStringOrNumber(false)); // false
+ * ```
+ */
+const createOrTypeGuard =
+  <T1>(guard: Predicate<T1>) => <T2>(guardTwo: TypeGuard<T2>): TypeGuard<T1 | T2> =>
+    createTypeGuard<T1 | T2>((v: unknown) => {
+      if (guard(v) || guardTwo(v)) return v === null ? (true as T1 | T2) : v;
+
+      return null;
+    });
+
+/**
+ * Returns false if the value fails the "empty" type guard
+ * or if it fails the parser.
+ * @param {unknown} value
+ * @returns
+ */
+const createNotEmptyTypeGuard = <T>(guard: Predicate<T>) => {
+  const notEmpty = (value: unknown): value is T => !isEmpty(value) && guard(value);
+
+  notEmpty.strict = createStrictTypeGuard(notEmpty);
+  notEmpty.assert = createAssertTypeGuard(notEmpty.strict);
+  notEmpty.validate = (value: unknown) =>
+    notEmpty(value) ? { value } : { issues: [{ message: `Invalid type` }] };
+  notEmpty.optional = (value: unknown): value is T | undefined =>
+    guard(value) ? notEmpty(value) : isUndefined(value);
+  notEmpty.or = createOrTypeGuard(notEmpty);
+
+  return notEmpty as CanBeEmpty<T> extends false ? never : typeof notEmpty;
+};
 
 /**
  * Creates an assertion type guard function from a strict type guard.
@@ -114,7 +166,7 @@ export interface TypeGuard<T1> extends StandardSchemaV1<T1> {
    * @param guard A type guard for T2
    * @returns A new type guard that checks if the value is of type T or T2
    */
-  or: <T2>(guard: TypeGuard<T2>) => TypeGuard<T1 | T2>;
+  or: <T2>(guard: Predicate<T2>) => TypeGuard<T1 | T2>;
   /**
    * A strict type guard that throws an error if the value is not of type T.
    * @param value The value to check
@@ -161,7 +213,7 @@ export interface TypeGuard<T1> extends StandardSchemaV1<T1> {
    * @param {Function} parse An additional parser to further validate the type.
    * @returns {Function} A new type guard that combines the original and additional parsers.
    */
-  extend: isExtensible<T1> extends false ? never
+  extend: IsExtensible<T1> extends false ? never
     : <T2 extends T1>(parse: ExtendedParser<T1, T2>) => TypeGuard<T2>;
   optional: {
     /**
@@ -208,9 +260,9 @@ export interface TypeGuard<T1> extends StandardSchemaV1<T1> {
      * @note This method is equivalent to calling `isString.notEmpty.optional`
      * on a type guard named `isString`.
      */
-    notEmpty: canBeEmpty<T1> extends false ? never : TypeGuard<T1 | undefined>["notEmpty"];
+    notEmpty: CanBeEmpty<T1> extends false ? never : TypeGuard<T1 | undefined>["notEmpty"];
   };
-  notEmpty: canBeEmpty<T1> extends false ? never : {
+  notEmpty: CanBeEmpty<T1> extends false ? never : {
     /**
      * A type guard that checks if the value is not empty and of type T.
      * An empty value is defined as null, undefined, an empty string, an empty array,
@@ -261,6 +313,13 @@ export interface TypeGuard<T1> extends StandardSchemaV1<T1> {
      */
     validate: (value: unknown) => StandardSchemaV1.Result<T1>;
     /**
+     * A type guard function that checks if the value is of type T1 or T2.
+     * This is useful for creating unions of types.
+     * @param guard A type guard for T2
+     * @returns A new type guard that checks if the value is of type T1 or T2
+     */
+    or: <T2>(guard: Predicate<T2>) => TypeGuard<T1 | T2>;
+    /**
      * A type guard that checks if the value is not empty and of type T | undefined.
      * An empty value is defined as null, an empty string, an empty array,
      * or an empty object.
@@ -309,6 +368,14 @@ export const createTypeGuard = <T1>(parse: Parser<T1>): TypeGuard<T1> => {
   callback._ = { parser: parse };
 
   /**
+   * Creates a new type guard that checks if the value is of type T1 or T2.
+   * This is useful for creating unions of types.
+   * @param {Function} guard A type guard for T2
+   * @returns {Function} A new type guard that checks if the value is of type T1 or T2
+   */
+  callback.or = createOrTypeGuard(callback);
+
+  /**
    * Creates a new type guard by extending the current one with an additional parser.
    * The new type guard will first check if the value passes the original type guard,
    * and if it does, it will then apply the additional parser.
@@ -317,7 +384,7 @@ export const createTypeGuard = <T1>(parse: Parser<T1>): TypeGuard<T1> => {
    */
   const extend = <T2 extends T1>(parseTwo: ExtendedParser<T1, T2>): TypeGuard<T2> =>
     createTypeGuard<T2>((v, h) => !callback(v) ? null : parseTwo(v, h));
-  callback.extend = extend as isExtensible<T1> extends false ? never : typeof extend;
+  callback.extend = extend as IsExtensible<T1> extends false ? never : typeof extend;
 
   /**
    * Returns false if the value fails the "empty" type guard
@@ -325,15 +392,7 @@ export const createTypeGuard = <T1>(parse: Parser<T1>): TypeGuard<T1> => {
    * @param {unknown} value
    * @returns
    */
-  const notEmpty = (value: unknown): value is T1 => !isEmpty(value) && callback(value);
-
-  notEmpty.strict = createStrictTypeGuard(notEmpty);
-  notEmpty.assert = createAssertTypeGuard(notEmpty.strict);
-  notEmpty.validate = (value: unknown) =>
-    notEmpty(value) ? { value } : { issues: [{ message: `Invalid type` }] };
-  notEmpty.optional = (value: unknown): value is T1 | undefined =>
-    callback(value) ? notEmpty(value) : isUndefined(value);
-  callback.notEmpty = notEmpty as canBeEmpty<T1> extends false ? never : typeof notEmpty;
+  callback.notEmpty = createNotEmptyTypeGuard(callback);
 
   /**
    * Returns true if the value is undefined or passes the parser.
@@ -345,7 +404,7 @@ export const createTypeGuard = <T1>(parse: Parser<T1>): TypeGuard<T1> => {
 
   optional.strict = createStrictTypeGuard(optional);
   optional.assert = createAssertTypeGuard(optional.strict);
-  optional.notEmpty = notEmpty.optional;
+  optional.notEmpty = callback.notEmpty.optional;
   callback.optional = optional;
 
   /**
@@ -357,20 +416,6 @@ export const createTypeGuard = <T1>(parse: Parser<T1>): TypeGuard<T1> => {
    */
   callback.strict = createStrictTypeGuard(callback);
   callback.assert = createAssertTypeGuard(callback.strict);
-
-  /**
-   * Creates a new type guard that checks if the value is of type T1 or T2.
-   * This is useful for creating unions of types.
-   * @param {Function} guard A type guard for T2
-   * @returns {Function} A new type guard that checks if the value is of type T1 or T2
-   */
-  callback.or = <T2>(guard: TypeGuard<T2>): TypeGuard<T1 | T2> => {
-    return createTypeGuard<T1 | T2>((v: unknown) => {
-      const r1 = callback._.parser(v, helpers);
-
-      return r1 !== null ? r1 : (guard as unknown as _TypeGuard<T2>)._.parser(v, helpers);
-    });
-  };
 
   // StandardSchemaV1 compatibility
   callback.validate = (value: unknown) =>
@@ -538,9 +583,7 @@ export const isArray: TypeGuard<unknown[]> & {
    * @returns {boolean}
    */
   of: ArrayOfSignature;
-} = createTypeGuard(
-  (t): unknown[] | null => Array.isArray(t) ? t : null,
-);
+} = createTypeGuard((t): unknown[] | null => Array.isArray(t) ? t : null);
 
 isArray.of = <T>(guard: TypeGuard<T>): TypeGuard<T[]> =>
   createTypeGuard((v) => isArray(v) && v.every((item) => guard(item)) ? v as T[] : null);
@@ -550,9 +593,9 @@ isArray.of = <T>(guard: TypeGuard<T>): TypeGuard<T[]> =>
  * @param {unknown} t
  * @return {boolean}
  */
-export const isJsonArray: TypeGuard<JsonValue[] | readonly JsonValue[]> = createTypeGuard((
-  t,
-): JsonArray | null => Array.isArray(t) ? t : null);
+export const isJsonArray: TypeGuard<JsonValue[] | readonly JsonValue[]> = createTypeGuard(
+  (t): JsonArray | null => Array.isArray(t) ? t : null,
+);
 
 /**
  * Checks if a given value is a valid JSON value.

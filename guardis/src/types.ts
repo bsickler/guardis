@@ -37,7 +37,7 @@ export type ReplaceTupleIndex<T extends readonly unknown[], X extends number, R>
 };
 
 /** Utility type to determine if a type can be "empty" */
-export type canBeEmpty<T> = T extends
+export type CanBeEmpty<T> = T extends
   | null
   | undefined
   | string
@@ -47,4 +47,4 @@ export type canBeEmpty<T> = T extends
   : false;
 
 /** Utility type to determine if a type is extensible */
-export type isExtensible<T> = T extends null | undefined ? false : true;
+export type IsExtensible<T> = T extends null | undefined ? false : true;
