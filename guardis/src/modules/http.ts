@@ -66,3 +66,9 @@ export const isIpv4 = createTypeGuard((v) => {
 export const isIpv6 = createTypeGuard((v) => {
   return typeof v === "string" && v.length <= 45 && IPV6_REGEX.test(v) ? v : null;
 });
+
+/**
+ * Type guard that checks if a given string is either a valid IPv4 or IPv6 address.
+ * Combines the `isIpv4` and `isIpv6` type guards using a logical OR operation.
+ */
+export const isIpAddress = isIpv4.or(isIpv6);
