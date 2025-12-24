@@ -1,5 +1,5 @@
 import { assert, assertFalse, assertThrows } from "@std/assert";
-import { isNativeURL, isRequest, isResponse } from "./http.ts";
+import { isIpv4, isIpv6, isNativeURL, isRequest, isResponse } from "./http.ts";
 
 // Standard test values for consistency across all type guard tests
 const TEST_VALUES = {
@@ -7,6 +7,16 @@ const TEST_VALUES = {
   url: new URL("https://example.com"),
   request: new Request("https://example.com"),
   response: new Response("Hello, world!"),
+
+  // IP address values
+  ipv4Valid: "192.168.1.1",
+  ipv4Localhost: "127.0.0.1",
+  ipv4Zero: "0.0.0.0",
+  ipv4Max: "255.255.255.255",
+  ipv6Valid: "2001:0db8:85a3:0000:0000:8a2e:0370:7334",
+  ipv6Localhost: "::1",
+  ipv6AllZeros: "::",
+  ipv6Full: "2001:db8:0:0:1:0:0:1",
 
   // Common primitive values
   string: "test",
@@ -193,5 +203,179 @@ Deno.test("isResponse", async (t) => {
     assertFalse(isResponse.optional("Hello, world!"));
     assertFalse(isResponse.optional(TEST_VALUES.request));
     assertFalse(isResponse.optional(TEST_VALUES.nullValue));
+  });
+});
+
+Deno.test("isIpv4", async (t) => {
+  await t.step("basic functionality", () => {
+    // Valid inputs
+    assert(isIpv4(TEST_VALUES.ipv4Valid));
+    assert(isIpv4(TEST_VALUES.ipv4Localhost));
+    assert(isIpv4(TEST_VALUES.ipv4Zero));
+    assert(isIpv4(TEST_VALUES.ipv4Max));
+    assert(isIpv4("10.0.0.1"));
+    assert(isIpv4("172.16.0.1"));
+    assert(isIpv4("1.2.3.4"));
+
+    // Invalid IPv4 addresses
+    assertFalse(isIpv4("256.1.1.1")); // Octet > 255
+    assertFalse(isIpv4("1.256.1.1")); // Octet > 255
+    assertFalse(isIpv4("1.1.1.256")); // Octet > 255
+    assertFalse(isIpv4("1.1.1")); // Too few octets
+    assertFalse(isIpv4("1.1.1.1.1")); // Too many octets
+    assertFalse(isIpv4("abc.def.ghi.jkl")); // Non-numeric
+    assertFalse(isIpv4("1.1.1.-1")); // Negative number
+    assertFalse(isIpv4("01.1.1.1")); // Leading zeros (invalid per implementation)
+    assertFalse(isIpv4("1.01.1.1")); // Leading zeros
+    assertFalse(isIpv4("1.1.1.1 ")); // Trailing space
+    assertFalse(isIpv4(" 1.1.1.1")); // Leading space
+    assertFalse(isIpv4("1..1.1.1")); // Double dot
+    assertFalse(isIpv4(".1.1.1.1")); // Leading dot
+    assertFalse(isIpv4("1.1.1.1.")); // Trailing dot
+
+    // Invalid types
+    assertFalse(isIpv4(TEST_VALUES.number));
+    assertFalse(isIpv4(TEST_VALUES.boolean));
+    assertFalse(isIpv4(TEST_VALUES.nullValue));
+    assertFalse(isIpv4(TEST_VALUES.undefinedValue));
+    assertFalse(isIpv4(TEST_VALUES.object));
+    assertFalse(isIpv4(TEST_VALUES.array));
+    assertFalse(isIpv4(TEST_VALUES.function));
+    assertFalse(isIpv4(TEST_VALUES.url));
+    assertFalse(isIpv4(TEST_VALUES.emptyString));
+
+    // IPv6 addresses should not be valid for IPv4
+    assertFalse(isIpv4(TEST_VALUES.ipv6Valid));
+    assertFalse(isIpv4(TEST_VALUES.ipv6Localhost));
+  });
+
+  await t.step("strict mode", () => {
+    // Valid inputs don't throw
+    isIpv4.strict(TEST_VALUES.ipv4Valid);
+    isIpv4.strict(TEST_VALUES.ipv4Localhost);
+    isIpv4.strict(TEST_VALUES.ipv4Max);
+
+    // Invalid inputs throw
+    assertThrows(() => isIpv4.strict("256.1.1.1"));
+    assertThrows(() => isIpv4.strict("1.1.1"));
+    assertThrows(() => isIpv4.strict(TEST_VALUES.string));
+    assertThrows(() => isIpv4.strict(TEST_VALUES.number));
+    assertThrows(() => isIpv4.strict(TEST_VALUES.nullValue));
+    assertThrows(() => isIpv4.strict(TEST_VALUES.undefinedValue));
+  });
+
+  await t.step("assert mode", () => {
+    const assertIsIpv4: typeof isIpv4.assert = isIpv4.assert;
+
+    // Valid inputs don't throw
+    assertIsIpv4(TEST_VALUES.ipv4Valid);
+    assertIsIpv4(TEST_VALUES.ipv4Localhost);
+    assertIsIpv4(TEST_VALUES.ipv4Max);
+
+    // Invalid inputs throw
+    assertThrows(() => assertIsIpv4("256.1.1.1"));
+    assertThrows(() => assertIsIpv4("1.1.1"));
+    assertThrows(() => assertIsIpv4(TEST_VALUES.string));
+    assertThrows(() => assertIsIpv4(TEST_VALUES.number));
+  });
+
+  await t.step("optional mode", () => {
+    // Valid inputs
+    assert(isIpv4.optional(TEST_VALUES.ipv4Valid));
+    assert(isIpv4.optional(TEST_VALUES.ipv4Localhost));
+    assert(isIpv4.optional(TEST_VALUES.undefinedValue));
+
+    // Invalid inputs
+    assertFalse(isIpv4.optional("256.1.1.1"));
+    assertFalse(isIpv4.optional(TEST_VALUES.string));
+    assertFalse(isIpv4.optional(TEST_VALUES.nullValue));
+  });
+});
+
+Deno.test("isIpv6", async (t) => {
+  await t.step("basic functionality", () => {
+    // Valid inputs (note: current regex is restrictive and only accepts full format, ::1, and ::)
+    assert(isIpv6(TEST_VALUES.ipv6Valid));
+    assert(isIpv6(TEST_VALUES.ipv6Localhost));
+    assert(isIpv6(TEST_VALUES.ipv6AllZeros));
+    assert(isIpv6(TEST_VALUES.ipv6Full));
+    assert(isIpv6("2001:0db8:0000:0000:0000:ff00:0042:8329"));
+
+    // Invalid IPv6 addresses - compressed formats not supported by current regex
+    assertFalse(isIpv6("fe80::1")); // Compressed format
+    assertFalse(isIpv6("2001:db8::1")); // Compressed format
+    assertFalse(isIpv6("fe80::")); // Compressed format
+    assertFalse(isIpv6("::ffff:192.0.2.1")); // IPv4-mapped IPv6
+
+    // Invalid IPv6 addresses - malformed
+    assertFalse(isIpv6("gggg::1")); // Invalid hex
+    assertFalse(isIpv6(":::")); // Too many colons
+    assertFalse(isIpv6("2001:db8::1::2")); // Multiple ::
+    assertFalse(isIpv6("02001:db8::1")); // Group too long
+    assertFalse(isIpv6("2001:db8:85a3::8a2e:370k:7334")); // Invalid character 'k'
+
+    // String longer than 45 characters
+    assertFalse(isIpv6("2001:0db8:85a3:0000:0000:8a2e:0370:7334:extra"));
+
+    // Invalid types
+    assertFalse(isIpv6(TEST_VALUES.number));
+    assertFalse(isIpv6(TEST_VALUES.boolean));
+    assertFalse(isIpv6(TEST_VALUES.nullValue));
+    assertFalse(isIpv6(TEST_VALUES.undefinedValue));
+    assertFalse(isIpv6(TEST_VALUES.object));
+    assertFalse(isIpv6(TEST_VALUES.array));
+    assertFalse(isIpv6(TEST_VALUES.function));
+    assertFalse(isIpv6(TEST_VALUES.url));
+    assertFalse(isIpv6(TEST_VALUES.emptyString));
+    assertFalse(isIpv6(TEST_VALUES.string));
+
+    // IPv4 addresses should not be valid for IPv6
+    assertFalse(isIpv6(TEST_VALUES.ipv4Valid));
+    assertFalse(isIpv6(TEST_VALUES.ipv4Localhost));
+  });
+
+  await t.step("strict mode", () => {
+    // Valid inputs don't throw
+    isIpv6.strict(TEST_VALUES.ipv6Valid);
+    isIpv6.strict(TEST_VALUES.ipv6Localhost);
+    isIpv6.strict(TEST_VALUES.ipv6AllZeros);
+
+    // Invalid inputs throw
+    assertThrows(() => isIpv6.strict("fe80::1"));
+    assertThrows(() => isIpv6.strict("gggg::1"));
+    assertThrows(() => isIpv6.strict(":::"));
+    assertThrows(() => isIpv6.strict(TEST_VALUES.string));
+    assertThrows(() => isIpv6.strict(TEST_VALUES.number));
+    assertThrows(() => isIpv6.strict(TEST_VALUES.nullValue));
+    assertThrows(() => isIpv6.strict(TEST_VALUES.undefinedValue));
+  });
+
+  await t.step("assert mode", () => {
+    const assertIsIpv6: typeof isIpv6.assert = isIpv6.assert;
+
+    // Valid inputs don't throw
+    assertIsIpv6(TEST_VALUES.ipv6Valid);
+    assertIsIpv6(TEST_VALUES.ipv6Localhost);
+    assertIsIpv6(TEST_VALUES.ipv6AllZeros);
+
+    // Invalid inputs throw
+    assertThrows(() => assertIsIpv6("fe80::1"));
+    assertThrows(() => assertIsIpv6("gggg::1"));
+    assertThrows(() => assertIsIpv6(":::"));
+    assertThrows(() => assertIsIpv6(TEST_VALUES.string));
+    assertThrows(() => assertIsIpv6(TEST_VALUES.number));
+  });
+
+  await t.step("optional mode", () => {
+    // Valid inputs
+    assert(isIpv6.optional(TEST_VALUES.ipv6Valid));
+    assert(isIpv6.optional(TEST_VALUES.ipv6Localhost));
+    assert(isIpv6.optional(TEST_VALUES.undefinedValue));
+
+    // Invalid inputs
+    assertFalse(isIpv6.optional("fe80::1"));
+    assertFalse(isIpv6.optional("gggg::1"));
+    assertFalse(isIpv6.optional(TEST_VALUES.string));
+    assertFalse(isIpv6.optional(TEST_VALUES.nullValue));
   });
 });
