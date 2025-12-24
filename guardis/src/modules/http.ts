@@ -39,7 +39,7 @@ export const isResponse: TypeGuard<Response> = createTypeGuard((t: unknown) => {
  * - Matches the `ipv4Regex` pattern.
  * - Each octet is between 0 and 255.
  */
-export const isIpv4 = createTypeGuard((v) => {
+export const isIpv4: TypeGuard<string> = createTypeGuard((v) => {
   if (typeof v !== "string" || v.length > 15) return null; // Max IPv4 length is 15 characters
 
   const match = v.match(IPV4_REGEX);
@@ -63,7 +63,7 @@ export const isIpv4 = createTypeGuard((v) => {
  * - Has a length of 45 characters or less.
  * - Matches the `ipv6Regex` pattern.
  */
-export const isIpv6 = createTypeGuard((v) => {
+export const isIpv6: TypeGuard<string> = createTypeGuard((v) => {
   return typeof v === "string" && v.length <= 45 && IPV6_REGEX.test(v) ? v : null;
 });
 
@@ -71,4 +71,4 @@ export const isIpv6 = createTypeGuard((v) => {
  * Type guard that checks if a given string is either a valid IPv4 or IPv6 address.
  * Combines the `isIpv4` and `isIpv6` type guards using a logical OR operation.
  */
-export const isIpAddress = isIpv4.or(isIpv6);
+export const isIpAddress: TypeGuard<string> = isIpv4.or(isIpv6);
