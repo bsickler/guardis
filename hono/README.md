@@ -6,7 +6,8 @@ A type-safe input validation utility for Hono framework that integrates with Gua
 
 `describeInput` is a higher-order function that creates Hono validators for different validation
 targets (json, form, query, etc.). It combines Hono's validator middleware with Guardis type guards
-to provide runtime type checking with compile-time type safety.
+to provide runtime type checking with compile-time type safety. It also supports an optional
+transformation function to reshape validated data before it reaches your handler.
 
 ## Installation
 
@@ -145,6 +146,63 @@ const customValidator = (target, guard) => {
     );
   });
 };
+```
+
+## Transformation Functions
+
+`describeInput` supports an optional transformation function as its third parameter. This allows you to transform validated input into a different shape after validation passes.
+
+### Basic Transformation
+
+```typescript
+interface RawInput {
+  hello: string;
+}
+
+interface TransformedOutput {
+  greeting: string;
+  timestamp: number;
+}
+
+const isRawInput = createTypeGuard<RawInput>({
+  hello: "string",
+});
+
+app.post(
+  "/greet",
+  describeInput("json", isRawInput, (input) => ({
+    greeting: `Hello, ${input.hello}!`,
+    timestamp: Date.now(),
+  })),
+  (c) => {
+    const data = c.req.valid("json"); // Typed as TransformedOutput
+    return c.json({ greeting: data.greeting, timestamp: data.timestamp });
+  },
+);
+```
+
+### Use Cases
+
+Transformation functions are useful for:
+
+- **Adding computed fields**: Timestamps, UUIDs, derived values
+- **Normalizing data**: Converting strings to lowercase, trimming whitespace
+- **Enriching input**: Adding default values or server-side data
+- **Reshaping data**: Converting between different data structures
+
+### Type Safety
+
+The transformation function receives the validated input type and can return any output type. TypeScript will correctly infer the output type for `c.req.valid()`:
+
+```typescript
+// Input: { name: string }
+// Output: { name: string; createdAt: Date; id: string }
+
+describeInput("json", isNameInput, (input) => ({
+  ...input,
+  createdAt: new Date(),
+  id: crypto.randomUUID(),
+}));
 ```
 
 ## Advanced Examples
