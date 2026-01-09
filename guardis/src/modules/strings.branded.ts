@@ -14,6 +14,7 @@ import {
   isPhoneNumber as _isPhoneNumber,
   isUSPhone as _isUSPhone,
   isUUIDv4 as _isUUIDv4,
+  isUUIDv7 as _isUUIDv7,
 } from "./strings.ts";
 
 /**
@@ -107,6 +108,24 @@ export type UUIDv4 = Brand<string, "UUIDv4">;
  * @returns Boolean indicating whether the input is a valid UUIDv4.
  */
 export const isUUIDv4 = _isUUIDv4 as TypeGuard<UUIDv4>;
+
+/**
+ * Represents a branded type for a UUIDv7.
+ * This type ensures that a string is explicitly marked as a "UUIDv7"
+ * to provide additional type safety and clarity in the codebase.
+ */
+export type UUIDv7 = Brand<string, "UUIDv7">;
+
+/**
+ * Type guard for validating whether a given value is a valid UUIDv7 string.
+ * Uses a branded type to ensure type safety and distinguish it from other strings.
+ *
+ * Uses a regex pattern to test if the input is a string that matches the UUIDv7 format.
+ *
+ * @param t - The value to test for UUIDv7 validity.
+ * @returns Boolean indicating whether the input is a valid UUIDv7.
+ */
+export const isUUIDv7 = _isUUIDv7 as TypeGuard<UUIDv7>;
 
 /**
  * Represents a branded type for a comma-delimited string.

@@ -7,6 +7,7 @@ import {
   isInternationalPhone,
   isPeriodDelimited,
   isUUIDv4,
+  isUUIDv7,
 } from "./strings.ts";
 
 Deno.test("isEmail", async (t) => {
@@ -150,6 +151,51 @@ Deno.test("isUUIDv4", async (t) => {
     // Empty or malformed
     assertFalse(isUUIDv4(""));
     assertFalse(isUUIDv4("not a uuid"));
+  });
+});
+
+Deno.test("isUUIDv7", async (t) => {
+  await t.step("returns true for valid UUID v7 strings", () => {
+    assert(isUUIDv7("018f6b70-3d5c-7f5a-8e3b-1c2d3e4f5a6b"));
+    assert(isUUIDv7("019012ab-cdef-7123-9abc-def012345678"));
+    assert(isUUIDv7("01901234-5678-7abc-bdef-0123456789ab"));
+    assert(isUUIDv7("00000000-0000-7000-8000-000000000000"));
+    // Case insensitive
+    assert(isUUIDv7("018F6B70-3D5C-7F5A-8E3B-1C2D3E4F5A6B"));
+    assert(isUUIDv7("019012AB-CDEF-7123-9ABC-DEF012345678"));
+  });
+
+  await t.step("returns false for invalid UUID v7 strings", () => {
+    // Not a UUID v7 (wrong version digit)
+    assertFalse(isUUIDv7("550e8400-e29b-41d4-a716-446655440000")); // version 4
+    assertFalse(isUUIDv7("550e8400-e29b-31d4-a716-446655440000")); // version 3
+    assertFalse(isUUIDv7("550e8400-e29b-51d4-a716-446655440000")); // version 5
+
+    // Wrong variant digit
+    assertFalse(isUUIDv7("018f6b70-3d5c-7f5a-c716-1c2d3e4f5a6b")); // should be 8, 9, a, or b
+    assertFalse(isUUIDv7("018f6b70-3d5c-7f5a-0716-1c2d3e4f5a6b")); // should be 8, 9, a, or b
+
+    // Wrong format
+    assertFalse(isUUIDv7("018f6b703d5c7f5a8e3b1c2d3e4f5a6b")); // missing hyphens
+    assertFalse(isUUIDv7("018f6b70-3d5c-7f5a-8e3b-1c2d3e4f5a6")); // too short
+    assertFalse(isUUIDv7("018f6b70-3d5c-7f5a-8e3b-1c2d3e4f5a6bb")); // too long
+    assertFalse(isUUIDv7("018f6b70-3d5c-7f5a-8e3b")); // incomplete
+
+    // Invalid characters
+    assertFalse(isUUIDv7("018f6b70-3d5c-7f5a-8e3b-1c2d3e4f5zzz"));
+    assertFalse(isUUIDv7("018f6b70-3d5c-7f5a-8e3b-1c2d3e4f5a6g"));
+
+    // Non-string types
+    assertFalse(isUUIDv7(null));
+    assertFalse(isUUIDv7(undefined));
+    assertFalse(isUUIDv7(123));
+    assertFalse(isUUIDv7({}));
+    assertFalse(isUUIDv7([]));
+    assertFalse(isUUIDv7(true));
+
+    // Empty or malformed
+    assertFalse(isUUIDv7(""));
+    assertFalse(isUUIDv7("not a uuid"));
   });
 });
 
