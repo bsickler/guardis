@@ -78,6 +78,17 @@ const UUID_4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0
  */
 export const isUUIDv4: TypeGuard<string> = isString.extend((t) => UUID_4_REGEX.test(t) ? t : null);
 
+/** Regex for validating UUID v7 strings. */
+const UUID_7_REGEX =  /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/**
+ * A type guard function that checks if a given value is a valid UUID version 7 string.
+ * 
+ * @param t - The value to be checked.
+ * @returns  Boolean indicating whether the input is a valid UUID v7 string.
+ */
+export const isUUIDv7: TypeGuard<string> = isString.extend((t) => UUID_7_REGEX.test(t) ? t : null);
+
 /**
  * A regular expression used to validate comma-delimited strings.
  *
