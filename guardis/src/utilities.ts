@@ -1,4 +1,5 @@
 import { isUndefined } from "./guard.ts";
+import type { GuardedType, TypeGuard } from "./types.ts";
 
 /**
  * Utility to verify if a property exists in an object. Checks that
@@ -102,3 +103,37 @@ export function keyOf<T extends object>(k: unknown, t: T): k is keyof T {
 
   return k in t;
 }
+
+/**
+ * Formats an error message based on the provided value and optional metadata.
+ *
+ * @param value - The value that caused the error.
+ * @param name - An optional name of the expected type or condition.
+ * @returns A formatted error message string indicating the expected type (if provided) and the received value.
+ */
+export function formatErrorMessage(value: unknown, name?: string): string {
+  if (name) {
+    return `Expected ${name}. Received: ${JSON.stringify(value)}`;
+  }
+
+  return `Invalid value. Received: ${JSON.stringify(value)}`;
+}
+
+/**
+ * Creates a union type guard from a list of type guards.
+ *
+ * @typeParam G - A tuple of `TypeGuard<unknown>` types.
+ * @param guards - The type guards to combine into a union.
+ * @returns A type guard that accepts any value accepted by at least one of the provided guards.
+ */
+export const unionOf = <G extends readonly TypeGuard<unknown>[]>(
+  ...guards: G
+): TypeGuard<GuardedType<G[number]>> => {
+  let store = guards[0];
+
+  for (let i = 1; i < guards.length; i++) {
+    store = store.or(guards[i]);
+  }
+
+  return store as TypeGuard<GuardedType<G[number]>>;
+};

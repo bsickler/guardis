@@ -2,40 +2,49 @@
  * guard.ts
  * @module
  */
-import type { StandardSchemaV1 } from "../specs/standard-schema-spec.v1.ts";
+
 import type {
   CanBeEmpty,
+  ExtendedParser,
   IsExtensible,
   JsonArray,
   JsonObject,
   JsonPrimitive,
   JsonValue,
+  Parser,
+  Predicate,
+  StrictTypeGuard,
   TupleOfLength,
+  TypeGuard,
 } from "./types.ts";
 import {
   doesNotHaveProperty,
+  formatErrorMessage,
   hasOptionalProperty,
   hasProperty,
   includes,
   keyOf,
   tupleHas,
+  unionOf,
 } from "./utilities.ts";
 
-type Helpers = {
-  has: typeof hasProperty;
-  hasNot: typeof doesNotHaveProperty;
-  hasOptional: typeof hasOptionalProperty;
-  tupleHas: typeof tupleHas;
-  includes: typeof includes;
-  keyOf: typeof keyOf;
+/**
+ * Type guard that checks if a given guard object contains meta information.
+ *
+ * Specifically, it verifies that the guard has an underscore (`_`) property,
+ * which is an object containing a `name` (string or undefined) and a `parser` function.
+ *
+ * @typeParam T1 - The type parameter for the predicate or type guard.
+ * @param guard - The predicate or type guard to check for meta information.
+ * @returns `true` if the guard contains meta information (`_` property with `name` and `parser`), otherwise `false`.
+ */
+const includesMeta = <T1>(
+  guard: Predicate<T1> | TypeGuard<T1>,
+): guard is typeof guard & { _: { name: string | undefined; parser: Parser<T1> } } => {
+  return "_" in guard && !!guard._ &&
+    typeof guard._ === "object" && "parser" in guard._ &&
+    typeof guard._.parser === "function";
 };
-
-/** A parser is a function that takes an unknown and returns T or null */
-export type Parser<T = unknown> = (val: unknown, helper: Helpers) => T | null;
-
-type ExtendedParser<T1, T2 extends T1 = T1> = (val: T1, helper: Helpers) => T2 | null;
-
-type Predicate<T> = (val: unknown) => val is T;
 
 /**
  * Creates a type guard that strictly checks the type, throwing
@@ -52,8 +61,6 @@ const createStrictTypeGuard = <T>(parse: (v: unknown) => v is T): StrictTypeGuar
     return true;
   };
 };
-
-type StrictTypeGuard<T> = (value: unknown, errorMsg?: string) => value is T;
 
 /**
  * Creates a callback to construct a union type guard from two existing type guards.
@@ -78,12 +85,22 @@ type StrictTypeGuard<T> = (value: unknown, errorMsg?: string) => value is T;
  * ```
  */
 const createOrTypeGuard =
-  <T1>(guard: Predicate<T1>) => <T2>(guardTwo: TypeGuard<T2>): TypeGuard<T1 | T2> =>
-    createTypeGuard<T1 | T2>((v: unknown) => {
+  <T1>(guard: Predicate<T1>) => <T2>(guardTwo: TypeGuard<T2>): TypeGuard<T1 | T2> => {
+    // Create a union of the names of the two guards for better error messages, if available.
+    const name = includesMeta(guard) && includesMeta(guardTwo)
+      ? `${guard._.name} | ${guardTwo._.name}`
+      : undefined;
+
+    const parser = (v: unknown) => {
       if (guard(v) || guardTwo(v)) return v === null ? (true as T1 | T2) : v;
 
       return null;
-    });
+    };
+
+    return name
+      ? createTypeGuard<T1 | T2>(name, parser) as TypeGuard<T1 | T2>
+      : createTypeGuard<T1 | T2>(parser) as TypeGuard<T1 | T2>;
+  };
 
 /**
  * Returns false if the value fails the "empty" type guard
@@ -93,13 +110,21 @@ const createOrTypeGuard =
  */
 const createNotEmptyTypeGuard = <T>(guard: Predicate<T>) => {
   const notEmpty = (value: unknown): value is T => !isEmpty(value) && guard(value);
+  notEmpty._ = {
+    name: includesMeta(guard) ? `non-empty ${guard._.name}` : undefined,
+    parser: (value: unknown) => notEmpty(value) && guard(value) ? value : null,
+  };
 
   notEmpty.strict = createStrictTypeGuard(notEmpty);
   notEmpty.assert = createAssertTypeGuard(notEmpty.strict);
   notEmpty.validate = (value: unknown) =>
-    notEmpty(value) ? { value } : { issues: [{ message: `Invalid type` }] };
+    notEmpty(value)
+      ? { value }
+      : { issues: [{ message: formatErrorMessage(value, notEmpty._.name) }] };
+
   notEmpty.optional = (value: unknown): value is T | undefined =>
     guard(value) ? notEmpty(value) : isUndefined(value);
+
   notEmpty.or = createOrTypeGuard(notEmpty);
 
   return notEmpty as CanBeEmpty<T> extends false ? never : typeof notEmpty;
@@ -131,230 +156,49 @@ const createAssertTypeGuard = <T>(
   return guard;
 };
 
-/**
- * Represents a type guard function with additional utility methods.
- *
- * A TypeGuard is a function that determines if a value is of type T, providing
- * type narrowing in TypeScript. This type extends the basic type guard with:
- * - strict mode validation
- * - assertion functions that throw errors for invalid values
- * - utilities for handling non-empty and optional values
- *
- * @template T1 The type being guarded
- */
-export interface TypeGuard<T1> extends StandardSchemaV1<T1> {
-  /**
-   * A utility to gain access to the type being guarded. Can be used
-   * to infer the type in other parts of the code.
-   *
-   * @example
-   * ```typescript
-   * type GuardedType = typeof isString._TYPE; // string
-   * ```
-   */
-  _TYPE: T1;
-
-  /**
-   * A type guard function that checks if the value is of type T.
-   * @param value The value to check
-   * @returns true if the value is of type T, otherwise false
-   */
-  (value: unknown): value is T1;
-  /**
-   * A type guard function that checks if the value is of type T or T2.
-   * This is useful for creating unions of types.
-   * @param guard A type guard for T2
-   * @returns A new type guard that checks if the value is of type T or T2
-   */
-  or: <T2>(guard: Predicate<T2>) => TypeGuard<T1 | T2>;
-  /**
-   * A strict type guard that throws an error if the value is not of type T.
-   * @param value The value to check
-   * @param errorMsg Optional error message to include in the thrown error
-   * @returns true if the value is of type T, otherwise throws an error
-   */
-  strict: StrictTypeGuard<T1>;
-  /**
-   * An assertion function that throws an error if the value is not of type T.
-   * This is useful for ensuring that a value meets the type requirements at runtime.
-   *
-   * Unfortunately, TypeScript does not support the inference of assertion functions
-   * so the function must be invoked by declaring an intermediate variable and specifying
-   * the type.
-   *
-   * Example:
-   * ```typescript
-   * const value: unknown = someValue();
-   *
-   * const assertIsString: typeof isString.assert = isString.assert;
-   * assertIsString(value, "Expected a string");
-   * // After this line, TypeScript knows that value is a string
-   * ```
-   * @param value The value to check
-   * @param errorMsg Optional error message to include in the thrown error
-   * @returns Asserts that the value is of type T
-   */
-  assert: (value: unknown, errorMsg?: string) => asserts value is T1;
-  /**
-   * Validates the value against the schema. If the value is of type T1,
-   * it returns a success result with the value, otherwise it returns a failure result with issues.
-   *
-   * Included as a shortcut to the `validate` method of the StandardSchemaV1 interface.
-   * @param value The value to validate
-   * @returns
-   */
-  validate: (value: unknown) => StandardSchemaV1.Result<T1>;
-
-  /**
-   * Extends the current type guard with an additional parser, building upon
-   * the existing type guard. The new type guard will first check if the value
-   * passes the original type guard, and if it does, it will then apply the
-   * additional parser.
-   * @param {Function} parse An additional parser to further validate the type.
-   * @returns {Function} A new type guard that combines the original and additional parsers.
-   */
-  extend: IsExtensible<T1> extends false ? never
-    : <T2 extends T1>(parse: ExtendedParser<T1, T2>) => TypeGuard<T2>;
-  optional: {
-    /**
-     * A type guard that checks if the value is either undefined or of type T.
-     * @param value The value to check
-     * @returns true if the value is of type T or undefined, otherwise false
-     */
-    (value: unknown): value is T1 | undefined;
-    /**
-     * A strict type guard that throws an error if the value is defined but not of type T.
-     * @param value The value to check
-     * @param errorMsg Optional error message to include in the thrown error
-     * @returns true if the value is of type T, otherwise throws an error
-     */
-    strict: (value: unknown, errorMsg?: string) => value is T1 | undefined;
-    /**
-     * An assertion function that throws an error if the value is defined but not of type T.
-     * This is useful for ensuring that a value meets the type requirements at runtime.
-     *
-     * Unfortunately, TypeScript does not support the inference of assertion functions
-     * so the function must be invoked by declaring an intermediate variable and specifying
-     * the type.
-     *
-     * Example:
-     * ```typescript
-     * const value: unknown = someValue();
-     *
-     * const assertIsOptionalString: typeof isString.optional.assert = isString.optional.assert;
-     * assertIsOptionalString(value, "Expected a string or undefined");
-     * // After this line, TypeScript knows that value is a string
-     * ```
-     * @param value The value to check
-     * @param errorMsg Optional error message to include in the thrown error
-     * @returns Asserts that the value is of type T
-     */
-    assert: (value: unknown, errorMsg?: string) => asserts value is T1 | undefined;
-    /**
-     * A type guard that checks if the value is not empty and of type T | undefined.
-     * An empty value is defined as null, an empty string, an empty array,
-     * or an empty object.
-     * @param value The value to check
-     * @returns true if the value is of type T and not empty, otherwise false
-     *
-     * @note This method is equivalent to calling `isString.notEmpty.optional`
-     * on a type guard named `isString`.
-     */
-    notEmpty: CanBeEmpty<T1> extends false ? never : TypeGuard<T1 | undefined>["notEmpty"];
-  };
-  notEmpty: CanBeEmpty<T1> extends false ? never : {
-    /**
-     * A type guard that checks if the value is not empty and of type T.
-     * An empty value is defined as null, undefined, an empty string, an empty array,
-     * or an empty object.
-     * @param value The value to check
-     * @returns true if the value is of type T and not empty, otherwise false
-     */
-    (value: unknown): value is T1;
-    /**
-     * A strict type guard that throws an error if the value is not of type T
-     * or if the value is empty (null, undefined, empty string, empty array, or empty object).
-     * @param value The value to check
-     * @param errorMsg Optional error message to include in the thrown error
-     * @returns true if the value is of type T, otherwise throws an error
-     */
-    strict: StrictTypeGuard<T1>;
-    /**
-     * An assertion function that throws an error if the value is not of type T or if it is
-     * empty. An empty value is defined as null, undefined, an empty string,
-     * an empty array, or an empty object. This is useful for ensuring that a value meets
-     * the type requirements at runtime.
-     *
-     * Unfortunately, TypeScript does not support the inference of assertion functions
-     * so the function must be invoked by declaring an intermediate variable and specifying
-     * the type.
-     *
-     * Example:
-     * ```typescript
-     * const value: unknown = someValue();
-     *
-     * const assertIsNotEmptyString: typeof isString.notEmpty.assert = isString.notEmpty.assert;
-     * assertIsNotEmptyString(value, "Expected a non-empty string");
-     * // After this line, TypeScript knows that value is a string
-     * ```
-     * @param value The value to check
-     * @param errorMsg Optional error message to include in the thrown error
-     * @returns Asserts that the value is of type T
-     */
-    assert: (value: unknown, errorMsg?: string) => asserts value is T1;
-    /**
-     * Validates the value against the schema, ensuring it is not empty. If the value is of
-     * type T1 and not empty, it returns a success result with the value, otherwise it
-     * returns a failure result with issues.
-     *
-     * Included as a shortcut to the `validate` method of the StandardSchemaV1 interface.
-     * @param value The value to validate
-     * @returns
-     */
-    validate: (value: unknown) => StandardSchemaV1.Result<T1>;
-    /**
-     * A type guard function that checks if the value is of type T1 or T2.
-     * This is useful for creating unions of types.
-     * @param guard A type guard for T2
-     * @returns A new type guard that checks if the value is of type T1 or T2
-     */
-    or: <T2>(guard: Predicate<T2>) => TypeGuard<T1 | T2>;
-    /**
-     * A type guard that checks if the value is not empty and of type T | undefined.
-     * An empty value is defined as null, an empty string, an empty array,
-     * or an empty object.
-     * @param value The value to check
-     * @returns true if the value is of type T and not empty, otherwise false
-     *
-     * @note This method is equivalent to calling `isString.optional.notEmpty`
-     * on a type guard named `isString`.
-     */
-    optional: TypeGuard<T1 | undefined>["optional"];
-  };
-}
-
 /** An internal type guard that includes the parser function. */
-type _TypeGuard<T> = TypeGuard<T> & { _: { parser: Parser<T> } };
+type _TypeGuard<T> = TypeGuard<T> & { _: { name?: string; parser: Parser<T> } };
 
 /**
- * The createTypeGuard function accepts a parser and returns a new function that
- * can be used to validate an input against a specified type. The parser
- * should perform whatever checks are necessary to safely establish that
- * the input is of the specified type.
+ * Creates a type guard from a parser function.
  *
- * e.g.
- * ```
- * const parseString = (val: unknown): string | null => typeof val === 'string' ? val : null;
- * const isString = createTypeGuard(parseString);
- * ```
+ * The parser should perform whatever checks are necessary to safely establish
+ * that the input is of the specified type.
  *
  * Injects the `has` utility method as the second argument of any parser, as
  * a convenience to check if a property exists in an object.
  *
- * @param {Function} parse
- * @returns {Function}
+ * @param parser A function that returns the value if valid, or null if invalid.
+ * @returns A type guard function with utility methods.
+ *
+ * @example
+ * ```typescript
+ * const parseString = (val: unknown): string | null => typeof val === 'string' ? val : null;
+ * const isString = createTypeGuard(parseString);
+ * ```
  */
-export const createTypeGuard = <T1>(parse: Parser<T1>): TypeGuard<T1> => {
+export function createTypeGuard<T1>(parser: Parser<T1>): TypeGuard<T1>;
+/**
+ * Creates a type guard from a parser function with a custom type name.
+ *
+ * The name is used for error messages when the type guard fails.
+ *
+ * @param name The type name to use for error messages.
+ * @param parser A function that returns the value if valid, or null if invalid.
+ * @returns A type guard function with utility methods.
+ *
+ * @example
+ * ```typescript
+ * const isPositive = createTypeGuard("positive number", (val: unknown): number | null =>
+ *   typeof val === 'number' && val > 0 ? val : null
+ * );
+ * ```
+ */
+export function createTypeGuard<T1>(name: string, parser: Parser<T1>): TypeGuard<T1>;
+export function createTypeGuard<T1>(...args: [Parser<T1>] | [string, Parser<T1>]): TypeGuard<T1> {
+  const parser = args.length === 1 ? args[0] : args[1];
+  const name = args.length === 2 ? args[0] : undefined;
+
   const helpers = {
     has: hasProperty,
     hasNot: doesNotHaveProperty,
@@ -364,8 +208,8 @@ export const createTypeGuard = <T1>(parse: Parser<T1>): TypeGuard<T1> => {
     tupleHas,
   };
 
-  const callback = (value: unknown): value is T1 => parse(value, helpers) !== null;
-  callback._ = { parser: parse };
+  const callback = (value: unknown): value is T1 => parser(value, helpers) !== null;
+  callback._ = { name, parser };
 
   /**
    * Creates a new type guard that checks if the value is of type T1 or T2.
@@ -379,11 +223,28 @@ export const createTypeGuard = <T1>(parse: Parser<T1>): TypeGuard<T1> => {
    * Creates a new type guard by extending the current one with an additional parser.
    * The new type guard will first check if the value passes the original type guard,
    * and if it does, it will then apply the additional parser.
-   * @param {Function} parseTwo An additional parser to further validate the type.
-   * @returns {Function} A new type guard that combines the original and additional parsers.
+   * @param parser An additional parser to further validate the type.
+   * @returns A new type guard that combines the original and additional parsers.
    */
-  const extend = <T2 extends T1>(parseTwo: ExtendedParser<T1, T2>): TypeGuard<T2> =>
-    createTypeGuard<T2>((v, h) => !callback(v) ? null : parseTwo(v, h));
+  function extend<T2 extends T1>(parser: ExtendedParser<T1, T2>): TypeGuard<T2>;
+  /**
+   * Creates a new type guard by extending the current one with an additional parser.
+   * The new type guard will first check if the value passes the original type guard,
+   * and if it does, it will then apply the additional parser.
+   * @param name The type name to use for error messages.
+   * @param parser An additional parser to further validate the type.
+   * @returns A new type guard that combines the original and additional parsers.
+   */
+  function extend<T2 extends T1>(name: string, parser: ExtendedParser<T1, T2>): TypeGuard<T2>;
+  function extend<T2 extends T1>(
+    ...args: [ExtendedParser<T1, T2>] | [string, ExtendedParser<T1, T2>]
+  ): TypeGuard<T2> {
+    const parseTwo = args.length === 1 ? args[0] : args[1];
+    const extendName = args.length === 2 ? args[0] : undefined;
+    return extendName
+      ? createTypeGuard<T2>(extendName, (v, h) => !callback(v) ? null : parseTwo(v, h))
+      : createTypeGuard<T2>((v, h) => !callback(v) ? null : parseTwo(v, h));
+  }
   callback.extend = extend as IsExtensible<T1> extends false ? never : typeof extend;
 
   /**
@@ -419,7 +280,7 @@ export const createTypeGuard = <T1>(parse: Parser<T1>): TypeGuard<T1> => {
 
   // StandardSchemaV1 compatibility
   callback.validate = (value: unknown) =>
-    callback(value) ? { value } : { issues: [{ message: `Invalid type` }] };
+    callback(value) ? { value } : { issues: [{ message: formatErrorMessage(value, name) }] };
 
   callback["~standard"] = {
     version: 1,
@@ -429,15 +290,16 @@ export const createTypeGuard = <T1>(parse: Parser<T1>): TypeGuard<T1> => {
 
   // Attach the type to the function for easy access
   return (<T1>(t: unknown): TypeGuard<T1> => t as TypeGuard<T1>)(callback);
-};
+}
 
 /**
  * Returns true if input satisfies type boolean.
  * @param {unknown} t
  * @return {boolean}
  */
-export const isBoolean: TypeGuard<boolean> = createTypeGuard((t): boolean | null =>
-  typeof t === "boolean" ? t : null
+export const isBoolean: TypeGuard<boolean> = createTypeGuard(
+  "boolean",
+  (t): boolean | null => typeof t === "boolean" ? t : null,
 );
 
 /**
@@ -445,8 +307,9 @@ export const isBoolean: TypeGuard<boolean> = createTypeGuard((t): boolean | null
  * @param {unknown} t
  * @return {boolean}
  */
-export const isString: TypeGuard<string> = createTypeGuard((t): string | null =>
-  typeof t === "string" ? t : null
+export const isString: TypeGuard<string> = createTypeGuard(
+  "string",
+  (t): string | null => typeof t === "string" ? t : null,
 );
 
 /**
@@ -458,8 +321,9 @@ export const isString: TypeGuard<string> = createTypeGuard((t): string | null =>
  * @param {unknown} t
  * @return {boolean}
  */
-export const isNumber: TypeGuard<number> = createTypeGuard((t): number | null =>
-  typeof t === "number" && !Number.isNaN(t) ? t : null
+export const isNumber: TypeGuard<number> = createTypeGuard(
+  "number",
+  (t): number | null => typeof t === "number" && !Number.isNaN(t) ? t : null,
 );
 
 /**
@@ -467,8 +331,9 @@ export const isNumber: TypeGuard<number> = createTypeGuard((t): number | null =>
  * @param {unknown} t
  * @return {boolean}
  */
-export const isSymbol: TypeGuard<symbol> = createTypeGuard((t): symbol | null =>
-  typeof t === "symbol" ? t : null
+export const isSymbol: TypeGuard<symbol> = createTypeGuard(
+  "symbol",
+  (t): symbol | null => typeof t === "symbol" ? t : null,
 );
 
 /**
@@ -476,8 +341,9 @@ export const isSymbol: TypeGuard<symbol> = createTypeGuard((t): symbol | null =>
  * @param {unknown} t
  * @return {boolean}
  */
-export const isBinary: TypeGuard<0 | 1> = createTypeGuard((t): 0 | 1 | null =>
-  t === 1 || t === 0 ? t : null
+export const isBinary: TypeGuard<0 | 1> = createTypeGuard(
+  "binary",
+  (t): 0 | 1 | null => t === 1 || t === 0 ? t : null,
 );
 
 /**
@@ -485,17 +351,18 @@ export const isBinary: TypeGuard<0 | 1> = createTypeGuard((t): 0 | 1 | null =>
  * @param {unknown} t
  * @return {boolean}
  */
-export const isNumeric: TypeGuard<number> = createTypeGuard((t): number | null => {
-  if (isNumber(t)) return t as number;
+export const isNumeric: TypeGuard<number> = createTypeGuard(
+  "numeric",
+  (t): number | null => {
+    if (isNumber(t)) return t as number;
 
-  if (!/^-?\d*\.?\d+$/.test(t as string)) return null;
+    if (!/^-?\d*\.?\d+$/.test(t as string)) return null;
 
-  const _t = parseInt(t as string) || parseFloat(t as string);
+    const _t = parseInt(t as string) || parseFloat(t as string);
 
-  return (!isNaN(_t) && isNumber(_t)) ? t as number : null;
-});
-
-isNumber.optional;
+    return (!isNaN(_t) && isNumber(_t)) ? t as number : null;
+  },
+);
 
 /**
  * Returns true if input satisfies type Function.
@@ -503,6 +370,7 @@ isNumber.optional;
  * @return {boolean}
  */
 export const isFunction: TypeGuard<(...args: unknown[]) => unknown> = createTypeGuard(
+  "function",
   (t): ((...args: unknown[]) => unknown) | null =>
     typeof t === "function" ? (t as (...args: unknown[]) => unknown) : null,
 );
@@ -512,8 +380,19 @@ export const isFunction: TypeGuard<(...args: unknown[]) => unknown> = createType
  * @param {unknown} t
  * @return {boolean}
  */
-export const isUndefined: TypeGuard<undefined> = createTypeGuard((t): undefined | null =>
-  typeof t === "undefined" ? t : null
+export const isUndefined: TypeGuard<undefined> = createTypeGuard(
+  "undefined",
+  (t): undefined | null => (typeof t === "undefined" ? t : null),
+);
+
+/**
+ * Returns true if input satisfies type null.
+ * @param {unknown} t
+ * @return {boolean}
+ */
+const isNull: TypeGuard<null> = createTypeGuard<null>(
+  "null",
+  (t: unknown) => (t === null ? true : null) as null,
 );
 
 /**
@@ -521,9 +400,12 @@ export const isUndefined: TypeGuard<undefined> = createTypeGuard((t): undefined 
  * @param {unknown} t
  * @return {boolean}
  */
-export const isJsonPrimitive: TypeGuard<JsonPrimitive> = createTypeGuard((
-  t,
-): JsonPrimitive | null => (isBoolean(t) || isString(t) || isNumber(t) || isNull(t)) || null);
+export const isJsonPrimitive: TypeGuard<JsonPrimitive> = unionOf(
+  isBoolean,
+  isString,
+  isNumber,
+  isNull,
+);
 
 /**
  * Returns true if input satisfies type object. _BEWARE_ object
@@ -532,17 +414,16 @@ export const isJsonPrimitive: TypeGuard<JsonPrimitive> = createTypeGuard((
  * @param {unknown} t
  * @return {boolean}
  */
-export const isObject: TypeGuard<object> = createTypeGuard((t): object | null =>
-  t && typeof t === "object" && !Array.isArray(t) ? t : null
+export const isObject: TypeGuard<object> = createTypeGuard(
+  "object",
+  (t): object | null => t && typeof t === "object" && !Array.isArray(t) ? t : null,
 );
 
 /** Returns true if input satisfies type PropertyKey.
  * @param {unknown} t
  * @return {boolean}
  */
-export const isPropertyKey: TypeGuard<PropertyKey> = createTypeGuard((t): PropertyKey | null =>
-  isString(t) || isNumber(t) || isSymbol(t) ? t : null
-);
+export const isPropertyKey: TypeGuard<PropertyKey> = unionOf(isString, isNumber, isSymbol);
 
 /**
  * Returns true if input satisfies type object. _BEWARE_ object
@@ -552,6 +433,7 @@ export const isPropertyKey: TypeGuard<PropertyKey> = createTypeGuard((t): Proper
  * @return {boolean}
  */
 export const isJsonObject: TypeGuard<JsonObject> = createTypeGuard(
+  "JsonObject",
   (t): JsonObject | null => {
     if (
       t && typeof t === "object" &&
@@ -568,25 +450,40 @@ export const isJsonObject: TypeGuard<JsonObject> = createTypeGuard(
   },
 );
 
-type ArrayOfSignature = <T>(guard: TypeGuard<T>) => TypeGuard<T[]>;
+/** Precursor to full isArray guard */
+const _isArray = createTypeGuard("array", (t): unknown[] | null => Array.isArray(t) ? t : null);
 
 /**
  * Returns true if input satisfies type array.
  * @param {unknown} t
  * @return {boolean}
  */
-// @ts-ignore: We're modifying the function to add the 'of' method.
 export const isArray: TypeGuard<unknown[]> & {
   /**
    * Returns true if input satisfies type array of T.
    * @param guard The type guard for the array elements
    * @returns {boolean}
    */
-  of: ArrayOfSignature;
-} = createTypeGuard((t): unknown[] | null => Array.isArray(t) ? t : null);
+  of: <T>(guard: TypeGuard<T>) => TypeGuard<T[]>;
+} = Object.assign(
+  _isArray,
+  {
+    of: <T>(guard: TypeGuard<T>): TypeGuard<T[]> => {
+      const guardName = includesMeta(guard) ? guard._.name : undefined;
 
-isArray.of = <T>(guard: TypeGuard<T>): TypeGuard<T[]> =>
-  createTypeGuard((v) => isArray(v) && v.every((item) => guard(item)) ? v as T[] : null);
+      let name = "array";
+
+      if (guardName) {
+        name = guardName?.includes(" | ") ? `(${guardName})[]` : `${guardName}[]`;
+      }
+
+      return createTypeGuard(
+        name,
+        (v) => isArray(v) && v.every((item) => guard(item)) ? v as T[] : null,
+      );
+    },
+  },
+);
 
 /**
  * Returns true if input satisfies type array.
@@ -594,6 +491,7 @@ isArray.of = <T>(guard: TypeGuard<T>): TypeGuard<T[]> =>
  * @return {boolean}
  */
 export const isJsonArray: TypeGuard<JsonValue[] | readonly JsonValue[]> = createTypeGuard(
+  "JsonArray",
   (t): JsonArray | null => Array.isArray(t) ? t : null,
 );
 
@@ -617,14 +515,10 @@ export const isJsonArray: TypeGuard<JsonValue[] | readonly JsonValue[]> = create
  *   // Work with the confirmed JSON value.
  * }
  */
-export const isJsonValue: TypeGuard<JsonValue> = createTypeGuard(
-  (t): JsonValue | null => {
-    if (isJsonPrimitive(t) || isJsonArray(t) || isJsonObject(t)) {
-      return t ?? true;
-    }
-
-    return null;
-  },
+export const isJsonValue: TypeGuard<JsonValue> = unionOf(
+  isJsonPrimitive,
+  isJsonArray,
+  isJsonObject,
 );
 
 /**
@@ -643,16 +537,7 @@ export const isJsonValue: TypeGuard<JsonValue> = createTypeGuard(
  * }
  * ```
  */
-export const isDate: TypeGuard<Date> = createTypeGuard((t) => t instanceof Date ? t : null);
-
-/**
- * Returns true if input satisfies type null.
- * @param {unknown} t
- * @return {boolean}
- */
-const isNull: TypeGuard<null> = createTypeGuard<null>((t: unknown) =>
-  (t === null ? true : null) as null
-);
+export const isDate: TypeGuard<Date> = createTypeGuard("Date", (t) => t instanceof Date ? t : null);
 
 /**
  * Returns true if input satisfies type null or undefined.
@@ -662,6 +547,7 @@ const isNull: TypeGuard<null> = createTypeGuard<null>((t: unknown) =>
 const isNil: TypeGuard<null | undefined> = isNull.or(isUndefined);
 
 const isEmptyRecord: TypeGuard<Record<string, never>> = createTypeGuard<Record<string, never>>(
+  "{}",
   (t): Record<string, never> | null => {
     if (
       t && typeof t === "object" && Object.getPrototypeOf(t) === Object.prototype &&
@@ -673,18 +559,16 @@ const isEmptyRecord: TypeGuard<Record<string, never>> = createTypeGuard<Record<s
   },
 );
 
-const isEmptyArray: TypeGuard<[]> = createTypeGuard<[]>((t): [] | null => {
-  if (Array.isArray(t) && (t as unknown[]).length === 0) {
-    return t as [];
-  }
-  return null;
-});
+const isEmptyArray: TypeGuard<[]> = createTypeGuard<[]>(
+  "[]",
+  (t): [] | null => Array.isArray(t) && (t as unknown[]).length === 0 ? t as [] : null,
+);
 
-const isEmptyString: TypeGuard<""> = createTypeGuard<"">((t): "" | null => {
-  // @ts-expect-error We're accepting t may not be of type string but using
-  // a null safety check to invoke it.
-  return t === "" ? t : t?.trim?.() === "" ? t as "" : null;
-});
+const isEmptyString: TypeGuard<""> = createTypeGuard<"">(
+  '""',
+  (t): "" | null =>
+    typeof t === "string" ? t === "" ? t : t?.trim?.() === "" ? t as "" : null : null,
+);
 
 /**
  * Returns true if input is undefined, null, empty string, object with length
@@ -706,17 +590,20 @@ const isEmpty: TypeGuard<null | undefined | "" | [] | Record<string, never>> = i
  * @param t
  * @returns
  */
-const isIterable: TypeGuard<Iterable<unknown>> = createTypeGuard<Iterable<unknown>>((t) => {
-  if (
-    typeof t === "object" &&
-    !isNil(t) &&
-    Symbol.iterator in t &&
-    isFunction(t[Symbol.iterator])
-  ) {
-    return t as Iterable<unknown>;
-  }
-  return null;
-});
+const isIterable: TypeGuard<Iterable<unknown>> = createTypeGuard<Iterable<unknown>>(
+  "Iterable",
+  (t) => {
+    if (
+      typeof t === "object" &&
+      !isNil(t) &&
+      Symbol.iterator in t &&
+      isFunction(t[Symbol.iterator])
+    ) {
+      return t as Iterable<unknown>;
+    }
+    return null;
+  },
+);
 
 /**
  * Type guard that checks if a value is a tuple (array) of a specific length.

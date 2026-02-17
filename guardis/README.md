@@ -27,7 +27,8 @@ const isUser = createTypeGuard<User>((val, { has }) =>
 
 - **Type-First**: Define TypeScript types first, validation follows
 - **Zero Dependencies**: No runtime dependencies
-- **Multiple Modes**: Basic, strict (throws), assert, optional, and notEmpty variants
+- **Multiple Modes**: Basic, strict (throws), assert, optional, notEmpty, and validate variants
+- **StandardSchemaV1 Compatible**: Built-in `validate` method returns structured results with detailed error messages
 - **Helper Functions**: Built-in utilities for object, array and tuple validation
 - **Extensible**: Create custom guards, extend existing guards, and extend the core library
 - **Modular**: Import only what you need
@@ -54,6 +55,7 @@ npx jsr add @spudlabs/guardis
   - [Assert Mode (TypeScript Assertions)](#assert-mode-typescript-assertions)
   - [Optional Mode](#optional-mode)
   - [NotEmpty Mode](#notempty-mode)
+  - [Validate Mode (StandardSchemaV1)](#validate-mode-standardschemav1)
 - [Creating Custom Type Guards](#creating-custom-type-guards)
 - [Extending Type Guards](#extending-type-guards)
 - [Specialized Modules](#specialized-modules)
@@ -176,6 +178,71 @@ assertIsString(value);
 console.log(value.toUpperCase()); // TypeScript now knows value is a string
 ```
 
+### Validate Mode (StandardSchemaV1)
+
+The `validate` method provides [StandardSchemaV1](https://github.com/standard-schema/standard-schema) compatibility, returning structured results with detailed error messages instead of throwing or returning booleans.
+
+```ts
+// Valid inputs return { value: T }
+Is.String.validate("hello");
+// { value: "hello" }
+
+Is.Number.validate(42);
+// { value: 42 }
+
+// Invalid inputs return { issues: [{ message: string }] }
+Is.String.validate(123);
+// { issues: [{ message: 'Expected string. Received: 123' }] }
+
+Is.Number.validate("not a number");
+// { issues: [{ message: 'Expected number. Received: "not a number"' }] }
+
+Is.Boolean.validate(null);
+// { issues: [{ message: 'Expected boolean. Received: null' }] }
+```
+
+Error messages include the expected type name and a JSON representation of the received value:
+
+```ts
+// Complex types show detailed error messages
+Is.Array.validate({ key: "value" });
+// { issues: [{ message: 'Expected array. Received: {"key":"value"}' }] }
+
+// Union types show combined type names
+Is.Nil.validate("string");
+// { issues: [{ message: 'Expected null | undefined. Received: "string"' }] }
+
+// notEmpty variants include the constraint in the error
+Is.String.notEmpty.validate("");
+// { issues: [{ message: 'Expected non-empty string. Received: ""' }] }
+
+Is.Array.notEmpty.validate([]);
+// { issues: [{ message: 'Expected non-empty array. Received: []' }] }
+```
+
+Works with typed arrays and custom type guards:
+
+```ts
+// Typed arrays
+const isStringArray = Is.Array.of(Is.String);
+
+isStringArray.validate(["a", "b", "c"]);
+// { value: ["a", "b", "c"] }
+
+isStringArray.validate([1, 2, 3]);
+// { issues: [{ message: 'Expected string[]. Received: [1,2,3]' }] }
+
+// Custom type guards
+const isPositive = Is.Number.extend("positive number", (val) =>
+  val > 0 ? val : null
+);
+
+isPositive.validate(42);
+// { value: 42 }
+
+isPositive.validate(-5);
+// { issues: [{ message: 'Expected positive number. Received: -5' }] }
+```
 
 ## Creating Custom Type Guards
 

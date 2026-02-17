@@ -3,7 +3,7 @@
  */
 
 import type { Brand } from "../brand.ts";
-import type { TypeGuard } from "../guard.ts";
+import type { TypeGuard } from "../types.ts";
 import {
   isCommaDelimited as _isCommaDelimited,
   isCommaDelimitedIntegers as _isCommaDelimitedIntegers,

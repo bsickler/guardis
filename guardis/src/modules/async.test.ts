@@ -1,4 +1,4 @@
-import { assert, assertFalse, assertThrows } from "@std/assert";
+import { assert, assertEquals, assertFalse, assertThrows } from "@std/assert";
 import { isAsyncFunction, isPromise, isPromiseLike, isThenable } from "./async.ts";
 
 // Standard test values for consistency across all type guard tests
@@ -91,6 +91,23 @@ Deno.test("isAsyncFunction", async (t) => {
     assertFalse(isAsyncFunction.optional(TEST_VALUES.promise));
     assertFalse(isAsyncFunction.optional(TEST_VALUES.nullValue));
   });
+
+  await t.step("validate method", () => {
+    const asyncFn = async () => {};
+    // Valid inputs return value
+    assertEquals(isAsyncFunction.validate(asyncFn), { value: asyncFn });
+
+    // Invalid inputs return issues with specific error message
+    assertEquals(isAsyncFunction.validate(() => {}), {
+      issues: [{ message: "Expected async function. Received: undefined" }],
+    });
+    assertEquals(isAsyncFunction.validate("async"), {
+      issues: [{ message: 'Expected async function. Received: "async"' }],
+    });
+    assertEquals(isAsyncFunction.validate(null), {
+      issues: [{ message: "Expected async function. Received: null" }],
+    });
+  });
 });
 
 Deno.test("isPromise", async (t) => {
@@ -148,6 +165,23 @@ Deno.test("isPromise", async (t) => {
     assertFalse(isPromise.optional(TEST_VALUES.asyncFunction));
     assertFalse(isPromise.optional(TEST_VALUES.thenable));
     assertFalse(isPromise.optional(TEST_VALUES.nullValue));
+  });
+
+  await t.step("validate method", () => {
+    const promise = Promise.resolve(42);
+    // Valid inputs return value
+    assertEquals(isPromise.validate(promise), { value: promise });
+
+    // Invalid inputs return issues with specific error message
+    assertEquals(isPromise.validate({ then: () => {} }), {
+      issues: [{ message: "Expected Promise. Received: {}" }],
+    });
+    assertEquals(isPromise.validate("promise"), {
+      issues: [{ message: 'Expected Promise. Received: "promise"' }],
+    });
+    assertEquals(isPromise.validate(null), {
+      issues: [{ message: "Expected Promise. Received: null" }],
+    });
   });
 });
 
@@ -209,6 +243,28 @@ Deno.test("isPromiseLike", async (t) => {
     assertFalse(isPromiseLike.optional(TEST_VALUES.asyncFunction));
     assertFalse(isPromiseLike.optional(TEST_VALUES.objectWithThen));
     assertFalse(isPromiseLike.optional(TEST_VALUES.nullValue));
+  });
+
+  await t.step("validate method", () => {
+    const promise = Promise.resolve(42);
+    const thenable = { then: () => {} };
+    // Valid inputs return value
+    assertEquals(isPromiseLike.validate(promise), { value: promise });
+    // Thenable objects are valid (use assert to check separately due to type constraints)
+    const thenableResult = isPromiseLike.validate(thenable);
+    assert("value" in thenableResult);
+    assertEquals(thenableResult.value, thenable);
+
+    // Invalid inputs return issues with specific error message
+    assertEquals(isPromiseLike.validate({ then: "not a function" }), {
+      issues: [{ message: 'Expected PromiseLike. Received: {"then":"not a function"}' }],
+    });
+    assertEquals(isPromiseLike.validate("promise"), {
+      issues: [{ message: 'Expected PromiseLike. Received: "promise"' }],
+    });
+    assertEquals(isPromiseLike.validate(null), {
+      issues: [{ message: "Expected PromiseLike. Received: null" }],
+    });
   });
 });
 

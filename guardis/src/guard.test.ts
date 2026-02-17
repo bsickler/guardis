@@ -78,6 +78,26 @@ Deno.test("isBoolean", async (t) => {
     assertFalse(isBoolean(TEST_VALUES.array));
   });
 
+  await t.step("validate method", () => {
+    // Valid inputs return value
+    assertEquals(isBoolean.validate(true), { value: true });
+    assertEquals(isBoolean.validate(false), { value: false });
+
+    // Invalid inputs return issues with specific error message
+    assertEquals(isBoolean.validate("test"), {
+      issues: [{ message: 'Expected boolean. Received: "test"' }],
+    });
+    assertEquals(isBoolean.validate(42), {
+      issues: [{ message: "Expected boolean. Received: 42" }],
+    });
+    assertEquals(isBoolean.validate(null), {
+      issues: [{ message: "Expected boolean. Received: null" }],
+    });
+    assertEquals(isBoolean.validate(undefined), {
+      issues: [{ message: "Expected boolean. Received: undefined" }],
+    });
+  });
+
   await t.step("strict mode", () => {
     // Valid inputs don't throw
     isBoolean.strict(TEST_VALUES.boolean);
@@ -197,6 +217,42 @@ Deno.test("isString", async (t) => {
     assertFalse(isString.notEmpty.optional(TEST_VALUES.number));
     assertFalse(isString.notEmpty.optional(TEST_VALUES.nullValue));
   });
+
+  await t.step("validate method", () => {
+    // Valid inputs return value
+    assertEquals(isString.validate("hello"), { value: "hello" });
+    assertEquals(isString.validate(""), { value: "" });
+
+    // Invalid inputs return issues with specific error message
+    assertEquals(isString.validate(42), {
+      issues: [{ message: "Expected string. Received: 42" }],
+    });
+    assertEquals(isString.validate(true), {
+      issues: [{ message: "Expected string. Received: true" }],
+    });
+    assertEquals(isString.validate(null), {
+      issues: [{ message: "Expected string. Received: null" }],
+    });
+    assertEquals(isString.validate({ a: 1 }), {
+      issues: [{ message: 'Expected string. Received: {"a":1}' }],
+    });
+  });
+
+  await t.step("notEmpty.validate method", () => {
+    // Valid inputs return value
+    assertEquals(isString.notEmpty.validate("hello"), { value: "hello" });
+
+    // Invalid inputs return issues with specific error message
+    assertEquals(isString.notEmpty.validate(""), {
+      issues: [{ message: 'Expected non-empty string. Received: ""' }],
+    });
+    assertEquals(isString.notEmpty.validate("   "), {
+      issues: [{ message: 'Expected non-empty string. Received: "   "' }],
+    });
+    assertEquals(isString.notEmpty.validate(42), {
+      issues: [{ message: "Expected non-empty string. Received: 42" }],
+    });
+  });
 });
 
 Deno.test("isNumber", async (t) => {
@@ -254,6 +310,27 @@ Deno.test("isNumber", async (t) => {
     assertFalse(isNumber.optional(TEST_VALUES.string));
     assertFalse(isNumber.optional(TEST_VALUES.nullValue));
   });
+
+  await t.step("validate method", () => {
+    // Valid inputs return value
+    assertEquals(isNumber.validate(42), { value: 42 });
+    assertEquals(isNumber.validate(0), { value: 0 });
+    assertEquals(isNumber.validate(3.14), { value: 3.14 });
+
+    // Invalid inputs return issues with specific error message
+    assertEquals(isNumber.validate("42"), {
+      issues: [{ message: 'Expected number. Received: "42"' }],
+    });
+    assertEquals(isNumber.validate(NaN), {
+      issues: [{ message: "Expected number. Received: null" }],
+    });
+    assertEquals(isNumber.validate(null), {
+      issues: [{ message: "Expected number. Received: null" }],
+    });
+    assertEquals(isNumber.validate([1, 2, 3]), {
+      issues: [{ message: "Expected number. Received: [1,2,3]" }],
+    });
+  });
 });
 
 Deno.test("isBinary", async (t) => {
@@ -304,6 +381,23 @@ Deno.test("isBinary", async (t) => {
     // Invalid inputs
     assertFalse(isBinary.optional(TEST_VALUES.number));
     assertFalse(isBinary.optional(TEST_VALUES.nullValue));
+  });
+
+  await t.step("validate method", () => {
+    // Valid inputs return value
+    assertEquals(isBinary.validate(0), { value: 0 });
+    assertEquals(isBinary.validate(1), { value: 1 });
+
+    // Invalid inputs return issues with specific error message
+    assertEquals(isBinary.validate(2), {
+      issues: [{ message: "Expected binary. Received: 2" }],
+    });
+    assertEquals(isBinary.validate(-1), {
+      issues: [{ message: "Expected binary. Received: -1" }],
+    });
+    assertEquals(isBinary.validate("1"), {
+      issues: [{ message: 'Expected binary. Received: "1"' }],
+    });
   });
 });
 
@@ -361,6 +455,26 @@ Deno.test("isNumeric", async (t) => {
     assertFalse(isNumeric.optional(TEST_VALUES.invalidNumericString));
     assertFalse(isNumeric.optional(TEST_VALUES.nullValue));
   });
+
+  await t.step("validate method", () => {
+    // Valid inputs return value
+    assertEquals(isNumeric.validate(42), { value: 42 });
+    // Numeric strings are valid and return the original string value (typed as number)
+    const numericStrResult = isNumeric.validate("123");
+    assert("value" in numericStrResult);
+    assertEquals(numericStrResult.value as unknown, "123");
+
+    // Invalid inputs return issues with specific error message
+    assertEquals(isNumeric.validate("abc"), {
+      issues: [{ message: 'Expected numeric. Received: "abc"' }],
+    });
+    assertEquals(isNumeric.validate(""), {
+      issues: [{ message: 'Expected numeric. Received: ""' }],
+    });
+    assertEquals(isNumeric.validate(null), {
+      issues: [{ message: "Expected numeric. Received: null" }],
+    });
+  });
 });
 
 Deno.test("isFunction", async (t) => {
@@ -411,6 +525,23 @@ Deno.test("isFunction", async (t) => {
     // Invalid inputs
     assertFalse(isFunction.optional(TEST_VALUES.string));
     assertFalse(isFunction.optional(TEST_VALUES.nullValue));
+  });
+
+  await t.step("validate method", () => {
+    const fn = () => {};
+    // Valid inputs return value
+    assertEquals(isFunction.validate(fn), { value: fn });
+
+    // Invalid inputs return issues with specific error message
+    assertEquals(isFunction.validate("function"), {
+      issues: [{ message: 'Expected function. Received: "function"' }],
+    });
+    assertEquals(isFunction.validate(42), {
+      issues: [{ message: "Expected function. Received: 42" }],
+    });
+    assertEquals(isFunction.validate(null), {
+      issues: [{ message: "Expected function. Received: null" }],
+    });
   });
 });
 
@@ -471,6 +602,23 @@ Deno.test("isSymbol", async (t) => {
     assertFalse(isSymbol.optional(TEST_VALUES.string));
     assertFalse(isSymbol.optional(TEST_VALUES.number));
     assertFalse(isSymbol.optional(TEST_VALUES.nullValue));
+  });
+
+  await t.step("validate method", () => {
+    const sym = Symbol("test");
+    // Valid inputs return value
+    assertEquals(isSymbol.validate(sym), { value: sym });
+
+    // Invalid inputs return issues with specific error message
+    assertEquals(isSymbol.validate("symbol"), {
+      issues: [{ message: 'Expected symbol. Received: "symbol"' }],
+    });
+    assertEquals(isSymbol.validate(42), {
+      issues: [{ message: "Expected symbol. Received: 42" }],
+    });
+    assertEquals(isSymbol.validate(null), {
+      issues: [{ message: "Expected symbol. Received: null" }],
+    });
   });
 });
 
@@ -601,6 +749,22 @@ Deno.test("isNull", async (t) => {
     assertFalse(isNull.optional(TEST_VALUES.boolean));
     assertFalse(isNull.optional(TEST_VALUES.object));
   });
+
+  await t.step("validate method", () => {
+    // Valid inputs return value (null returns true as the value)
+    assertEquals(isNull.validate(null), { value: null });
+
+    // Invalid inputs return issues with specific error message
+    assertEquals(isNull.validate(undefined), {
+      issues: [{ message: "Expected null. Received: undefined" }],
+    });
+    assertEquals(isNull.validate("null"), {
+      issues: [{ message: 'Expected null. Received: "null"' }],
+    });
+    assertEquals(isNull.validate(0), {
+      issues: [{ message: "Expected null. Received: 0" }],
+    });
+  });
 });
 
 Deno.test("isUndefined", async (t) => {
@@ -649,6 +813,22 @@ Deno.test("isUndefined", async (t) => {
     assertFalse(isUndefined.optional(TEST_VALUES.string));
     assertFalse(isUndefined.optional(TEST_VALUES.number));
   });
+
+  await t.step("validate method", () => {
+    // Valid inputs return value
+    assertEquals(isUndefined.validate(undefined), { value: undefined });
+
+    // Invalid inputs return issues with specific error message
+    assertEquals(isUndefined.validate(null), {
+      issues: [{ message: "Expected undefined. Received: null" }],
+    });
+    assertEquals(isUndefined.validate("undefined"), {
+      issues: [{ message: 'Expected undefined. Received: "undefined"' }],
+    });
+    assertEquals(isUndefined.validate(0), {
+      issues: [{ message: "Expected undefined. Received: 0" }],
+    });
+  });
 });
 
 Deno.test("isNil", async (t) => {
@@ -689,6 +869,20 @@ Deno.test("isNil", async (t) => {
     // Invalid inputs throw
     assertThrows(() => assertIsNil(TEST_VALUES.string));
     assertThrows(() => assertIsNil(TEST_VALUES.number));
+  });
+
+  await t.step("validate method", () => {
+    // Valid inputs return value
+    assertEquals(isNil.validate(null), { value: null });
+    assertEquals(isNil.validate(undefined), { value: undefined });
+
+    // Invalid inputs return issues with specific error message (union type name)
+    assertEquals(isNil.validate("test"), {
+      issues: [{ message: 'Expected null | undefined. Received: "test"' }],
+    });
+    assertEquals(isNil.validate(0), {
+      issues: [{ message: "Expected null | undefined. Received: 0" }],
+    });
   });
 });
 
@@ -796,6 +990,23 @@ Deno.test("isObject", async (t) => {
     assertFalse(isObject.optional(TEST_VALUES.array));
     assertFalse(isObject.optional(TEST_VALUES.nullValue));
   });
+
+  await t.step("validate method", () => {
+    // Valid inputs return value
+    assertEquals(isObject.validate({ a: 1 }), { value: { a: 1 } });
+    assertEquals(isObject.validate({}), { value: {} });
+
+    // Invalid inputs return issues with specific error message
+    assertEquals(isObject.validate([1, 2, 3]), {
+      issues: [{ message: "Expected object. Received: [1,2,3]" }],
+    });
+    assertEquals(isObject.validate("object"), {
+      issues: [{ message: 'Expected object. Received: "object"' }],
+    });
+    assertEquals(isObject.validate(null), {
+      issues: [{ message: "Expected object. Received: null" }],
+    });
+  });
 });
 
 Deno.test("isArray", async (t) => {
@@ -880,6 +1091,36 @@ Deno.test("isArray", async (t) => {
     assertFalse(isArray.notEmpty.optional(TEST_VALUES.emptyArray));
     assertFalse(isArray.notEmpty.optional(TEST_VALUES.object));
     assertFalse(isArray.notEmpty.optional(TEST_VALUES.nullValue));
+  });
+
+  await t.step("validate method", () => {
+    // Valid inputs return value
+    assertEquals(isArray.validate([1, 2, 3]), { value: [1, 2, 3] });
+    assertEquals(isArray.validate([]), { value: [] });
+
+    // Invalid inputs return issues with specific error message
+    assertEquals(isArray.validate({ a: 1 }), {
+      issues: [{ message: 'Expected array. Received: {"a":1}' }],
+    });
+    assertEquals(isArray.validate("array"), {
+      issues: [{ message: 'Expected array. Received: "array"' }],
+    });
+    assertEquals(isArray.validate(null), {
+      issues: [{ message: "Expected array. Received: null" }],
+    });
+  });
+
+  await t.step("notEmpty.validate method", () => {
+    // Valid inputs return value
+    assertEquals(isArray.notEmpty.validate([1, 2, 3]), { value: [1, 2, 3] });
+
+    // Invalid inputs return issues with specific error message
+    assertEquals(isArray.notEmpty.validate([]), {
+      issues: [{ message: "Expected non-empty array. Received: []" }],
+    });
+    assertEquals(isArray.notEmpty.validate("array"), {
+      issues: [{ message: 'Expected non-empty array. Received: "array"' }],
+    });
   });
 });
 
@@ -1088,13 +1329,15 @@ Deno.test("isArray.of", async (t) => {
 
     // Invalid inputs
     const invalidResult1 = isStringArray.validate([1, 2, 3]);
-    assertEquals(invalidResult1, { issues: [{ message: "Invalid type" }] });
+    assertEquals(invalidResult1, { issues: [{ message: "Expected string[]. Received: [1,2,3]" }] });
 
     const invalidResult2 = isStringArray.validate(["a", 1, "c"]);
-    assertEquals(invalidResult2, { issues: [{ message: "Invalid type" }] });
+    assertEquals(invalidResult2, { issues: [{ message: 'Expected string[]. Received: ["a",1,"c"]' }] });
 
     const invalidResult3 = isStringArray.validate(TEST_VALUES.object);
-    assertEquals(invalidResult3, { issues: [{ message: "Invalid type" }] });
+    assertEquals(invalidResult3, {
+      issues: [{ message: `Expected string[]. Received: ${JSON.stringify(TEST_VALUES.object)}` }],
+    });
   });
 
   await t.step("complex scenario - array of specific object types", () => {
@@ -1209,6 +1452,23 @@ Deno.test("isDate", async (t) => {
     assertFalse(isDate.optional("2023-01-01"));
     assertFalse(isDate.optional(TEST_VALUES.nullValue));
   });
+
+  await t.step("validate method", () => {
+    const date = new Date("2023-01-01");
+    // Valid inputs return value
+    assertEquals(isDate.validate(date), { value: date });
+
+    // Invalid inputs return issues with specific error message
+    assertEquals(isDate.validate("2023-01-01"), {
+      issues: [{ message: 'Expected Date. Received: "2023-01-01"' }],
+    });
+    assertEquals(isDate.validate(1672531200000), {
+      issues: [{ message: "Expected Date. Received: 1672531200000" }],
+    });
+    assertEquals(isDate.validate(null), {
+      issues: [{ message: "Expected Date. Received: null" }],
+    });
+  });
 });
 
 Deno.test("isIterable", async (t) => {
@@ -1258,6 +1518,23 @@ Deno.test("isIterable", async (t) => {
     // Invalid inputs
     assertFalse(isIterable.optional(TEST_VALUES.object));
     assertFalse(isIterable.optional(TEST_VALUES.nullValue));
+  });
+
+  await t.step("validate method", () => {
+    // Valid inputs return value
+    const arr = [1, 2, 3];
+    assertEquals(isIterable.validate(arr), { value: arr });
+
+    // Invalid inputs return issues with specific error message
+    assertEquals(isIterable.validate({ a: 1 }), {
+      issues: [{ message: 'Expected Iterable. Received: {"a":1}' }],
+    });
+    assertEquals(isIterable.validate(42), {
+      issues: [{ message: "Expected Iterable. Received: 42" }],
+    });
+    assertEquals(isIterable.validate(null), {
+      issues: [{ message: "Expected Iterable. Received: null" }],
+    });
   });
 });
 
@@ -1374,6 +1651,22 @@ Deno.test("isJsonPrimitive", async (t) => {
     assertFalse(isJsonPrimitive.optional(TEST_VALUES.object));
     assertFalse(isJsonPrimitive.optional(TEST_VALUES.function));
   });
+
+  await t.step("validate method", () => {
+    // Valid inputs return value
+    assertEquals(isJsonPrimitive.validate("test"), { value: "test" });
+    assertEquals(isJsonPrimitive.validate(42), { value: 42 });
+    assertEquals(isJsonPrimitive.validate(true), { value: true });
+    assertEquals(isJsonPrimitive.validate(null), { value: null });
+
+    // Invalid inputs return issues with specific error message (union type name)
+    assertEquals(isJsonPrimitive.validate({ a: 1 }), {
+      issues: [{ message: 'Expected boolean | string | number | null. Received: {"a":1}' }],
+    });
+    assertEquals(isJsonPrimitive.validate(undefined), {
+      issues: [{ message: "Expected boolean | string | number | null. Received: undefined" }],
+    });
+  });
 });
 
 Deno.test("isJsonObject", async (t) => {
@@ -1437,6 +1730,23 @@ Deno.test("isJsonObject", async (t) => {
     assertFalse(isJsonObject.notEmpty(TEST_VALUES.nullValue));
     assertFalse(isJsonObject.notEmpty(TEST_VALUES.undefinedValue));
   });
+
+  await t.step("validate method", () => {
+    // Valid inputs return value
+    assertEquals(isJsonObject.validate({ a: 1 }), { value: { a: 1 } });
+    assertEquals(isJsonObject.validate({}), { value: {} });
+
+    // Invalid inputs return issues with specific error message
+    assertEquals(isJsonObject.validate([1, 2, 3]), {
+      issues: [{ message: "Expected JsonObject. Received: [1,2,3]" }],
+    });
+    assertEquals(isJsonObject.validate("object"), {
+      issues: [{ message: 'Expected JsonObject. Received: "object"' }],
+    });
+    assertEquals(isJsonObject.validate(null), {
+      issues: [{ message: "Expected JsonObject. Received: null" }],
+    });
+  });
 });
 
 Deno.test("isJsonArray", async (t) => {
@@ -1497,6 +1807,23 @@ Deno.test("isJsonArray", async (t) => {
     assertFalse(isJsonArray.notEmpty(TEST_VALUES.object));
     assertFalse(isJsonArray.notEmpty(TEST_VALUES.nullValue));
     assertFalse(isJsonArray.notEmpty(TEST_VALUES.undefinedValue));
+  });
+
+  await t.step("validate method", () => {
+    // Valid inputs return value
+    assertEquals(isJsonArray.validate([1, 2, 3]), { value: [1, 2, 3] });
+    assertEquals(isJsonArray.validate([]), { value: [] });
+
+    // Invalid inputs return issues with specific error message
+    assertEquals(isJsonArray.validate({ a: 1 }), {
+      issues: [{ message: 'Expected JsonArray. Received: {"a":1}' }],
+    });
+    assertEquals(isJsonArray.validate("array"), {
+      issues: [{ message: 'Expected JsonArray. Received: "array"' }],
+    });
+    assertEquals(isJsonArray.validate(null), {
+      issues: [{ message: "Expected JsonArray. Received: null" }],
+    });
   });
 });
 
@@ -1828,7 +2155,8 @@ Deno.test("createTypeGuard", async (t) => {
     assertThrows(() => isNonEmptyStringOrObject.strict(TEST_VALUES.boolean));
 
     // Assert mode
-    const assertIsNonEmptyStringOrObject: typeof isNonEmptyStringOrObject.assert = isNonEmptyStringOrObject.assert;
+    const assertIsNonEmptyStringOrObject: typeof isNonEmptyStringOrObject.assert =
+      isNonEmptyStringOrObject.assert;
     assertIsNonEmptyStringOrObject(TEST_VALUES.string);
     assertIsNonEmptyStringOrObject(TEST_VALUES.object);
     assertThrows(() => assertIsNonEmptyStringOrObject(TEST_VALUES.emptyString));
@@ -2099,10 +2427,10 @@ Deno.test("createTypeGuard", async (t) => {
     assertEquals(validResult, { value: 42 });
 
     const invalidResult1 = isPositiveNumber.validate(0);
-    assertEquals(invalidResult1, { issues: [{ message: "Invalid type" }] });
+    assertEquals(invalidResult1, { issues: [{ message: "Invalid value. Received: 0" }] });
 
     const invalidResult2 = isPositiveNumber.validate("test");
-    assertEquals(invalidResult2, { issues: [{ message: "Invalid type" }] });
+    assertEquals(invalidResult2, { issues: [{ message: 'Invalid value. Received: "test"' }] });
 
     // Verify ~standard property exists
     assert(isPositiveNumber["~standard"]);
