@@ -1,5 +1,5 @@
 import type { Brand } from "../brand.ts";
-import type { TypeGuard } from "../guard.ts";
+import type { TypeGuard } from "../types.ts";
 import { isIpv4 as _isIpv4, isIpv6 as _isIpv6 } from "./http.ts";
 
 /**

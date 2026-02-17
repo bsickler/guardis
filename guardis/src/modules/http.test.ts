@@ -1,4 +1,4 @@
-import { assert, assertFalse, assertThrows } from "@std/assert";
+import { assert, assertEquals, assertFalse, assertThrows } from "@std/assert";
 import { isIpv4, isIpv6, isNativeURL, isRequest, isResponse } from "./http.ts";
 
 // Standard test values for consistency across all type guard tests
@@ -90,6 +90,20 @@ Deno.test("isNativeURL", async (t) => {
     assertFalse(isNativeURL.optional(TEST_VALUES.nullValue));
     assertFalse(isNativeURL.optional(TEST_VALUES.string));
   });
+
+  await t.step("validate method", () => {
+    const url = new URL("https://example.com");
+    // Valid inputs return value
+    assertEquals(isNativeURL.validate(url), { value: url });
+
+    // Invalid inputs return issues with specific error message
+    assertEquals(isNativeURL.validate("https://example.com"), {
+      issues: [{ message: 'Expected URL. Received: "https://example.com"' }],
+    });
+    assertEquals(isNativeURL.validate(null), {
+      issues: [{ message: "Expected URL. Received: null" }],
+    });
+  });
 });
 
 Deno.test("isRequest", async (t) => {
@@ -147,6 +161,20 @@ Deno.test("isRequest", async (t) => {
     assertFalse(isRequest.optional(TEST_VALUES.url));
     assertFalse(isRequest.optional(TEST_VALUES.nullValue));
   });
+
+  await t.step("validate method", () => {
+    const request = new Request("https://example.com");
+    // Valid inputs return value
+    assertEquals(isRequest.validate(request), { value: request });
+
+    // Invalid inputs return issues with specific error message
+    assertEquals(isRequest.validate("https://example.com"), {
+      issues: [{ message: 'Expected Request. Received: "https://example.com"' }],
+    });
+    assertEquals(isRequest.validate(null), {
+      issues: [{ message: "Expected Request. Received: null" }],
+    });
+  });
 });
 
 Deno.test("isResponse", async (t) => {
@@ -203,6 +231,20 @@ Deno.test("isResponse", async (t) => {
     assertFalse(isResponse.optional("Hello, world!"));
     assertFalse(isResponse.optional(TEST_VALUES.request));
     assertFalse(isResponse.optional(TEST_VALUES.nullValue));
+  });
+
+  await t.step("validate method", () => {
+    const response = new Response("Hello");
+    // Valid inputs return value
+    assertEquals(isResponse.validate(response), { value: response });
+
+    // Invalid inputs return issues with specific error message
+    assertEquals(isResponse.validate("Hello, world!"), {
+      issues: [{ message: 'Expected Response. Received: "Hello, world!"' }],
+    });
+    assertEquals(isResponse.validate(null), {
+      issues: [{ message: "Expected Response. Received: null" }],
+    });
   });
 });
 
@@ -289,6 +331,23 @@ Deno.test("isIpv4", async (t) => {
     assertFalse(isIpv4.optional("256.1.1.1"));
     assertFalse(isIpv4.optional(TEST_VALUES.string));
     assertFalse(isIpv4.optional(TEST_VALUES.nullValue));
+  });
+
+  await t.step("validate method", () => {
+    // Valid inputs return value
+    assertEquals(isIpv4.validate("192.168.1.1"), { value: "192.168.1.1" });
+    assertEquals(isIpv4.validate("127.0.0.1"), { value: "127.0.0.1" });
+
+    // Invalid inputs return issues with specific error message
+    assertEquals(isIpv4.validate("256.1.1.1"), {
+      issues: [{ message: 'Expected IPv4. Received: "256.1.1.1"' }],
+    });
+    assertEquals(isIpv4.validate("not-an-ip"), {
+      issues: [{ message: 'Expected IPv4. Received: "not-an-ip"' }],
+    });
+    assertEquals(isIpv4.validate(null), {
+      issues: [{ message: "Expected IPv4. Received: null" }],
+    });
   });
 });
 
@@ -377,5 +436,24 @@ Deno.test("isIpv6", async (t) => {
     assertFalse(isIpv6.optional("gggg::1"));
     assertFalse(isIpv6.optional(TEST_VALUES.string));
     assertFalse(isIpv6.optional(TEST_VALUES.nullValue));
+  });
+
+  await t.step("validate method", () => {
+    // Valid inputs return value
+    assertEquals(isIpv6.validate("2001:0db8:85a3:0000:0000:8a2e:0370:7334"), {
+      value: "2001:0db8:85a3:0000:0000:8a2e:0370:7334",
+    });
+    assertEquals(isIpv6.validate("::1"), { value: "::1" });
+
+    // Invalid inputs return issues with specific error message
+    assertEquals(isIpv6.validate("gggg::1"), {
+      issues: [{ message: 'Expected IPv6. Received: "gggg::1"' }],
+    });
+    assertEquals(isIpv6.validate("not-an-ip"), {
+      issues: [{ message: 'Expected IPv6. Received: "not-an-ip"' }],
+    });
+    assertEquals(isIpv6.validate(null), {
+      issues: [{ message: "Expected IPv6. Received: null" }],
+    });
   });
 });
