@@ -1,6 +1,5 @@
 import type { StandardSchemaV1 } from "../specs/standard-schema-spec.v1.ts";
 import type {
-  doesNotHaveProperty,
   includes,
   tupleHas,
 } from "./utilities.ts";
@@ -28,7 +27,12 @@ type Helpers = {
     guard?: (v: unknown) => v is G,
     errorMessage?: string,
   ) => t is { [K2 in K]: G };
-  hasNot: typeof doesNotHaveProperty;
+  /** Check that a property does not exist with optional custom error message */
+  hasNot: <K extends PropertyKey>(
+    t: object,
+    k: K,
+    errorMessage?: string,
+  ) => t is { [K2 in K]: never };
   /** Check for optional property with optional custom error message */
   hasOptional: <K extends PropertyKey, G = unknown>(
     t: object,

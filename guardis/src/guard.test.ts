@@ -462,7 +462,7 @@ Deno.test("isNumeric", async (t) => {
     // Numeric strings are valid and return the original string value (typed as number)
     const numericStrResult = isNumeric.validate("123");
     assert("value" in numericStrResult);
-    assertEquals(numericStrResult.value as unknown, "123");
+    assertEquals(Number(numericStrResult.value), 123);
 
     // Invalid inputs return issues with specific error message
     assertEquals(isNumeric.validate("abc"), {
@@ -1329,10 +1329,14 @@ Deno.test("isArray.of", async (t) => {
 
     // Invalid inputs - now include path to invalid element
     const invalidResult1 = isStringArray.validate([1, 2, 3]);
-    assertEquals(invalidResult1, { issues: [{ message: "Expected string. Received: 1", path: [0] }] });
+    assertEquals(invalidResult1, {
+      issues: [{ message: "Expected string. Received: 1", path: [0] }],
+    });
 
     const invalidResult2 = isStringArray.validate(["a", 1, "c"]);
-    assertEquals(invalidResult2, { issues: [{ message: "Expected string. Received: 1", path: [1] }] });
+    assertEquals(invalidResult2, {
+      issues: [{ message: "Expected string. Received: 1", path: [1] }],
+    });
 
     // Non-array input still has no path (fails at root level)
     const invalidResult3 = isStringArray.validate(TEST_VALUES.object);
@@ -2400,10 +2404,9 @@ Deno.test("createTypeGuard", async (t) => {
   await t.step("extend method - narrowing type with literal values", () => {
     // Extend isString to only accept specific string literals
     const validStatuses = ["active", "inactive", "pending"] as const;
-    const isStatus = isString.extend((val, { includes }) => {
-      if (includes(validStatuses, val)) return val as typeof validStatuses[number];
-      return null;
-    });
+    const isStatus = isString.extend((val, { includes }) =>
+      includes(validStatuses, val) ? val : null
+    );
 
     // Valid inputs
     assert(isStatus("active"));
@@ -2478,8 +2481,9 @@ Deno.test("Validation path tracking", async (t) => {
   });
 
   await t.step("nested object validation - includes property key in path", () => {
-    const isPerson = createTypeGuard("Person", (v, { has }) =>
-      isObject(v) && has(v, "name", isString) && has(v, "age", isNumber) ? v : null
+    const isPerson = createTypeGuard(
+      "Person",
+      (v, { has }) => isObject(v) && has(v, "name", isString) && has(v, "age", isNumber) ? v : null,
     );
 
     // Valid object
@@ -2495,8 +2499,9 @@ Deno.test("Validation path tracking", async (t) => {
   });
 
   await t.step("nested object validation - missing property", () => {
-    const isPerson = createTypeGuard("Person", (v, { has }) =>
-      isObject(v) && has(v, "name", isString) && has(v, "age", isNumber) ? v : null
+    const isPerson = createTypeGuard(
+      "Person",
+      (v, { has }) => isObject(v) && has(v, "name", isString) && has(v, "age", isNumber) ? v : null,
     );
 
     // Missing required property
@@ -2508,8 +2513,9 @@ Deno.test("Validation path tracking", async (t) => {
   });
 
   await t.step("array of objects - combined path", () => {
-    const isPerson = createTypeGuard("Person", (v, { has }) =>
-      isObject(v) && has(v, "name", isString) && has(v, "age", isNumber) ? v : null
+    const isPerson = createTypeGuard(
+      "Person",
+      (v, { has }) => isObject(v) && has(v, "name", isString) && has(v, "age", isNumber) ? v : null,
     );
     const isPeopleArray = isArray.of(isPerson);
 
@@ -2532,11 +2538,14 @@ Deno.test("Validation path tracking", async (t) => {
   });
 
   await t.step("deeply nested structures - 2 levels", () => {
-    const isAddress = createTypeGuard("Address", (v, { has }) =>
-      isObject(v) && has(v, "city", isString) && has(v, "zip", isNumber) ? v : null
+    const isAddress = createTypeGuard(
+      "Address",
+      (v, { has }) => isObject(v) && has(v, "city", isString) && has(v, "zip", isNumber) ? v : null,
     );
-    const isPerson = createTypeGuard("Person", (v, { has }) =>
-      isObject(v) && has(v, "name", isString) && has(v, "address", isAddress) ? v : null
+    const isPerson = createTypeGuard(
+      "Person",
+      (v, { has }) =>
+        isObject(v) && has(v, "name", isString) && has(v, "address", isAddress) ? v : null,
     );
 
     // Invalid nested property
@@ -2552,23 +2561,30 @@ Deno.test("Validation path tracking", async (t) => {
 
   await t.step("deeply nested structures - 3 levels", () => {
     // Level 3: coordinates within location
-    const isCoordinates = createTypeGuard("Coordinates", (v, { has }) =>
-      isObject(v) && has(v, "lat", isNumber) && has(v, "lng", isNumber) ? v : null
+    const isCoordinates = createTypeGuard(
+      "Coordinates",
+      (v, { has }) => isObject(v) && has(v, "lat", isNumber) && has(v, "lng", isNumber) ? v : null,
     );
 
     // Level 2: location within address
-    const isLocation = createTypeGuard("Location", (v, { has }) =>
-      isObject(v) && has(v, "name", isString) && has(v, "coordinates", isCoordinates) ? v : null
+    const isLocation = createTypeGuard(
+      "Location",
+      (v, { has }) =>
+        isObject(v) && has(v, "name", isString) && has(v, "coordinates", isCoordinates) ? v : null,
     );
 
     // Level 1: address within company
-    const isAddress = createTypeGuard("Address", (v, { has }) =>
-      isObject(v) && has(v, "street", isString) && has(v, "location", isLocation) ? v : null
+    const isAddress = createTypeGuard(
+      "Address",
+      (v, { has }) =>
+        isObject(v) && has(v, "street", isString) && has(v, "location", isLocation) ? v : null,
     );
 
     // Root: company
-    const isCompany = createTypeGuard("Company", (v, { has }) =>
-      isObject(v) && has(v, "name", isString) && has(v, "headquarters", isAddress) ? v : null
+    const isCompany = createTypeGuard(
+      "Company",
+      (v, { has }) =>
+        isObject(v) && has(v, "name", isString) && has(v, "headquarters", isAddress) ? v : null,
     );
 
     // Valid 3-level nested object
@@ -2650,8 +2666,10 @@ Deno.test("Validation path tracking", async (t) => {
   });
 
   await t.step("optional property validation", () => {
-    const isPerson = createTypeGuard("Person", (v, { has, hasOptional }) =>
-      isObject(v) && has(v, "name", isString) && hasOptional(v, "age", isNumber) ? v : null
+    const isPerson = createTypeGuard(
+      "Person",
+      (v, { has, hasOptional }) =>
+        isObject(v) && has(v, "name", isString) && hasOptional(v, "age", isNumber) ? v : null,
     );
 
     // Valid with optional property
@@ -2696,8 +2714,9 @@ Deno.test("Validation path tracking", async (t) => {
     assertFalse(isStringArray([1, 2]));
 
     // Custom guards still work
-    const isPerson = createTypeGuard("Person", (v, { has }) =>
-      isObject(v) && has(v, "name", isString) ? v : null
+    const isPerson = createTypeGuard(
+      "Person",
+      (v, { has }) => isObject(v) && has(v, "name", isString) ? v : null,
     );
     assert(isPerson({ name: "Alice" }));
     assertFalse(isPerson({ name: 123 }));
@@ -2800,7 +2819,7 @@ Deno.test("Custom error messages", async (t) => {
     const isPerson = createTypeGuard("Person", (v, { has, fail }) => {
       if (!isObject(v)) return fail("Must be an object");
       if (!has(v, "age", isNumber, "Age must be valid")) return null;
-      if ((v as { age: number }).age < 0) return fail("Age cannot be negative");
+      if (v.age < 0) return fail("Age cannot be negative");
       return v;
     });
 
@@ -2859,12 +2878,15 @@ Deno.test("Custom error messages", async (t) => {
   await t.step("combining fail with has custom messages", () => {
     const isPerson = createTypeGuard("Person", (v, { has, fail }) => {
       if (!isObject(v)) return fail("Value must be an object");
-      if (!has(v, "name", isString, "Name is required and must be a string")) return null;
-      if (!has(v, "age", isNumber, "Age must be a valid number")) return null;
-      const person = v as { name: string; age: number };
-      if (person.age < 0) return fail("Age must be non-negative");
-      if (person.age > 150) return fail("Age must be realistic (under 150)");
-      return v;
+      if (
+        has(v, "name", isString, "Name is required and must be a string") &&
+        has(v, "age", isNumber, "Age must be a valid number")
+      ) {
+        if (v.age < 0) return fail("Age must be non-negative");
+        if (v.age > 150) return fail("Age must be realistic (under 150)");
+        return v;
+      }
+      return null;
     });
 
     // Test object validation via fail
@@ -2900,5 +2922,359 @@ Deno.test("Custom error messages", async (t) => {
     assertFalse(isPerson({}));
     assertFalse(isPerson({ name: 123 }));
     assert(isPerson({ name: "Alice" }));
+  });
+
+  await t.step("hasNot helper - default error message", () => {
+    const isPersonWithoutId = createTypeGuard(
+      "PersonWithoutId",
+      (v, { has, hasNot }) => {
+        if (isObject(v) && has(v, "name", isString) && hasNot(v, "id")) {
+          return v;
+        }
+        return null;
+      },
+    );
+
+    // Valid - no id property
+    const validResult = isPersonWithoutId.validate({ name: "Alice" });
+    assert("value" in validResult);
+    assertEquals(validResult.value.name, "Alice");
+
+    // Invalid - has id property, should show default error message
+    const result = isPersonWithoutId.validate({ name: "Alice", id: 123 });
+    assert("issues" in result && result.issues);
+    assertEquals(result.issues[0].message, "Unexpected property: id");
+    assertEquals(result.issues[0].path, ["id"]);
+  });
+
+  await t.step("hasNot helper - custom error message", () => {
+    const isPersonWithoutId = createTypeGuard(
+      "PersonWithoutId",
+      (v, { has, hasNot }) => {
+        if (
+          isObject(v) && has(v, "name", isString) && hasNot(v, "id", "ID property is not allowed")
+        ) {
+          return v;
+        }
+        return null;
+      },
+    );
+
+    const result = isPersonWithoutId.validate({ name: "Alice", id: 123 });
+    assert("issues" in result && result.issues);
+    assertEquals(result.issues[0].message, "ID property is not allowed");
+    assertEquals(result.issues[0].path, ["id"]);
+  });
+
+  await t.step("hasNot helper - nested object depth 2", () => {
+    const isAddress = createTypeGuard("Address", (v, { has, hasNot }) => {
+      if (isObject(v) && has(v, "city", isString) && hasNot(v, "internal_code")) {
+        return v;
+      }
+      return null;
+    });
+
+    const isPerson = createTypeGuard("Person", (v, { has }) => {
+      if (isObject(v) && has(v, "name", isString) && has(v, "address", isAddress)) {
+        return v;
+      }
+      return null;
+    });
+
+    // Valid - no internal_code in address
+    const validResult = isPerson.validate({ name: "Alice", address: { city: "NYC" } });
+    assert("value" in validResult);
+    assertEquals(validResult.value.name, "Alice");
+
+    // Invalid - address has internal_code
+    const result = isPerson.validate({
+      name: "Alice",
+      address: { city: "NYC", internal_code: "ABC" },
+    });
+    assert("issues" in result && result.issues);
+    assertEquals(result.issues[0].message, "Unexpected property: internal_code");
+    assertEquals(result.issues[0].path, ["address", "internal_code"]);
+  });
+
+  await t.step("hasNot helper - nested object depth 3", () => {
+    const isCoordinates = createTypeGuard("Coordinates", (v, { has, hasNot }) => {
+      if (
+        isObject(v) &&
+        has(v, "lat", isNumber) &&
+        has(v, "lng", isNumber) &&
+        hasNot(v, "debug_info", "Debug info not allowed in coordinates")
+      ) {
+        return v;
+      }
+      return null;
+    });
+
+    const isAddress = createTypeGuard("Address", (v, { has }) => {
+      if (isObject(v) && has(v, "city", isString) && has(v, "coords", isCoordinates)) {
+        return v;
+      }
+      return null;
+    });
+
+    const isPerson = createTypeGuard("Person", (v, { has }) => {
+      if (isObject(v) && has(v, "name", isString) && has(v, "address", isAddress)) {
+        return v;
+      }
+      return null;
+    });
+
+    // Valid - no debug_info in coordinates
+    const validResult = isPerson.validate({
+      name: "Alice",
+      address: { city: "NYC", coords: { lat: 40.7, lng: -74.0 } },
+    });
+    assert("value" in validResult);
+    assertEquals(validResult.value.name, "Alice");
+
+    // Invalid - coordinates has debug_info at depth 3
+    const result = isPerson.validate({
+      name: "Alice",
+      address: { city: "NYC", coords: { lat: 40.7, lng: -74.0, debug_info: "test" } },
+    });
+    assert("issues" in result && result.issues);
+    assertEquals(result.issues[0].message, "Debug info not allowed in coordinates");
+    assertEquals(result.issues[0].path, ["address", "coords", "debug_info"]);
+  });
+
+  await t.step("hasNot helper - in array of objects", () => {
+    const isPersonWithoutSecret = createTypeGuard(
+      "PersonWithoutSecret",
+      (v, { has, hasNot }) => {
+        if (isObject(v) && has(v, "name", isString) && hasNot(v, "secret")) {
+          return v;
+        }
+        return null;
+      },
+    );
+
+    const result = isArray.of(isPersonWithoutSecret).validate([
+      { name: "Alice" },
+      { name: "Bob", secret: "password" },
+    ]);
+    assert("issues" in result && result.issues);
+    assertEquals(result.issues[0].message, "Unexpected property: secret");
+    assertEquals(result.issues[0].path, [1, "secret"]);
+  });
+
+  await t.step("hasNot helper - boolean mode works (no crash)", () => {
+    const isPersonWithoutId = createTypeGuard(
+      "PersonWithoutId",
+      (v, { has, hasNot }) => {
+        if (isObject(v) && has(v, "name", isString) && hasNot(v, "id", "ID not allowed")) {
+          return v;
+        }
+        return null;
+      },
+    );
+
+    // Boolean mode should work without throwing
+    assert(isPersonWithoutId({ name: "Alice" }));
+    assertFalse(isPersonWithoutId({ name: "Alice", id: 123 }));
+  });
+});
+
+Deno.test("Strict mode error messaging", async (t) => {
+  await t.step("simple type guard - includes type name in error", () => {
+    try {
+      isString.strict(123);
+      assert(false, "Expected to throw");
+    } catch (e) {
+      assert(e instanceof TypeError);
+      assertEquals(e.message, "Expected string. Received: 123");
+    }
+  });
+
+  await t.step("simple type guard - shows correct value in error", () => {
+    try {
+      isNumber.strict("not a number");
+      assert(false, "Expected to throw");
+    } catch (e) {
+      assert(e instanceof TypeError);
+      assertEquals(e.message, 'Expected number. Received: "not a number"');
+    }
+  });
+
+  await t.step("nested object validation - includes path in error", () => {
+    const isPerson = createTypeGuard(
+      "Person",
+      (v, { has }) => isObject(v) && has(v, "name", isString) ? v : null,
+    );
+
+    try {
+      isPerson.strict({ name: 123 });
+      assert(false, "Expected to throw");
+    } catch (e) {
+      assert(e instanceof TypeError);
+      assertEquals(e.message, "Expected string. Received: 123 at path: name");
+    }
+  });
+
+  await t.step("deeply nested validation - includes full path", () => {
+    const isAddress = createTypeGuard(
+      "Address",
+      (v, { has }) => isObject(v) && has(v, "city", isString) && has(v, "zip", isNumber) ? v : null,
+    );
+    const isPerson = createTypeGuard(
+      "Person",
+      (v, { has }) =>
+        isObject(v) && has(v, "name", isString) && has(v, "address", isAddress) ? v : null,
+    );
+
+    try {
+      isPerson.strict({ name: "Alice", address: { city: 456, zip: 12345 } });
+      assert(false, "Expected to throw");
+    } catch (e) {
+      assert(e instanceof TypeError);
+      assertEquals(e.message, "Expected string. Received: 456 at path: address.city");
+    }
+  });
+
+  await t.step("array validation - includes index in path", () => {
+    const isStringArray = isArray.of(isString);
+
+    try {
+      isStringArray.strict(["a", "b", 123, "d"]);
+      assert(false, "Expected to throw");
+    } catch (e) {
+      assert(e instanceof TypeError);
+      assertEquals(e.message, "Expected string. Received: 123 at path: 2");
+    }
+  });
+
+  await t.step("array of objects - includes combined path", () => {
+    const isPerson = createTypeGuard(
+      "Person",
+      (v, { has }) => isObject(v) && has(v, "name", isString) ? v : null,
+    );
+    const isPeople = isArray.of(isPerson);
+
+    try {
+      isPeople.strict([{ name: "Alice" }, { name: 123 }]);
+      assert(false, "Expected to throw");
+    } catch (e) {
+      assert(e instanceof TypeError);
+      assertEquals(e.message, "Expected string. Received: 123 at path: 1.name");
+    }
+  });
+
+  await t.step("optional strict - passes undefined", () => {
+    // Should not throw
+    isString.optional.strict(undefined);
+    isNumber.optional.strict(undefined);
+  });
+
+  await t.step("optional strict - includes combined type name in error", () => {
+    try {
+      isString.optional.strict(123);
+      assert(false, "Expected to throw");
+    } catch (e) {
+      assert(e instanceof TypeError);
+      assertEquals(e.message, "Expected string | undefined. Received: 123");
+    }
+  });
+
+  await t.step("custom error message - overrides default", () => {
+    try {
+      isString.strict(123, "Custom error message");
+      assert(false, "Expected to throw");
+    } catch (e) {
+      assert(e instanceof TypeError);
+      assertEquals(e.message, "Custom error message");
+    }
+  });
+
+  await t.step("notEmpty strict - includes type name", () => {
+    try {
+      isString.notEmpty.strict("");
+      assert(false, "Expected to throw");
+    } catch (e) {
+      assert(e instanceof TypeError);
+      assertEquals(e.message, 'Expected non-empty string. Received: ""');
+    }
+  });
+
+  await t.step("fails fast - only first error thrown", () => {
+    const isPerson = createTypeGuard(
+      "Person",
+      (v, { has }) => isObject(v) && has(v, "name", isString) && has(v, "age", isNumber) ? v : null,
+    );
+
+    // Both name and age are wrong, but only first error should be thrown
+    try {
+      isPerson.strict({ name: 123, age: "not a number" });
+      assert(false, "Expected to throw");
+    } catch (e) {
+      assert(e instanceof TypeError);
+      // First property checked fails, so that's the error we get
+      assertEquals(e.message, "Expected string. Received: 123 at path: name");
+    }
+  });
+
+  await t.step("missing property - shows missing property error with path", () => {
+    const isPerson = createTypeGuard(
+      "Person",
+      (v, { has }) => isObject(v) && has(v, "name", isString) ? v : null,
+    );
+
+    try {
+      isPerson.strict({});
+      assert(false, "Expected to throw");
+    } catch (e) {
+      assert(e instanceof TypeError);
+      assertEquals(e.message, "Missing required property: name at path: name");
+    }
+  });
+
+  await t.step("fail helper - custom message with path", () => {
+    const isPositiveNumber = createTypeGuard("positive number", (v, { fail }) => {
+      if (!isNumber(v)) return fail("Must be a number");
+      if (v <= 0) return fail("Must be positive");
+      return v;
+    });
+
+    const hasScore = createTypeGuard(
+      "HasScore",
+      (v, { has }) => isObject(v) && has(v, "score", isPositiveNumber) ? v : null,
+    );
+
+    try {
+      hasScore.strict({ score: -5 });
+      assert(false, "Expected to throw");
+    } catch (e) {
+      assert(e instanceof TypeError);
+      assertEquals(e.message, "Must be positive at path: score");
+    }
+  });
+
+  await t.step("union type guard - shows union name in error", () => {
+    const isStringOrNumber = isString.or(isNumber);
+
+    try {
+      isStringOrNumber.strict(true);
+      assert(false, "Expected to throw");
+    } catch (e) {
+      assert(e instanceof TypeError);
+      assertEquals(e.message, "Expected string | number. Received: true");
+    }
+  });
+
+  await t.step("extended type guard - shows extended name in error", () => {
+    const isNonEmptyString = isString.extend(
+      "non-empty string",
+      (v) => v.length > 0 ? v : null,
+    );
+
+    try {
+      isNonEmptyString.strict(123);
+      assert(false, "Expected to throw");
+    } catch (e) {
+      assert(e instanceof TypeError);
+      assertEquals(e.message, "Expected non-empty string. Received: 123");
+    }
   });
 });

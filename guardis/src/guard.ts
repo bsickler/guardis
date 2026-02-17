@@ -20,7 +20,7 @@ import type {
   TupleOfLength,
   TypeGuard,
 } from "./types.ts";
-import { createContext } from "./context.ts";
+import { createContext, createStrictContext } from "./context.ts";
 import { type GuardMeta, hasContext, hasMeta } from "./introspect.ts";
 import {
   doesNotHaveProperty,
@@ -43,7 +43,8 @@ function createHelpers(ctx?: Context): HelpersWithContext {
   return {
     has: (t, k, guard?, errorMessage?) =>
       hasProperty(t, k, guard, ctx?.pushPath(k), ctx ? errorMessage : undefined),
-    hasNot: doesNotHaveProperty,
+    hasNot: (t, k, errorMessage?) =>
+      doesNotHaveProperty(t, k, ctx?.pushPath(k), ctx ? errorMessage : undefined),
     hasOptional: (t, k, guard?, errorMessage?) =>
       hasOptionalProperty(t, k, guard, ctx?.pushPath(k), ctx ? errorMessage : undefined),
     tupleHas,
@@ -63,14 +64,23 @@ const defaultHelpers = createHelpers();
 
 /**
  * Creates a type guard that strictly checks the type, throwing
- *  a TypeError if it fails.
- * @param parse
- * @returns
+ * a TypeError if it fails. Uses strict context for detailed error messages
+ * with path information on nested validations.
+ * @param parser The parser function to use for validation
+ * @param name Optional name of the type guard for error messages
+ * @returns A strict type guard that throws on failure
  */
-const createStrictTypeGuard = <T>(parse: (v: unknown) => v is T): StrictTypeGuard<T> => {
+const createStrictTypeGuard = <T>(
+  parser: Parser<T>,
+  name?: string,
+): StrictTypeGuard<T> => {
   return (value: unknown, errorMsg?: string): value is T => {
-    if (!parse(value)) {
-      throw TypeError(errorMsg ?? `Type guard failed. Parser ${parse.name} returned null.`);
+    const ctx = createStrictContext();
+    const helpers = createHelpers(ctx);
+    const result = parser(value, helpers);
+
+    if (result === null) {
+      throw new TypeError(errorMsg ?? formatErrorMessage(value, name));
     }
 
     return true;
@@ -124,6 +134,8 @@ const createOrTypeGuard =
 const createNotEmptyTypeGuard = <T>(guard: Predicate<T>) => {
   const notEmpty = (value: unknown): value is T => !isEmpty(value) && guard(value);
   const name = hasMeta(guard) ? `non-empty ${guard._.name}` : undefined;
+  const notEmptyParser: Parser<T> = (value: unknown) =>
+    notEmpty(value) && guard(value) ? value : null;
 
   const context = (
     value: unknown,
@@ -138,11 +150,11 @@ const createNotEmptyTypeGuard = <T>(guard: Predicate<T>) => {
 
   notEmpty._ = {
     name,
-    parser: (value: unknown) => notEmpty(value) && guard(value) ? value : null,
+    parser: notEmptyParser,
     context,
   };
 
-  notEmpty.strict = createStrictTypeGuard(notEmpty);
+  notEmpty.strict = createStrictTypeGuard(notEmptyParser, name);
   notEmpty.assert = notEmpty.strict;
   notEmpty.validate = (value: unknown) => context(value, createContext());
 
@@ -282,7 +294,10 @@ export function createTypeGuard<T1>(...args: [Parser<T1>] | [string, Parser<T1>]
   const optional = (value: unknown): value is T1 | undefined =>
     isUndefined(value) || callback(value);
 
-  optional.strict = createStrictTypeGuard(optional);
+  optional.strict = createStrictTypeGuard(
+    (v, h) => isUndefined(v) ? v : parser(v, h),
+    name ? `${name} | undefined` : undefined,
+  );
   optional.assert = optional.strict;
   optional.notEmpty = callback.notEmpty.optional;
   callback.optional = optional;
@@ -294,7 +309,7 @@ export function createTypeGuard<T1>(...args: [Parser<T1>] | [string, Parser<T1>]
    * @param {string?} errorMsg Optional
    * @returns
    */
-  callback.strict = createStrictTypeGuard(callback);
+  callback.strict = createStrictTypeGuard(parser, name);
   callback.assert = callback.strict;
 
   // StandardSchemaV1 compatibility - uses context-aware validation for path tracking

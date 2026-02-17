@@ -62,13 +62,21 @@ export function hasProperty<K extends PropertyKey, G = unknown>(
  * @template K - The type of the property key to check.
  * @param t - The object to check for the absence of the property.
  * @param k - The property key to verify.
+ * @param ctx - Optional validation context for path tracking.
+ * @param errorMessage - Optional custom error message to use instead of default.
  * @returns A boolean indicating whether the property `k` does not exist in the object `t`.
  */
 export function doesNotHaveProperty<K extends PropertyKey>(
   t: object,
   k: K,
+  ctx?: Context,
+  errorMessage?: string,
 ): t is { [K2 in K]: never } {
-  return !(k in t);
+  if (k in t) {
+    if (ctx) ctx.addIssue(errorMessage ?? `Unexpected property: ${String(k)}`);
+    return false;
+  }
+  return true;
 }
 
 /**

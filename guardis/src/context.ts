@@ -26,3 +26,24 @@ export function createContext(
     },
   };
 }
+
+/**
+ * Creates a strict validation context that throws TypeError immediately on first issue.
+ * Used by strict type guards to provide detailed error messages with path information.
+ *
+ * @param path The current path segments (defaults to empty array for root)
+ * @returns A Context that throws on addIssue instead of collecting issues
+ */
+export function createStrictContext(path: PropertyKey[] = []): Context {
+  return {
+    path,
+    issues: [],
+    pushPath(segment: PropertyKey): Context {
+      return createStrictContext([...path, segment]);
+    },
+    addIssue(message: string): void {
+      const pathStr = path.length > 0 ? ` at path: ${path.join(".")}` : "";
+      throw new TypeError(`${message}${pathStr}`);
+    },
+  };
+}

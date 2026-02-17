@@ -153,14 +153,60 @@ Is.Array.notEmpty([]); // false
 
 ### Strict Mode (Throws Errors)
 
-Throws an error if the predicate fails.
+Throws a `TypeError` if the predicate fails. Error messages include the expected type name, the received value, and path information for nested validations.
 
 ```ts
 // Throws TypeError if validation fails
 Is.String.strict(value);
 
-// With custom error message
+// Error messages include type name and received value
+Is.String.strict(123);
+// TypeError: Expected string. Received: 123
+
+Is.Number.strict("hello");
+// TypeError: Expected number. Received: "hello"
+
+// With custom error message (overrides default)
 Is.Number.strict(value, "Expected a number for calculation");
+```
+
+**Path tracking for nested validations:**
+
+When validating nested objects, strict mode includes the path to the failing property:
+
+```ts
+const isAddress = createTypeGuard("Address", (v, { has }) =>
+  Is.Object(v) && has(v, "city", Is.String) && has(v, "zip", Is.Number) ? v : null
+);
+
+const isPerson = createTypeGuard("Person", (v, { has }) =>
+  Is.Object(v) && has(v, "name", Is.String) && has(v, "address", isAddress) ? v : null
+);
+
+isPerson.strict({ name: "Alice", address: { city: 456, zip: 12345 } });
+// TypeError: Expected string. Received: 456 at path: address.city
+
+// Array indices are also included in paths
+const isStringArray = Is.Array.of(Is.String);
+isStringArray.strict(["a", "b", 123, "d"]);
+// TypeError: Expected string. Received: 123 at path: 2
+```
+
+**Fail-fast behavior:**
+
+Strict mode throws on the first validation failure, unlike `validate()` which collects all errors:
+
+```ts
+isPerson.strict({ name: 123, address: { city: 456 } });
+// TypeError: Expected string. Received: 123 at path: name
+// (Only first error - stops immediately)
+
+isPerson.validate({ name: 123, address: { city: 456 } });
+// { issues: [
+//   { message: "Expected string. Received: 123", path: ["name"] },
+//   { message: "Expected string. Received: 456", path: ["address", "city"] }
+// ]}
+// (Collects all errors)
 ```
 
 ### Assert Mode (TypeScript Assertions)
@@ -220,6 +266,54 @@ Is.Array.notEmpty.validate([]);
 // { issues: [{ message: 'Expected non-empty array. Received: []' }] }
 ```
 
+**Path tracking for nested validations:**
+
+When validating nested objects or arrays, each issue includes a `path` array showing where the error occurred:
+
+```ts
+const isAddress = createTypeGuard("Address", (v, { has }) =>
+  Is.Object(v) && has(v, "city", Is.String) && has(v, "zip", Is.Number) ? v : null
+);
+
+const isPerson = createTypeGuard("Person", (v, { has }) =>
+  Is.Object(v) && has(v, "name", Is.String) && has(v, "address", isAddress) ? v : null
+);
+
+// Nested validation errors include path information
+isPerson.validate({ name: "Alice", address: { city: 123, zip: "invalid" } });
+// {
+//   issues: [
+//     { message: "Expected string. Received: 123", path: ["address", "city"] },
+//     { message: "Expected number. Received: \"invalid\"", path: ["address", "zip"] }
+//   ]
+// }
+
+// Array validation includes indices in the path
+const isStringArray = Is.Array.of(Is.String);
+isStringArray.validate(["a", 123, "c"]);
+// { issues: [{ message: "Expected string. Received: 123", path: [1] }] }
+
+// Deeply nested paths
+const isPeople = Is.Array.of(isPerson);
+isPeople.validate([{ name: "Alice", address: { city: 456, zip: 12345 } }]);
+// { issues: [{ message: "Expected string. Received: 456", path: [0, "address", "city"] }] }
+```
+
+**Collecting all errors:**
+
+Unlike strict mode which fails fast, `validate()` collects all validation errors:
+
+```ts
+isPerson.validate({ name: 123, address: { city: 456, zip: "bad" } });
+// {
+//   issues: [
+//     { message: "Expected string. Received: 123", path: ["name"] },
+//     { message: "Expected string. Received: 456", path: ["address", "city"] },
+//     { message: "Expected number. Received: \"bad\"", path: ["address", "zip"] }
+//   ]
+// }
+```
+
 Works with typed arrays and custom type guards:
 
 ```ts
@@ -230,7 +324,7 @@ isStringArray.validate(["a", "b", "c"]);
 // { value: ["a", "b", "c"] }
 
 isStringArray.validate([1, 2, 3]);
-// { issues: [{ message: 'Expected string[]. Received: [1,2,3]' }] }
+// { issues: [{ message: 'Expected string. Received: 1', path: [0] }] }
 
 // Custom type guards
 const isPositive = Is.Number.extend("positive number", (val) =>
@@ -296,13 +390,19 @@ const isUser = createTypeGuard<User>((val, { has, hasOptional }) => {
 
 ```ts
 const isExample = createTypeGuard((val, helpers) => {
-  const { has, hasOptional, tupleHas, includes } = helpers;
+  const { has, hasOptional, hasNot, tupleHas, includes, keyOf, fail } = helpers;
 
   // Check required object property
   has(obj, "key", Is.String);
 
+  // Check required property with custom error message
+  has(obj, "email", Is.String, "Email is required");
+
   // Check optional object property
   hasOptional(obj, "optional", Is.Number); // { optional?: number | undefined }
+
+  // Check that a property does NOT exist
+  hasNot(obj, "deleted"); // ensures "deleted" property is absent
 
   // Check tuple element at specific index
   tupleHas(tuple, 0, Is.String); // [string, ...unknown[]]
@@ -311,8 +411,40 @@ const isExample = createTypeGuard((val, helpers) => {
   const colors = ["red", "blue", "green"] as const;
   includes(colors, val); // "red" | "blue" | "green"
 
+  // Check if a key exists in an object
+  keyOf(key, someObject); // key is keyof typeof someObject
+
+  // Return custom validation error (works with validate and strict modes)
+  if (val.age < 0) return fail("Age must be non-negative");
+
   return val;
 });
+```
+
+**Custom error messages:**
+
+The `has`, `hasOptional`, `keyOf`, and `fail` helpers support custom error messages that appear in validation results and strict mode errors:
+
+```ts
+const isPerson = createTypeGuard("Person", (v, { has, fail }) => {
+  if (!Is.Object(v)) return fail("Value must be an object");
+  if (!has(v, "name", Is.String, "Name is required and must be a string")) return null;
+  if (!has(v, "age", Is.Number, "Age must be a number")) return null;
+
+  const person = v as { name: string; age: number };
+  if (person.age < 0) return fail("Age must be non-negative");
+  if (person.age > 150) return fail("Age must be realistic");
+
+  return v;
+});
+
+// Custom messages appear in validate results
+isPerson.validate({ name: 123 });
+// { issues: [{ message: "Name is required and must be a string", path: ["name"] }] }
+
+// And in strict mode errors
+isPerson.strict({ age: -5, name: "Alice" });
+// TypeError: Age must be non-negative
 ```
 
 ## Extending Type Guards
