@@ -31,6 +31,16 @@ export const hasMeta = <T1>(
 };
 
 /**
+ * Checks if a guard has a defined name for error messaging.
+ * Returns true only if the guard has meta and a truthy name string.
+ */
+export const hasName = <T1>(
+  guard: Predicate<T1> | TypeGuard<T1>,
+): guard is typeof guard & GuardMeta<T1> & { _: { name: string } } => {
+  return hasMeta(guard) && typeof guard._.name === "string" && guard._.name.length > 0;
+};
+
+/**
  * Checks if a guard has context-aware validation support for path tracking.
  */
 export const hasContext = <T1>(

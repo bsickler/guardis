@@ -36,7 +36,10 @@ export function hasProperty<K extends PropertyKey, G = unknown>(
     if (!guard(value)) {
       if (ctx) {
         ctx.addIssue(errorMessage);
-        return true; // Continue validation to collect all errors
+        // Note: Returns true despite failure to avoid short-circuiting && chains in parsers,
+        // allowing collection of multiple property errors. This is safe because validate()
+        // checks ctx.issues and returns { issues } instead of { value } when errors exist.
+        return true;
       }
       return false;
     }
@@ -46,7 +49,9 @@ export function hasProperty<K extends PropertyKey, G = unknown>(
   // If context is provided, use context-aware validation if available on the guard
   if (ctx && hasContext(guard)) {
     guard._.context(value, ctx); // Run validation, errors accumulate in ctx
-    return true; // Always continue to collect all errors
+    // Note: Returns true despite potential failure to avoid short-circuiting && chains,
+    // enabling multi-property error collection. Safe because validate() checks ctx.issues.
+    return true;
   }
 
   return guard(value);
@@ -160,6 +165,37 @@ export function keyOf<T extends object>(
 }
 
 /**
+ * Safely stringifies a value for error messages, handling edge cases that JSON.stringify cannot.
+ */
+function safeStringify(value: unknown): string {
+  if (value === null) return "null";
+  if (value === undefined) return "undefined";
+
+  const type = typeof value;
+
+  if (type === "string") return JSON.stringify(value);
+  if (type === "boolean") return String(value);
+  if (type === "symbol") return (value as symbol).toString();
+  if (type === "function") {
+    const fn = value as (...args: unknown[]) => unknown;
+    return `[Function${fn.name ? `: ${fn.name}` : ""}]`;
+  }
+  if (type === "bigint") return `${String(value)}n`;
+  if (type === "number") {
+    if (Number.isNaN(value as number)) return "NaN";
+    if (!Number.isFinite(value as number)) return value === Infinity ? "Infinity" : "-Infinity";
+    return String(value);
+  }
+
+  // Objects and arrays - wrap in try/catch for circular references
+  try {
+    return JSON.stringify(value, (_key, val) => (typeof val === "bigint" ? `${String(val)}n` : val));
+  } catch {
+    return Object.prototype.toString.call(value);
+  }
+}
+
+/**
  * Formats an error message based on the provided value and optional metadata.
  *
  * @param value - The value that caused the error.
@@ -167,23 +203,29 @@ export function keyOf<T extends object>(
  * @returns A formatted error message string indicating the expected type (if provided) and the received value.
  */
 export function formatErrorMessage(value: unknown, name?: string): string {
+  const received = safeStringify(value);
+
   if (name) {
-    return `Expected ${name}. Received: ${JSON.stringify(value)}`;
+    return `Expected ${name}. Received: ${received}`;
   }
 
-  return `Invalid value. Received: ${JSON.stringify(value)}`;
+  return `Invalid value. Received: ${received}`;
 }
 
 /**
  * Creates a union type guard from a list of type guards.
  *
- * @typeParam G - A tuple of `TypeGuard<unknown>` types.
+ * @typeParam G - A tuple of `TypeGuard<unknown>` types (must have at least one guard).
  * @param guards - The type guards to combine into a union.
  * @returns A type guard that accepts any value accepted by at least one of the provided guards.
  */
-export const unionOf = <G extends readonly TypeGuard<unknown>[]>(
+export const unionOf = <G extends readonly [TypeGuard<unknown>, ...TypeGuard<unknown>[]]>(
   ...guards: G
 ): TypeGuard<GuardedType<G[number]>> => {
+  if (guards.length === 0) {
+    throw new Error("unionOf requires at least one type guard");
+  }
+
   let store = guards[0];
 
   for (let i = 1; i < guards.length; i++) {

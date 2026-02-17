@@ -322,7 +322,7 @@ Deno.test("isNumber", async (t) => {
       issues: [{ message: 'Expected number. Received: "42"' }],
     });
     assertEquals(isNumber.validate(NaN), {
-      issues: [{ message: "Expected number. Received: null" }],
+      issues: [{ message: "Expected number. Received: NaN" }],
     });
     assertEquals(isNumber.validate(null), {
       issues: [{ message: "Expected number. Received: null" }],
@@ -2440,6 +2440,87 @@ Deno.test("createTypeGuard", async (t) => {
     assert(isPositiveNumber["~standard"]);
     assertEquals(isPositiveNumber["~standard"].version, 1);
     assertEquals(isPositiveNumber["~standard"].vendor, "guardis");
+  });
+});
+
+// === Guard Name Edge Cases ===
+
+Deno.test("Guard name edge cases", async (t) => {
+  await t.step("union of unnamed guards does not produce 'undefined | undefined'", () => {
+    // Bug fix: When guards don't have names, the union name should be undefined,
+    // not "undefined | undefined" which would produce confusing error messages
+
+    // Create an unnamed guard (no name parameter)
+    const unnamedGuard1 = createTypeGuard((v): string | null =>
+      typeof v === "string" && v.startsWith("a") ? v : null
+    );
+    const unnamedGuard2 = createTypeGuard((v): number | null =>
+      typeof v === "number" && v > 0 ? v : null
+    );
+
+    // Create union of unnamed guards
+    const unionGuard = unnamedGuard1.or(unnamedGuard2);
+
+    // Validate returns generic message, not "Expected undefined | undefined..."
+    const result = unionGuard.validate(false);
+    assert(result.issues !== undefined);
+    assertFalse(result.issues[0].message.includes("undefined | undefined"));
+    // Should be a generic message since no names are available
+    assertEquals(result.issues[0].message, "Invalid value. Received: false");
+  });
+
+  await t.step("notEmpty of unnamed guard does not produce 'non-empty undefined'", () => {
+    // Bug fix: When a guard doesn't have a name, notEmpty should not produce
+    // "non-empty undefined" in error messages
+
+    // Create an unnamed guard
+    const unnamedGuard = createTypeGuard((v): string | null =>
+      typeof v === "string" ? v : null
+    );
+
+    // Use notEmpty on it
+    const notEmptyGuard = unnamedGuard.notEmpty;
+
+    // Validate returns generic message, not "Expected non-empty undefined..."
+    const result = notEmptyGuard.validate("");
+    assert(result.issues !== undefined);
+    assertFalse(result.issues[0].message.includes("non-empty undefined"));
+    // Should be a generic message since no name is available
+    assertEquals(result.issues[0].message, 'Invalid value. Received: ""');
+  });
+
+  await t.step("union with one named and one unnamed guard falls back to generic", () => {
+    // When only one guard has a name, the union name should be undefined
+    // (not "string | undefined" or similar partial names)
+
+    const unnamedGuard = createTypeGuard((v): number | null =>
+      typeof v === "number" ? v : null
+    );
+
+    // isString has a name, unnamedGuard does not
+    const mixedUnion = isString.or(unnamedGuard);
+
+    const result = mixedUnion.validate(false);
+    assert(result.issues !== undefined);
+    // Should not have partial undefined in the message
+    assertFalse(result.issues[0].message.includes("| undefined"));
+    assertFalse(result.issues[0].message.includes("undefined |"));
+  });
+
+  await t.step("named guards still produce proper union names", () => {
+    // Verify that when both guards have names, we still get the union name
+    const result = isString.or(isNumber).validate(false);
+    assertEquals(result, {
+      issues: [{ message: "Expected string | number. Received: false" }],
+    });
+  });
+
+  await t.step("named guards still produce proper notEmpty names", () => {
+    // Verify that when the guard has a name, notEmpty still works
+    const result = isString.notEmpty.validate("");
+    assertEquals(result, {
+      issues: [{ message: 'Expected non-empty string. Received: ""' }],
+    });
   });
 });
 

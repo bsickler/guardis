@@ -1,6 +1,15 @@
-import { assert, assertFalse } from "@std/assert";
+import { assert, assertEquals, assertFalse, assertThrows } from "@std/assert";
 import { isBoolean, isNull, isNumber, isString } from "./guard.ts";
-import { doesNotHaveProperty, hasOptionalProperty, hasProperty, includes, keyOf, tupleHas } from "./utilities.ts";
+import {
+  doesNotHaveProperty,
+  formatErrorMessage,
+  hasOptionalProperty,
+  hasProperty,
+  includes,
+  keyOf,
+  tupleHas,
+  unionOf,
+} from "./utilities.ts";
 
 Deno.test("hasProperty", async (t) => {
   await t.step("property existence check", () => {
@@ -237,5 +246,113 @@ Deno.test("keyOf", async (t) => {
     assert(keyOf("inherited", child)); // 'in' operator checks prototype chain
 
     assertFalse(keyOf("notThere", child));
+  });
+});
+
+Deno.test("formatErrorMessage", async (t) => {
+  await t.step("handles primitive values", () => {
+    assertEquals(formatErrorMessage("hello", "number"), 'Expected number. Received: "hello"');
+    assertEquals(formatErrorMessage(42, "string"), "Expected string. Received: 42");
+    assertEquals(formatErrorMessage(true, "number"), "Expected number. Received: true");
+    assertEquals(formatErrorMessage(null, "string"), "Expected string. Received: null");
+    assertEquals(formatErrorMessage(undefined, "string"), "Expected string. Received: undefined");
+  });
+
+  await t.step("handles NaN without producing null", () => {
+    // Bug fix: JSON.stringify(NaN) returns "null", but we want "NaN"
+    assertEquals(formatErrorMessage(NaN, "string"), "Expected string. Received: NaN");
+  });
+
+  await t.step("handles Infinity values", () => {
+    // Bug fix: JSON.stringify(Infinity) returns "null", but we want "Infinity"
+    assertEquals(formatErrorMessage(Infinity, "number"), "Expected number. Received: Infinity");
+    assertEquals(formatErrorMessage(-Infinity, "number"), "Expected number. Received: -Infinity");
+  });
+
+  await t.step("handles BigInt without throwing", () => {
+    // Bug fix: JSON.stringify(BigInt) throws TypeError
+    assertEquals(formatErrorMessage(BigInt(123), "number"), "Expected number. Received: 123n");
+    assertEquals(formatErrorMessage(BigInt(-456), "number"), "Expected number. Received: -456n");
+  });
+
+  await t.step("handles symbols without producing undefined", () => {
+    // Bug fix: JSON.stringify(Symbol) returns undefined
+    const sym = Symbol("test");
+    assertEquals(formatErrorMessage(sym, "string"), "Expected string. Received: Symbol(test)");
+    assertEquals(formatErrorMessage(Symbol(), "string"), "Expected string. Received: Symbol()");
+  });
+
+  await t.step("handles functions without producing undefined", () => {
+    // Bug fix: JSON.stringify(function) returns undefined
+    assertEquals(formatErrorMessage(() => {}, "object"), "Expected object. Received: [Function]");
+    assertEquals(formatErrorMessage(function namedFn() {}, "object"), "Expected object. Received: [Function: namedFn]");
+  });
+
+  await t.step("handles circular references without throwing", () => {
+    // Bug fix: JSON.stringify throws on circular references
+    const circular: Record<string, unknown> = { a: 1 };
+    circular.self = circular;
+    const result = formatErrorMessage(circular, "array");
+    assert(result.startsWith("Expected array. Received:"));
+    // Should not throw, and should produce some fallback representation
+  });
+
+  await t.step("handles objects with BigInt properties", () => {
+    const obj = { id: BigInt(999), name: "test" };
+    assertEquals(formatErrorMessage(obj, "array"), 'Expected array. Received: {"id":"999n","name":"test"}');
+  });
+
+  await t.step("works without name parameter", () => {
+    assertEquals(formatErrorMessage("test"), 'Invalid value. Received: "test"');
+    assertEquals(formatErrorMessage(42), "Invalid value. Received: 42");
+  });
+});
+
+Deno.test("unionOf", async (t) => {
+  await t.step("creates union from multiple guards", () => {
+    const isStringOrNumber = unionOf(isString, isNumber);
+
+    assert(isStringOrNumber("hello"));
+    assert(isStringOrNumber(42));
+    assertFalse(isStringOrNumber(true));
+    assertFalse(isStringOrNumber(null));
+  });
+
+  await t.step("works with single guard", () => {
+    const justString = unionOf(isString);
+
+    assert(justString("hello"));
+    assertFalse(justString(42));
+  });
+
+  await t.step("validates correctly with three or more guards", () => {
+    const isStringOrNumberOrBoolean = unionOf(isString, isNumber, isBoolean);
+
+    assert(isStringOrNumberOrBoolean("hello"));
+    assert(isStringOrNumberOrBoolean(42));
+    assert(isStringOrNumberOrBoolean(true));
+    assertFalse(isStringOrNumberOrBoolean(null));
+    assertFalse(isStringOrNumberOrBoolean(undefined));
+  });
+
+  await t.step("validate method returns proper error messages", () => {
+    const isStringOrNumber = unionOf(isString, isNumber);
+
+    assertEquals(isStringOrNumber.validate("hello"), { value: "hello" });
+    assertEquals(isStringOrNumber.validate(42), { value: 42 });
+    assertEquals(isStringOrNumber.validate(true), {
+      issues: [{ message: 'Expected string | number. Received: true' }],
+    });
+  });
+
+  await t.step("throws error when called with no guards", () => {
+    // TypeScript prevents this at compile time, but we also check at runtime
+    // for cases where TypeScript is bypassed (e.g., plain JS usage)
+    assertThrows(
+      // @ts-expect-error - intentionally bypassing TS to test runtime check
+      () => unionOf(),
+      Error,
+      "unionOf requires at least one type guard",
+    );
   });
 });

@@ -21,7 +21,7 @@ import type {
   TypeGuard,
 } from "./types.ts";
 import { createContext, createStrictContext } from "./context.ts";
-import { type GuardMeta, hasContext, hasMeta } from "./introspect.ts";
+import { type GuardMeta, hasContext, hasName } from "./introspect.ts";
 import {
   doesNotHaveProperty,
   formatErrorMessage,
@@ -112,7 +112,7 @@ const createStrictTypeGuard = <T>(
 const createOrTypeGuard =
   <T1>(guard: Predicate<T1>) => <T2>(guardTwo: TypeGuard<T2>): TypeGuard<T1 | T2> => {
     // Create a union of the names of the two guards for better error messages, if available.
-    const name = hasMeta(guard) && hasMeta(guardTwo)
+    const name = hasName(guard) && hasName(guardTwo)
       ? `${guard._.name} | ${guardTwo._.name}`
       : undefined;
 
@@ -133,7 +133,7 @@ const createOrTypeGuard =
  */
 const createNotEmptyTypeGuard = <T>(guard: Predicate<T>) => {
   const notEmpty = (value: unknown): value is T => !isEmpty(value) && guard(value);
-  const name = hasMeta(guard) ? `non-empty ${guard._.name}` : undefined;
+  const name = hasName(guard) ? `non-empty ${guard._.name}` : undefined;
   const notEmptyParser: Parser<T> = (value: unknown) =>
     notEmpty(value) && guard(value) ? value : null;
 
@@ -502,7 +502,7 @@ export const isArray: TypeGuard<unknown[]> & {
   _isArray,
   {
     of: <T>(guard: TypeGuard<T>): TypeGuard<T[]> => {
-      const guardName = hasMeta(guard) ? guard._.name : undefined;
+      const guardName = hasName(guard) ? guard._.name : undefined;
 
       let name = "array";
 

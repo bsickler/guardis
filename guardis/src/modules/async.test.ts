@@ -99,7 +99,7 @@ Deno.test("isAsyncFunction", async (t) => {
 
     // Invalid inputs return issues with specific error message
     assertEquals(isAsyncFunction.validate(() => {}), {
-      issues: [{ message: "Expected async function. Received: undefined" }],
+      issues: [{ message: "Expected async function. Received: [Function]" }],
     });
     assertEquals(isAsyncFunction.validate("async"), {
       issues: [{ message: 'Expected async function. Received: "async"' }],

@@ -299,9 +299,9 @@ isPeople.validate([{ name: "Alice", address: { city: 456, zip: 12345 } }]);
 // { issues: [{ message: "Expected string. Received: 456", path: [0, "address", "city"] }] }
 ```
 
-**Collecting all errors:**
+**Collecting errors:**
 
-Unlike strict mode which fails fast, `validate()` collects all validation errors:
+Unlike strict mode which fails fast, `validate()` can collect multiple validation errors. Object validators using `has()` will collect all property errors, while array validators (`Is.Array.of()`) stop at the first invalid element for performance:
 
 ```ts
 isPerson.validate({ name: 123, address: { city: 456, zip: "bad" } });
