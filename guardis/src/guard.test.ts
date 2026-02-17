@@ -1327,13 +1327,14 @@ Deno.test("isArray.of", async (t) => {
     const emptyResult = isStringArray.validate(TEST_VALUES.emptyArray);
     assertEquals(emptyResult, { value: [] });
 
-    // Invalid inputs
+    // Invalid inputs - now include path to invalid element
     const invalidResult1 = isStringArray.validate([1, 2, 3]);
-    assertEquals(invalidResult1, { issues: [{ message: "Expected string[]. Received: [1,2,3]" }] });
+    assertEquals(invalidResult1, { issues: [{ message: "Expected string. Received: 1", path: [0] }] });
 
     const invalidResult2 = isStringArray.validate(["a", 1, "c"]);
-    assertEquals(invalidResult2, { issues: [{ message: 'Expected string[]. Received: ["a",1,"c"]' }] });
+    assertEquals(invalidResult2, { issues: [{ message: "Expected string. Received: 1", path: [1] }] });
 
+    // Non-array input still has no path (fails at root level)
     const invalidResult3 = isStringArray.validate(TEST_VALUES.object);
     assertEquals(invalidResult3, {
       issues: [{ message: `Expected string[]. Received: ${JSON.stringify(TEST_VALUES.object)}` }],
@@ -2436,5 +2437,468 @@ Deno.test("createTypeGuard", async (t) => {
     assert(isPositiveNumber["~standard"]);
     assertEquals(isPositiveNumber["~standard"].version, 1);
     assertEquals(isPositiveNumber["~standard"].vendor, "guardis");
+  });
+});
+
+// === Validation Path Tracking ===
+
+Deno.test("Validation path tracking", async (t) => {
+  await t.step("root level validation - no path in error", () => {
+    // Root level errors should not include a path
+    const result = isString.validate(123);
+    assertEquals(result, { issues: [{ message: "Expected string. Received: 123" }] });
+
+    const result2 = isNumber.validate("test");
+    assertEquals(result2, { issues: [{ message: 'Expected number. Received: "test"' }] });
+  });
+
+  await t.step("array validation - includes index in path", () => {
+    const isStringArray = isArray.of(isString);
+
+    // Valid array
+    const validResult = isStringArray.validate(["a", "b", "c"]);
+    assertEquals(validResult, { value: ["a", "b", "c"] });
+
+    // Invalid element at index 1
+    const invalidResult = isStringArray.validate(["valid", 123, "also valid"]);
+    assert("issues" in invalidResult && invalidResult.issues);
+    assertEquals(invalidResult.issues.length, 1);
+    assertEquals(invalidResult.issues[0].message, "Expected string. Received: 123");
+    assertEquals(invalidResult.issues[0].path, [1]);
+  });
+
+  await t.step("array validation - first error only", () => {
+    const isNumberArray = isArray.of(isNumber);
+
+    // Multiple invalid elements - should report only the first one
+    const result = isNumberArray.validate(["a", "b", "c"]);
+    assert("issues" in result && result.issues);
+    assertEquals(result.issues.length, 1);
+    assertEquals(result.issues[0].path, [0]);
+  });
+
+  await t.step("nested object validation - includes property key in path", () => {
+    const isPerson = createTypeGuard("Person", (v, { has }) =>
+      isObject(v) && has(v, "name", isString) && has(v, "age", isNumber) ? v : null
+    );
+
+    // Valid object
+    const validResult = isPerson.validate({ name: "Alice", age: 30 });
+    assertEquals(validResult, { value: { name: "Alice", age: 30 } });
+
+    // Invalid age type
+    const invalidResult = isPerson.validate({ name: "Alice", age: "thirty" });
+    assert("issues" in invalidResult && invalidResult.issues);
+    assertEquals(invalidResult.issues.length, 1);
+    assertEquals(invalidResult.issues[0].message, 'Expected number. Received: "thirty"');
+    assertEquals(invalidResult.issues[0].path, ["age"]);
+  });
+
+  await t.step("nested object validation - missing property", () => {
+    const isPerson = createTypeGuard("Person", (v, { has }) =>
+      isObject(v) && has(v, "name", isString) && has(v, "age", isNumber) ? v : null
+    );
+
+    // Missing required property
+    const result = isPerson.validate({ name: "Alice" });
+    assert("issues" in result && result.issues);
+    assertEquals(result.issues.length, 1);
+    assertEquals(result.issues[0].message, "Missing required property: age");
+    assertEquals(result.issues[0].path, ["age"]);
+  });
+
+  await t.step("array of objects - combined path", () => {
+    const isPerson = createTypeGuard("Person", (v, { has }) =>
+      isObject(v) && has(v, "name", isString) && has(v, "age", isNumber) ? v : null
+    );
+    const isPeopleArray = isArray.of(isPerson);
+
+    // Valid array of objects
+    const validResult = isPeopleArray.validate([
+      { name: "Alice", age: 30 },
+      { name: "Bob", age: 25 },
+    ]);
+    assertEquals(validResult, { value: [{ name: "Alice", age: 30 }, { name: "Bob", age: 25 }] });
+
+    // Invalid object at index 1
+    const invalidResult = isPeopleArray.validate([
+      { name: "Alice", age: 30 },
+      { name: "Bob", age: "invalid" },
+    ]);
+    assert("issues" in invalidResult && invalidResult.issues);
+    assertEquals(invalidResult.issues.length, 1);
+    assertEquals(invalidResult.issues[0].message, 'Expected number. Received: "invalid"');
+    assertEquals(invalidResult.issues[0].path, [1, "age"]);
+  });
+
+  await t.step("deeply nested structures - 2 levels", () => {
+    const isAddress = createTypeGuard("Address", (v, { has }) =>
+      isObject(v) && has(v, "city", isString) && has(v, "zip", isNumber) ? v : null
+    );
+    const isPerson = createTypeGuard("Person", (v, { has }) =>
+      isObject(v) && has(v, "name", isString) && has(v, "address", isAddress) ? v : null
+    );
+
+    // Invalid nested property
+    const result = isPerson.validate({
+      name: "Alice",
+      address: { city: "NYC", zip: "invalid" },
+    });
+    assert("issues" in result && result.issues);
+    assertEquals(result.issues.length, 1);
+    assertEquals(result.issues[0].message, 'Expected number. Received: "invalid"');
+    assertEquals(result.issues[0].path, ["address", "zip"]);
+  });
+
+  await t.step("deeply nested structures - 3 levels", () => {
+    // Level 3: coordinates within location
+    const isCoordinates = createTypeGuard("Coordinates", (v, { has }) =>
+      isObject(v) && has(v, "lat", isNumber) && has(v, "lng", isNumber) ? v : null
+    );
+
+    // Level 2: location within address
+    const isLocation = createTypeGuard("Location", (v, { has }) =>
+      isObject(v) && has(v, "name", isString) && has(v, "coordinates", isCoordinates) ? v : null
+    );
+
+    // Level 1: address within company
+    const isAddress = createTypeGuard("Address", (v, { has }) =>
+      isObject(v) && has(v, "street", isString) && has(v, "location", isLocation) ? v : null
+    );
+
+    // Root: company
+    const isCompany = createTypeGuard("Company", (v, { has }) =>
+      isObject(v) && has(v, "name", isString) && has(v, "headquarters", isAddress) ? v : null
+    );
+
+    // Valid 3-level nested object
+    const validData = {
+      name: "Acme Corp",
+      headquarters: {
+        street: "123 Main St",
+        location: {
+          name: "Downtown",
+          coordinates: { lat: 40.7128, lng: -74.006 },
+        },
+      },
+    };
+    const validResult = isCompany.validate(validData);
+    assertEquals(validResult, { value: validData });
+
+    // Invalid at level 3 - wrong type for lat
+    const invalidLat = isCompany.validate({
+      name: "Acme Corp",
+      headquarters: {
+        street: "123 Main St",
+        location: {
+          name: "Downtown",
+          coordinates: { lat: "invalid", lng: -74.006 },
+        },
+      },
+    });
+    assert("issues" in invalidLat && invalidLat.issues);
+    assertEquals(invalidLat.issues.length, 1);
+    assertEquals(invalidLat.issues[0].message, 'Expected number. Received: "invalid"');
+    assertEquals(invalidLat.issues[0].path, ["headquarters", "location", "coordinates", "lat"]);
+
+    // Invalid at level 2 - wrong type for location.name
+    const invalidLocationName = isCompany.validate({
+      name: "Acme Corp",
+      headquarters: {
+        street: "123 Main St",
+        location: {
+          name: 12345,
+          coordinates: { lat: 40.7128, lng: -74.006 },
+        },
+      },
+    });
+    assert("issues" in invalidLocationName && invalidLocationName.issues);
+    assertEquals(invalidLocationName.issues.length, 1);
+    assertEquals(invalidLocationName.issues[0].message, "Expected string. Received: 12345");
+    assertEquals(invalidLocationName.issues[0].path, ["headquarters", "location", "name"]);
+
+    // Missing property at level 3
+    const missingLng = isCompany.validate({
+      name: "Acme Corp",
+      headquarters: {
+        street: "123 Main St",
+        location: {
+          name: "Downtown",
+          coordinates: { lat: 40.7128 },
+        },
+      },
+    });
+    assert("issues" in missingLng && missingLng.issues);
+    assertEquals(missingLng.issues.length, 1);
+    assertEquals(missingLng.issues[0].message, "Missing required property: lng");
+    assertEquals(missingLng.issues[0].path, ["headquarters", "location", "coordinates", "lng"]);
+
+    // Missing nested object at level 2
+    const missingCoordinates = isCompany.validate({
+      name: "Acme Corp",
+      headquarters: {
+        street: "123 Main St",
+        location: {
+          name: "Downtown",
+        },
+      },
+    });
+    assert("issues" in missingCoordinates && missingCoordinates.issues);
+    assertEquals(missingCoordinates.issues.length, 1);
+    assertEquals(missingCoordinates.issues[0].message, "Missing required property: coordinates");
+    assertEquals(missingCoordinates.issues[0].path, ["headquarters", "location", "coordinates"]);
+  });
+
+  await t.step("optional property validation", () => {
+    const isPerson = createTypeGuard("Person", (v, { has, hasOptional }) =>
+      isObject(v) && has(v, "name", isString) && hasOptional(v, "age", isNumber) ? v : null
+    );
+
+    // Valid with optional property
+    const validResult1 = isPerson.validate({ name: "Alice", age: 30 });
+    assertEquals(validResult1, { value: { name: "Alice", age: 30 } });
+
+    // Valid without optional property
+    const validResult2 = isPerson.validate({ name: "Alice" });
+    assertEquals(validResult2, { value: { name: "Alice" } });
+
+    // Invalid optional property type
+    const invalidResult = isPerson.validate({ name: "Alice", age: "thirty" });
+    assert("issues" in invalidResult && invalidResult.issues);
+    assertEquals(invalidResult.issues.length, 1);
+    assertEquals(invalidResult.issues[0].message, 'Expected number. Received: "thirty"');
+    assertEquals(invalidResult.issues[0].path, ["age"]);
+  });
+
+  await t.step("array of arrays - nested indices", () => {
+    const isNumberMatrix = isArray.of(isArray.of(isNumber));
+
+    // Valid matrix
+    const validResult = isNumberMatrix.validate([[1, 2], [3, 4]]);
+    assertEquals(validResult, { value: [[1, 2], [3, 4]] });
+
+    // Invalid element in nested array
+    const invalidResult = isNumberMatrix.validate([[1, 2], [3, "four"]]);
+    assert("issues" in invalidResult && invalidResult.issues);
+    assertEquals(invalidResult.issues.length, 1);
+    assertEquals(invalidResult.issues[0].message, 'Expected number. Received: "four"');
+    assertEquals(invalidResult.issues[0].path, [1, 1]);
+  });
+
+  await t.step("validation still works with boolean guards (no context)", () => {
+    // Guards work normally as type guards
+    assert(isString("test"));
+    assertFalse(isString(123));
+
+    // isArray.of still works as type guard
+    const isStringArray = isArray.of(isString);
+    assert(isStringArray(["a", "b"]));
+    assertFalse(isStringArray([1, 2]));
+
+    // Custom guards still work
+    const isPerson = createTypeGuard("Person", (v, { has }) =>
+      isObject(v) && has(v, "name", isString) ? v : null
+    );
+    assert(isPerson({ name: "Alice" }));
+    assertFalse(isPerson({ name: 123 }));
+  });
+});
+
+// === Custom Error Messages ===
+
+Deno.test("Custom error messages", async (t) => {
+  await t.step("fail helper - custom error in validation", () => {
+    const isPositiveAge = createTypeGuard("PositiveAge", (v, { fail }) => {
+      if (typeof v !== "number") return fail("Age must be a number");
+      if (v < 0) return fail("Age cannot be negative");
+      return v;
+    });
+
+    const result = isPositiveAge.validate(-5);
+    assertEquals(result, { issues: [{ message: "Age cannot be negative" }] });
+  });
+
+  await t.step("fail helper - first fail for non-number", () => {
+    const isPositiveAge = createTypeGuard("PositiveAge", (v, { fail }) => {
+      if (typeof v !== "number") return fail("Age must be a number");
+      if (v < 0) return fail("Age cannot be negative");
+      return v;
+    });
+
+    const result = isPositiveAge.validate("not a number");
+    assertEquals(result, { issues: [{ message: "Age must be a number" }] });
+  });
+
+  await t.step("fail helper - works in boolean mode (returns false)", () => {
+    const isPositiveAge = createTypeGuard("PositiveAge", (v, { fail }) => {
+      if (typeof v !== "number") return fail("Age must be a number");
+      return v;
+    });
+
+    assertFalse(isPositiveAge("not a number"));
+  });
+
+  await t.step("fail helper - valid values still work", () => {
+    const isPositiveAge = createTypeGuard("PositiveAge", (v, { fail }) => {
+      if (typeof v !== "number") return fail("Age must be a number");
+      if (v < 0) return fail("Age cannot be negative");
+      return v;
+    });
+
+    assert(isPositiveAge(25));
+    assertEquals(isPositiveAge.validate(25), { value: 25 });
+  });
+
+  await t.step("has helper - custom error message parameter", () => {
+    const isPerson = createTypeGuard("Person", (v, { has }) => {
+      if (!isObject(v)) return null;
+      if (!has(v, "name", isString, "Name is required")) return null;
+      if (!has(v, "age", isNumber, "Age must be a number")) return null;
+      return v;
+    });
+
+    const result = isPerson.validate({ name: "Alice", age: "bad" });
+    assert("issues" in result && result.issues);
+    assertEquals(result.issues[0].message, "Age must be a number");
+    assertEquals(result.issues[0].path, ["age"]);
+  });
+
+  await t.step("has helper - missing property with custom message", () => {
+    const isPerson = createTypeGuard("Person", (v, { has }) => {
+      if (!isObject(v)) return null;
+      if (!has(v, "name", isString, "Name is required")) return null;
+      return v;
+    });
+
+    const result = isPerson.validate({});
+    assert("issues" in result && result.issues);
+    assertEquals(result.issues[0].message, "Name is required");
+    assertEquals(result.issues[0].path, ["name"]);
+  });
+
+  await t.step("hasOptional helper - custom error message parameter", () => {
+    const isPerson = createTypeGuard("Person", (v, { has, hasOptional }) => {
+      if (!isObject(v)) return null;
+      if (!has(v, "name", isString)) return null;
+      if (!hasOptional(v, "age", isNumber, "Age must be a valid number if provided")) {
+        return null;
+      }
+      return v;
+    });
+
+    // Valid without optional
+    assertEquals(isPerson.validate({ name: "Alice" }), { value: { name: "Alice" } });
+
+    // Invalid optional type
+    const result = isPerson.validate({ name: "Alice", age: "thirty" });
+    assert("issues" in result && result.issues);
+    assertEquals(result.issues[0].message, "Age must be a valid number if provided");
+    assertEquals(result.issues[0].path, ["age"]);
+  });
+
+  await t.step("custom error with path tracking in arrays", () => {
+    const isPerson = createTypeGuard("Person", (v, { has, fail }) => {
+      if (!isObject(v)) return fail("Must be an object");
+      if (!has(v, "age", isNumber, "Age must be valid")) return null;
+      if ((v as { age: number }).age < 0) return fail("Age cannot be negative");
+      return v;
+    });
+
+    const result = isArray.of(isPerson).validate([{ age: -5 }]);
+    assert("issues" in result && result.issues);
+    assertEquals(result.issues[0].message, "Age cannot be negative");
+    assertEquals(result.issues[0].path, [0]);
+  });
+
+  await t.step("custom error in nested object with array - custom message overrides", () => {
+    const isPerson = createTypeGuard("Person", (v, { has }) => {
+      if (!isObject(v)) return null;
+      if (!has(v, "name", isString, "Name must be a string")) return null;
+      return v;
+    });
+
+    const isTeam = createTypeGuard("Team", (v, { has }) => {
+      if (!isObject(v)) return null;
+      // Custom message overrides nested errors
+      if (!has(v, "members", isArray.of(isPerson), "Members must be valid")) return null;
+      return v;
+    });
+
+    // Invalid member name - custom message is used at the "members" level
+    const result = isTeam.validate({
+      members: [{ name: "Alice" }, { name: 123 }],
+    });
+    assert("issues" in result && result.issues);
+    assertEquals(result.issues[0].message, "Members must be valid");
+    assertEquals(result.issues[0].path, ["members"]);
+  });
+
+  await t.step("nested errors bubble up without custom message", () => {
+    const isPerson = createTypeGuard("Person", (v, { has }) => {
+      if (!isObject(v)) return null;
+      if (!has(v, "name", isString, "Name must be a string")) return null;
+      return v;
+    });
+
+    const isTeam = createTypeGuard("Team", (v, { has }) => {
+      if (!isObject(v)) return null;
+      // No custom message - nested errors bubble up
+      if (!has(v, "members", isArray.of(isPerson))) return null;
+      return v;
+    });
+
+    // Invalid member name - nested error bubbles up with full path
+    const result = isTeam.validate({
+      members: [{ name: "Alice" }, { name: 123 }],
+    });
+    assert("issues" in result && result.issues);
+    assertEquals(result.issues[0].message, "Name must be a string");
+    assertEquals(result.issues[0].path, ["members", 1, "name"]);
+  });
+
+  await t.step("combining fail with has custom messages", () => {
+    const isPerson = createTypeGuard("Person", (v, { has, fail }) => {
+      if (!isObject(v)) return fail("Value must be an object");
+      if (!has(v, "name", isString, "Name is required and must be a string")) return null;
+      if (!has(v, "age", isNumber, "Age must be a valid number")) return null;
+      const person = v as { name: string; age: number };
+      if (person.age < 0) return fail("Age must be non-negative");
+      if (person.age > 150) return fail("Age must be realistic (under 150)");
+      return v;
+    });
+
+    // Test object validation via fail
+    assertEquals(isPerson.validate("not an object"), {
+      issues: [{ message: "Value must be an object" }],
+    });
+
+    // Test has with custom message
+    const missingName = isPerson.validate({ age: 25 });
+    assert("issues" in missingName && missingName.issues);
+    assertEquals(missingName.issues[0].message, "Name is required and must be a string");
+
+    // Test custom validation logic via fail
+    const negativeAge = isPerson.validate({ name: "Alice", age: -5 });
+    assert("issues" in negativeAge && negativeAge.issues);
+    assertEquals(negativeAge.issues[0].message, "Age must be non-negative");
+
+    // Test valid case
+    assertEquals(isPerson.validate({ name: "Alice", age: 30 }), {
+      value: { name: "Alice", age: 30 },
+    });
+  });
+
+  await t.step("boolean mode ignores custom messages (no crash)", () => {
+    const isPerson = createTypeGuard("Person", (v, { has, fail }) => {
+      if (!isObject(v)) return fail("Must be an object");
+      if (!has(v, "name", isString, "Name required")) return null;
+      return v;
+    });
+
+    // Boolean mode should work and return false without throwing
+    assertFalse(isPerson("not an object"));
+    assertFalse(isPerson({}));
+    assertFalse(isPerson({ name: 123 }));
+    assert(isPerson({ name: "Alice" }));
   });
 });

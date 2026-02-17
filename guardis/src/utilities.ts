@@ -1,5 +1,6 @@
 import { isUndefined } from "./guard.ts";
-import type { GuardedType, TypeGuard } from "./types.ts";
+import { hasContext } from "./introspect.ts";
+import type { Context, GuardedType, TypeGuard } from "./types.ts";
 
 /**
  * Utility to verify if a property exists in an object. Checks that
@@ -8,16 +9,47 @@ import type { GuardedType, TypeGuard } from "./types.ts";
  * @param {object} t The object to check for property k.
  * @param {string|number|Symbol} k The key for property k.
  * @param {Function|undefined} guard The optional type guard to validate t[k].
+ * @param {Context|undefined} ctx Optional validation context for path tracking.
+ *        Note: ctx is expected to already include the key in its path when passed.
+ * @param {string|undefined} errorMessage Optional custom error message to use instead of default.
  * @returns {boolean}
  */
 export function hasProperty<K extends PropertyKey, G = unknown>(
   t: object,
   k: K,
   guard?: (v: unknown) => v is G,
+  ctx?: Context,
+  errorMessage?: string,
 ): t is { [K2 in K]: G } {
-  if (!(k in t)) return false;
+  if (!(k in t)) {
+    if (ctx) ctx.addIssue(errorMessage ?? `Missing required property: ${String(k)}`);
 
-  return guard ? guard(t[k as keyof typeof t]) : true;
+    return false;
+  }
+
+  if (!guard) return true;
+
+  const value = t[k as keyof typeof t];
+
+  // If custom errorMessage provided, use simple boolean check and add custom message on failure
+  if (errorMessage) {
+    if (!guard(value)) {
+      if (ctx) {
+        ctx.addIssue(errorMessage);
+        return true; // Continue validation to collect all errors
+      }
+      return false;
+    }
+    return true;
+  }
+
+  // If context is provided, use context-aware validation if available on the guard
+  if (ctx && hasContext(guard)) {
+    guard._.context(value, ctx); // Run validation, errors accumulate in ctx
+    return true; // Always continue to collect all errors
+  }
+
+  return guard(value);
 }
 
 /**
@@ -49,16 +81,20 @@ export function doesNotHaveProperty<K extends PropertyKey>(
  * @param t - The object to check
  * @param k - The property key to look for
  * @param guard - Optional function that checks if the value is of type G
+ * @param ctx - Optional validation context for path tracking
+ * @param errorMessage - Optional custom error message to use instead of default
  * @returns Type predicate indicating if the object has the optional property of type G
  */
 export function hasOptionalProperty<K extends PropertyKey, G = unknown>(
   t: object,
   k: K,
   guard?: (v: unknown) => v is G,
+  ctx?: Context,
+  errorMessage?: string,
 ): t is { [K2 in K]+?: G } {
   if (isUndefined(t[k as keyof typeof t])) return true;
 
-  return hasProperty(t, k, guard);
+  return hasProperty(t, k, guard, ctx, errorMessage);
 }
 
 /**
@@ -96,12 +132,23 @@ export function includes<T extends readonly unknown[]>(t: T, v: unknown): v is T
  * @param t - The object to check the property key against.
  * @returns A boolean indicating whether the property key exists in the object.
  */
-export function keyOf<T extends object>(k: unknown, t: T): k is keyof T {
+export function keyOf<T extends object>(
+  k: unknown,
+  t: T,
+  ctx?: Context,
+  errorMessage?: string,
+): k is keyof T {
   if (typeof k !== "string" && typeof k !== "number" && typeof k !== "symbol") {
+    if (ctx) ctx.addIssue(errorMessage ?? `Invalid key type: ${typeof k}`);
     return false;
   }
 
-  return k in t;
+  if (!(k in t)) {
+    if (ctx) ctx.addIssue(errorMessage ?? `Key "${String(k)}" not found in object`);
+    return false;
+  }
+
+  return true;
 }
 
 /**

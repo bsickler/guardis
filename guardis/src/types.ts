@@ -1,21 +1,51 @@
 import type { StandardSchemaV1 } from "../specs/standard-schema-spec.v1.ts";
 import type {
   doesNotHaveProperty,
-  hasOptionalProperty,
-  hasProperty,
   includes,
-  keyOf,
   tupleHas,
 } from "./utilities.ts";
 
+/**
+ * Context for tracking validation paths and collecting issues during validation.
+ * Only present during `validate()` calls, not during regular type guard checks.
+ */
+export interface Context {
+  /** The current path being validated (array of property keys and indices) */
+  readonly path: ReadonlyArray<PropertyKey>;
+  /** The collected validation issues */
+  readonly issues: StandardSchemaV1.Issue[];
+  /** Creates a new context with the segment added to the path */
+  pushPath(segment: PropertyKey): Context;
+  /** Adds an issue at the current path */
+  addIssue(message: string): void;
+}
+
 type Helpers = {
-  has: typeof hasProperty;
+  /** Check for required property with optional custom error message */
+  has: <K extends PropertyKey, G = unknown>(
+    t: object,
+    k: K,
+    guard?: (v: unknown) => v is G,
+    errorMessage?: string,
+  ) => t is { [K2 in K]: G };
   hasNot: typeof doesNotHaveProperty;
-  hasOptional: typeof hasOptionalProperty;
+  /** Check for optional property with optional custom error message */
+  hasOptional: <K extends PropertyKey, G = unknown>(
+    t: object,
+    k: K,
+    guard?: (v: unknown) => v is G,
+    errorMessage?: string,
+  ) => t is { [K2 in K]+?: G };
   tupleHas: typeof tupleHas;
   includes: typeof includes;
-  keyOf: typeof keyOf;
+  /** Check if a key exists in an object with optional custom error message */
+  keyOf: <T extends object>(k: unknown, t: T, errorMessage?: string) => k is keyof T;
+  /** Returns null and adds custom error message to context if during validation */
+  fail: (message: string) => null;
 };
+
+/** Helpers extended with internal context access for validation */
+export type HelpersWithContext = Helpers & { _ctx?: Context };
 
 /** A parser is a function that takes an unknown and returns T or null */
 export type Parser<T = unknown> = (val: unknown, helper: Helpers) => T | null;

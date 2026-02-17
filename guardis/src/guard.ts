@@ -3,9 +3,12 @@
  * @module
  */
 
+import type { StandardSchemaV1 } from "../specs/standard-schema-spec.v1.ts";
 import type {
   CanBeEmpty,
+  Context,
   ExtendedParser,
+  HelpersWithContext,
   IsExtensible,
   JsonArray,
   JsonObject,
@@ -17,6 +20,8 @@ import type {
   TupleOfLength,
   TypeGuard,
 } from "./types.ts";
+import { createContext } from "./context.ts";
+import { type GuardMeta, hasContext, hasMeta } from "./introspect.ts";
 import {
   doesNotHaveProperty,
   formatErrorMessage,
@@ -28,23 +33,33 @@ import {
   unionOf,
 } from "./utilities.ts";
 
+
 /**
- * Type guard that checks if a given guard object contains meta information.
- *
- * Specifically, it verifies that the guard has an underscore (`_`) property,
- * which is an object containing a `name` (string or undefined) and a `parser` function.
- *
- * @typeParam T1 - The type parameter for the predicate or type guard.
- * @param guard - The predicate or type guard to check for meta information.
- * @returns `true` if the guard contains meta information (`_` property with `name` and `parser`), otherwise `false`.
+ * Creates a helpers object for use in type guard parsers.
+ * When ctx is provided, has/hasOptional pass context for path tracking.
+ * When ctx is undefined, they use raw functions (for boolean type guard calls).
  */
-const includesMeta = <T1>(
-  guard: Predicate<T1> | TypeGuard<T1>,
-): guard is typeof guard & { _: { name: string | undefined; parser: Parser<T1> } } => {
-  return "_" in guard && !!guard._ &&
-    typeof guard._ === "object" && "parser" in guard._ &&
-    typeof guard._.parser === "function";
-};
+function createHelpers(ctx?: Context): HelpersWithContext {
+  return {
+    has: (t, k, guard?, errorMessage?) =>
+      hasProperty(t, k, guard, ctx?.pushPath(k), ctx ? errorMessage : undefined),
+    hasNot: doesNotHaveProperty,
+    hasOptional: (t, k, guard?, errorMessage?) =>
+      hasOptionalProperty(t, k, guard, ctx?.pushPath(k), ctx ? errorMessage : undefined),
+    tupleHas,
+    includes,
+    keyOf: <T extends object>(k: unknown, t: T, errorMessage?: string) =>
+      keyOf(k, t, ctx, ctx ? errorMessage : undefined),
+    fail: (message) => {
+      if (ctx) ctx.addIssue(message);
+      return null;
+    },
+    _ctx: ctx,
+  };
+}
+
+/** Default helpers for boolean type guard calls (no validation context) */
+const defaultHelpers = createHelpers();
 
 /**
  * Creates a type guard that strictly checks the type, throwing
@@ -87,7 +102,7 @@ const createStrictTypeGuard = <T>(parse: (v: unknown) => v is T): StrictTypeGuar
 const createOrTypeGuard =
   <T1>(guard: Predicate<T1>) => <T2>(guardTwo: TypeGuard<T2>): TypeGuard<T1 | T2> => {
     // Create a union of the names of the two guards for better error messages, if available.
-    const name = includesMeta(guard) && includesMeta(guardTwo)
+    const name = hasMeta(guard) && hasMeta(guardTwo)
       ? `${guard._.name} | ${guardTwo._.name}`
       : undefined;
 
@@ -97,9 +112,7 @@ const createOrTypeGuard =
       return null;
     };
 
-    return name
-      ? createTypeGuard<T1 | T2>(name, parser) as TypeGuard<T1 | T2>
-      : createTypeGuard<T1 | T2>(parser) as TypeGuard<T1 | T2>;
+    return name ? createTypeGuard(name, parser) : createTypeGuard(parser);
   };
 
 /**
@@ -110,17 +123,28 @@ const createOrTypeGuard =
  */
 const createNotEmptyTypeGuard = <T>(guard: Predicate<T>) => {
   const notEmpty = (value: unknown): value is T => !isEmpty(value) && guard(value);
+  const name = hasMeta(guard) ? `non-empty ${guard._.name}` : undefined;
+
+  const context = (
+    value: unknown,
+    ctx?: Context,
+  ): StandardSchemaV1.Result<T> => {
+    if (notEmpty(value)) return { value };
+
+    const message = formatErrorMessage(value, name);
+    const path = ctx?.path.length ? [...ctx.path] : undefined;
+    return { issues: [path ? { message, path } : { message }] };
+  };
+
   notEmpty._ = {
-    name: includesMeta(guard) ? `non-empty ${guard._.name}` : undefined,
+    name,
     parser: (value: unknown) => notEmpty(value) && guard(value) ? value : null,
+    context,
   };
 
   notEmpty.strict = createStrictTypeGuard(notEmpty);
-  notEmpty.assert = createAssertTypeGuard(notEmpty.strict);
-  notEmpty.validate = (value: unknown) =>
-    notEmpty(value)
-      ? { value }
-      : { issues: [{ message: formatErrorMessage(value, notEmpty._.name) }] };
+  notEmpty.assert = notEmpty.strict;
+  notEmpty.validate = (value: unknown) => context(value, createContext());
 
   notEmpty.optional = (value: unknown): value is T | undefined =>
     guard(value) ? notEmpty(value) : isUndefined(value);
@@ -130,34 +154,8 @@ const createNotEmptyTypeGuard = <T>(guard: Predicate<T>) => {
   return notEmpty as CanBeEmpty<T> extends false ? never : typeof notEmpty;
 };
 
-/**
- * Creates an assertion type guard function from a strict type guard.
- *
- * An assertion type guard is a function that throws an error if the value
- * doesn't match the expected type, rather than returning a boolean.
- *
- * @template T - The type being guarded
- * @param guard - The strict type guard function to convert
- * @returns An assertion function that throws if the value is not of type T
- *
- * @example
- * ```typescript
- * const isString = (value: unknown): value is string => typeof value === 'string';
- * const assertIsString = createAssertTypeGuard(isString);
- *
- * // If value is not a string, this will throw an error
- * assertIsString(value, 'Expected a string');
- * // After this line, TypeScript knows that value is a string
- * ```
- */
-const createAssertTypeGuard = <T>(
-  guard: StrictTypeGuard<T>,
-): (value: unknown, errorMsg?: string) => asserts value is T => {
-  return guard;
-};
-
-/** An internal type guard that includes the parser function. */
-type _TypeGuard<T> = TypeGuard<T> & { _: { name?: string; parser: Parser<T> } };
+/** Internal type guard with access to metadata */
+type _TypeGuard<T> = TypeGuard<T> & GuardMeta<T>;
 
 /**
  * Creates a type guard from a parser function.
@@ -199,17 +197,38 @@ export function createTypeGuard<T1>(...args: [Parser<T1>] | [string, Parser<T1>]
   const parser = args.length === 1 ? args[0] : args[1];
   const name = args.length === 2 ? args[0] : undefined;
 
-  const helpers = {
-    has: hasProperty,
-    hasNot: doesNotHaveProperty,
-    hasOptional: hasOptionalProperty,
-    includes,
-    keyOf,
-    tupleHas,
+  /**
+   * Internal validation method that accepts a context for path tracking.
+   * This is used by nested validations to propagate paths.
+   */
+  const context = (
+    value: unknown,
+    ctx?: Context,
+  ): StandardSchemaV1.Result<T1> => {
+    const issuesBefore = ctx?.issues.length ?? 0;
+    const helpers = createHelpers(ctx);
+    const result = parser(value, helpers);
+
+    // If parser returned null and no child issues were added, add this guard's error
+    if (result === null && ctx?.issues.length === issuesBefore) {
+      ctx.addIssue(formatErrorMessage(value, name));
+    }
+
+    // Return accumulated issues if any
+    if (ctx && ctx.issues.length > 0) {
+      return { issues: ctx.issues };
+    }
+
+    if (result !== null) {
+      // Special case: isNull parser returns `true` when value is null
+      return { value: result === true && value === null ? value as T1 : result };
+    }
+
+    return { issues: [{ message: formatErrorMessage(value, name) }] };
   };
 
-  const callback = (value: unknown): value is T1 => parser(value, helpers) !== null;
-  callback._ = { name, parser };
+  const callback = (value: unknown): value is T1 => parser(value, defaultHelpers) !== null;
+  callback._ = { name, parser, context };
 
   /**
    * Creates a new type guard that checks if the value is of type T1 or T2.
@@ -264,7 +283,7 @@ export function createTypeGuard<T1>(...args: [Parser<T1>] | [string, Parser<T1>]
     isUndefined(value) || callback(value);
 
   optional.strict = createStrictTypeGuard(optional);
-  optional.assert = createAssertTypeGuard(optional.strict);
+  optional.assert = optional.strict;
   optional.notEmpty = callback.notEmpty.optional;
   callback.optional = optional;
 
@@ -276,11 +295,10 @@ export function createTypeGuard<T1>(...args: [Parser<T1>] | [string, Parser<T1>]
    * @returns
    */
   callback.strict = createStrictTypeGuard(callback);
-  callback.assert = createAssertTypeGuard(callback.strict);
+  callback.assert = callback.strict;
 
-  // StandardSchemaV1 compatibility
-  callback.validate = (value: unknown) =>
-    callback(value) ? { value } : { issues: [{ message: formatErrorMessage(value, name) }] };
+  // StandardSchemaV1 compatibility - uses context-aware validation for path tracking
+  callback.validate = (value: unknown) => context(value, createContext());
 
   callback["~standard"] = {
     version: 1,
@@ -382,7 +400,7 @@ export const isFunction: TypeGuard<(...args: unknown[]) => unknown> = createType
  */
 export const isUndefined: TypeGuard<undefined> = createTypeGuard(
   "undefined",
-  (t): undefined | null => (typeof t === "undefined" ? t : null),
+  (t): undefined | null => t === undefined ? t : null,
 );
 
 /**
@@ -469,7 +487,7 @@ export const isArray: TypeGuard<unknown[]> & {
   _isArray,
   {
     of: <T>(guard: TypeGuard<T>): TypeGuard<T[]> => {
-      const guardName = includesMeta(guard) ? guard._.name : undefined;
+      const guardName = hasMeta(guard) ? guard._.name : undefined;
 
       let name = "array";
 
@@ -479,7 +497,24 @@ export const isArray: TypeGuard<unknown[]> & {
 
       return createTypeGuard(
         name,
-        (v) => isArray(v) && v.every((item) => guard(item)) ? v as T[] : null,
+        (v, helpers) => {
+          if (!isArray(v)) return null;
+
+          const ctx = (helpers as HelpersWithContext)._ctx;
+
+          // If we have a context, use index-aware validation
+          if (ctx && hasContext(guard)) {
+            for (let i = 0; i < v.length; i++) {
+              const childCtx = ctx.pushPath(i);
+              const result = guard._.context(v[i], childCtx);
+              if (result.issues) return null; // issues already added to parent ctx
+            }
+            return v as T[];
+          }
+
+          // Otherwise, use simple boolean check
+          return v.every((item) => guard(item)) ? v as T[] : null;
+        },
       );
     },
   },
@@ -682,14 +717,7 @@ isTuple.or = <N extends number, T2>(
   guard: TypeGuard<T2>,
 ): TypeGuard<TupleOfLength<N> | T2> => {
   return createTypeGuard<TupleOfLength<N> | T2>((v: unknown) =>
-    isTuple(v, length) ? v : (guard as _TypeGuard<T2>)._.parser(v, {
-      has: hasProperty,
-      hasNot: doesNotHaveProperty,
-      hasOptional: hasOptionalProperty,
-      includes,
-      keyOf,
-      tupleHas,
-    })
+    isTuple(v, length) ? v : (guard as _TypeGuard<T2>)._.parser(v, defaultHelpers)
   );
 };
 
