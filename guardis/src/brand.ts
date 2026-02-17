@@ -1,4 +1,5 @@
-import { createTypeGuard, type Parser, type TypeGuard } from "./guard.ts";
+import { createTypeGuard } from "./guard.ts";
+import type { Parser, TypeGuard } from "./types.ts";
 
 /**
  * Creates a nominal type by intersecting a base type `T` with a unique brand `B`.

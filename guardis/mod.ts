@@ -11,6 +11,7 @@ export * from "./src/extend.ts";
 export * from "./src/batch.ts";
 export * from "./src/brand.ts";
 export * from "./src/types.ts";
+export { unionOf } from "./src/utilities.ts";
 
 import * as g from "./src/guard.ts";
 
