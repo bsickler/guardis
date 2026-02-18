@@ -1,12 +1,112 @@
 import { validator } from "hono/validator";
 import type { ValidationTargets } from "hono/types";
+import type { ContentfulStatusCode } from "hono/utils/http-status";
 import type { TypeGuard } from "@spudlabs/guardis";
 
 type ValidationTargetKeysWithBody = "form" | "json";
 
+/** The path segment interface of a validation issue. */
+export interface ValidationPathSegment {
+  /** The key representing a path segment. */
+  readonly key: PropertyKey;
+}
+
+/** A validation issue from StandardSchemaV1. */
+export interface ValidationIssue {
+  /** The error message of the issue. */
+  readonly message: string;
+  /** The path of the issue, if any. */
+  readonly path?: ReadonlyArray<PropertyKey | ValidationPathSegment> | undefined;
+}
+
+/** Context provided to the error formatting callback */
+export interface ValidationErrorContext {
+  target: string;
+  issues: ReadonlyArray<ValidationIssue>;
+  message: string;
+  value: unknown;
+}
+
+/** The default error response structure */
+export interface DefaultValidationError {
+  message: string;
+  issues: ReadonlyArray<ValidationIssue>;
+}
+
+/** Callback type for formatting validation errors */
+export type ErrorFormatter<ErrorBody = DefaultValidationError> = (
+  ctx: ValidationErrorContext,
+) => ErrorBody;
+
+/** Options for creating a custom describeInput */
+export interface DescribeInputOptions<ErrorBody = DefaultValidationError> {
+  formatError?: ErrorFormatter<ErrorBody>;
+  errorStatus?: ContentfulStatusCode;
+}
+
 type ValidationTargetByMethod<M> = M extends "get" | "head"
   ? Exclude<keyof ValidationTargets, ValidationTargetKeysWithBody>
   : keyof ValidationTargets;
+
+/**
+ * Creates a customized describeInput function with custom error handling.
+ *
+ * @example
+ * ```typescript
+ * const customDescribeInput = createDescribeInput({
+ *   formatError: (ctx) => ({
+ *     code: 'VALIDATION_ERROR',
+ *     details: ctx.issues.map(i => ({
+ *       path: i.path?.join('.') ?? 'root',
+ *       message: i.message,
+ *     })),
+ *   }),
+ *   errorStatus: 422,
+ * });
+ * ```
+ */
+export const createDescribeInput = <ErrorBody = DefaultValidationError>(
+  {
+    formatError,
+    errorStatus = 400,
+  }: DescribeInputOptions<ErrorBody> = {},
+) => {
+  return <
+    ValidationType,
+    OutputType = ValidationType,
+    M extends string = string,
+    // deno-lint-ignore no-explicit-any
+    T extends ValidationTargetByMethod<M> = any,
+  >(
+    target: T,
+    validationFn: TypeGuard<ValidationType>,
+    transformFn?: (input: ValidationType) => OutputType,
+  ) => {
+    return validator(target, (value, c) => {
+      const result = validationFn.validate(value);
+
+      if ("value" in result) {
+        return transformFn ? transformFn(result.value) : result.value;
+      }
+
+      const message = `Input validation failed for target: ${target}`;
+
+      if (formatError) {
+        return c.json(
+          formatError({
+            target,
+            issues: result.issues,
+            message,
+            value,
+          }),
+          errorStatus,
+        );
+      }
+
+      return c.json({ message, issues: result.issues }, errorStatus);
+    });
+  };
+};
 
 /**
  * Describes and validates input for a specific validation target.
@@ -36,20 +136,4 @@ type ValidationTargetByMethod<M> = M extends "get" | "head"
  * );
  * ```
  */
-export const describeInput = <
-  ValidationType,
-  OutputType = ValidationType,
-  M extends string = string,
-  // deno-lint-ignore no-explicit-any
-  T extends ValidationTargetByMethod<M> = any,
->(
-  target: T,
-  validationFn: TypeGuard<ValidationType>,
-  transformFn?: (input: ValidationType) => OutputType,
-) => {
-  return validator(target, (value, c): OutputType | Response => {
-    if (validationFn(value)) return transformFn ? transformFn(value) : value;
-
-    return c.json({ message: `Input validation failed for target: ${target}` }, 400);
-  });
-};
+export const describeInput = createDescribeInput();
