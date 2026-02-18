@@ -1,4 +1,4 @@
-import { assert, assertFalse } from "@std/assert";
+import { assert, assertEquals, assertFalse } from "@std/assert";
 import {
   isCommaDelimited,
   isCommaDelimitedIntegers,
@@ -7,6 +7,7 @@ import {
   isInternationalPhone,
   isPeriodDelimited,
   isUUIDv4,
+  isUUIDv7,
 } from "./strings.ts";
 
 Deno.test("isEmail", async (t) => {
@@ -26,6 +27,22 @@ Deno.test("isEmail", async (t) => {
     assertFalse(isEmail(123));
     assertFalse(isEmail(null));
     assertFalse(isEmail(undefined));
+  });
+
+  await t.step("validate method", () => {
+    // Valid inputs return value
+    assertEquals(isEmail.validate("test@example.com"), { value: "test@example.com" });
+
+    // Invalid inputs return issues with specific error message
+    assertEquals(isEmail.validate("plainaddress"), {
+      issues: [{ message: 'Expected email. Received: "plainaddress"' }],
+    });
+    assertEquals(isEmail.validate(123), {
+      issues: [{ message: "Expected email. Received: 123" }],
+    });
+    assertEquals(isEmail.validate(null), {
+      issues: [{ message: "Expected email. Received: null" }],
+    });
   });
 });
 
@@ -107,6 +124,22 @@ Deno.test("isInternationalPhone", async (t) => {
     assertFalse(isInternationalPhone([]));
     assertFalse(isInternationalPhone(true));
   });
+
+  await t.step("validate method", () => {
+    // Valid inputs return value
+    assertEquals(isInternationalPhone.validate("+12345678901"), { value: "+12345678901" });
+
+    // Invalid inputs return issues with specific error message
+    assertEquals(isInternationalPhone.validate("12345678901"), {
+      issues: [{ message: 'Expected international phone number. Received: "12345678901"' }],
+    });
+    assertEquals(isInternationalPhone.validate(123), {
+      issues: [{ message: "Expected international phone number. Received: 123" }],
+    });
+    assertEquals(isInternationalPhone.validate(null), {
+      issues: [{ message: "Expected international phone number. Received: null" }],
+    });
+  });
 });
 
 Deno.test("isUUIDv4", async (t) => {
@@ -150,6 +183,87 @@ Deno.test("isUUIDv4", async (t) => {
     // Empty or malformed
     assertFalse(isUUIDv4(""));
     assertFalse(isUUIDv4("not a uuid"));
+  });
+
+  await t.step("validate method", () => {
+    // Valid inputs return value
+    assertEquals(isUUIDv4.validate("550e8400-e29b-41d4-a716-446655440000"), {
+      value: "550e8400-e29b-41d4-a716-446655440000",
+    });
+
+    // Invalid inputs return issues with specific error message
+    assertEquals(isUUIDv4.validate("not-a-uuid"), {
+      issues: [{ message: 'Expected UUIDv4. Received: "not-a-uuid"' }],
+    });
+    assertEquals(isUUIDv4.validate("550e8400-e29b-31d4-a716-446655440000"), {
+      issues: [{ message: 'Expected UUIDv4. Received: "550e8400-e29b-31d4-a716-446655440000"' }],
+    });
+    assertEquals(isUUIDv4.validate(null), {
+      issues: [{ message: "Expected UUIDv4. Received: null" }],
+    });
+  });
+});
+
+Deno.test("isUUIDv7", async (t) => {
+  await t.step("returns true for valid UUID v7 strings", () => {
+    assert(isUUIDv7("018f6b70-3d5c-7f5a-8e3b-1c2d3e4f5a6b"));
+    assert(isUUIDv7("019012ab-cdef-7123-9abc-def012345678"));
+    assert(isUUIDv7("01901234-5678-7abc-bdef-0123456789ab"));
+    assert(isUUIDv7("00000000-0000-7000-8000-000000000000"));
+    // Case insensitive
+    assert(isUUIDv7("018F6B70-3D5C-7F5A-8E3B-1C2D3E4F5A6B"));
+    assert(isUUIDv7("019012AB-CDEF-7123-9ABC-DEF012345678"));
+  });
+
+  await t.step("returns false for invalid UUID v7 strings", () => {
+    // Not a UUID v7 (wrong version digit)
+    assertFalse(isUUIDv7("550e8400-e29b-41d4-a716-446655440000")); // version 4
+    assertFalse(isUUIDv7("550e8400-e29b-31d4-a716-446655440000")); // version 3
+    assertFalse(isUUIDv7("550e8400-e29b-51d4-a716-446655440000")); // version 5
+
+    // Wrong variant digit
+    assertFalse(isUUIDv7("018f6b70-3d5c-7f5a-c716-1c2d3e4f5a6b")); // should be 8, 9, a, or b
+    assertFalse(isUUIDv7("018f6b70-3d5c-7f5a-0716-1c2d3e4f5a6b")); // should be 8, 9, a, or b
+
+    // Wrong format
+    assertFalse(isUUIDv7("018f6b703d5c7f5a8e3b1c2d3e4f5a6b")); // missing hyphens
+    assertFalse(isUUIDv7("018f6b70-3d5c-7f5a-8e3b-1c2d3e4f5a6")); // too short
+    assertFalse(isUUIDv7("018f6b70-3d5c-7f5a-8e3b-1c2d3e4f5a6bb")); // too long
+    assertFalse(isUUIDv7("018f6b70-3d5c-7f5a-8e3b")); // incomplete
+
+    // Invalid characters
+    assertFalse(isUUIDv7("018f6b70-3d5c-7f5a-8e3b-1c2d3e4f5zzz"));
+    assertFalse(isUUIDv7("018f6b70-3d5c-7f5a-8e3b-1c2d3e4f5a6g"));
+
+    // Non-string types
+    assertFalse(isUUIDv7(null));
+    assertFalse(isUUIDv7(undefined));
+    assertFalse(isUUIDv7(123));
+    assertFalse(isUUIDv7({}));
+    assertFalse(isUUIDv7([]));
+    assertFalse(isUUIDv7(true));
+
+    // Empty or malformed
+    assertFalse(isUUIDv7(""));
+    assertFalse(isUUIDv7("not a uuid"));
+  });
+
+  await t.step("validate method", () => {
+    // Valid inputs return value
+    assertEquals(isUUIDv7.validate("018f6b70-3d5c-7f5a-8e3b-1c2d3e4f5a6b"), {
+      value: "018f6b70-3d5c-7f5a-8e3b-1c2d3e4f5a6b",
+    });
+
+    // Invalid inputs return issues with specific error message
+    assertEquals(isUUIDv7.validate("not-a-uuid"), {
+      issues: [{ message: 'Expected UUIDv7. Received: "not-a-uuid"' }],
+    });
+    assertEquals(isUUIDv7.validate("550e8400-e29b-41d4-a716-446655440000"), {
+      issues: [{ message: 'Expected UUIDv7. Received: "550e8400-e29b-41d4-a716-446655440000"' }],
+    });
+    assertEquals(isUUIDv7.validate(null), {
+      issues: [{ message: "Expected UUIDv7. Received: null" }],
+    });
   });
 });
 
@@ -201,6 +315,20 @@ Deno.test("isCommaDelimited", async (t) => {
     assertFalse(isCommaDelimited([]));
     assertFalse(isCommaDelimited(true));
   });
+
+  await t.step("validate method", () => {
+    // Valid inputs return value
+    assertEquals(isCommaDelimited.validate("value1,value2"), { value: "value1,value2" });
+    assertEquals(isCommaDelimited.validate(""), { value: "" });
+
+    // Invalid inputs return issues with specific error message
+    assertEquals(isCommaDelimited.validate(123), {
+      issues: [{ message: "Expected comma-delimited string. Received: 123" }],
+    });
+    assertEquals(isCommaDelimited.validate(null), {
+      issues: [{ message: "Expected comma-delimited string. Received: null" }],
+    });
+  });
 });
 
 Deno.test("isPeriodDelimited", async (t) => {
@@ -250,6 +378,20 @@ Deno.test("isPeriodDelimited", async (t) => {
     assertFalse(isPeriodDelimited({}));
     assertFalse(isPeriodDelimited([]));
     assertFalse(isPeriodDelimited(true));
+  });
+
+  await t.step("validate method", () => {
+    // Valid inputs return value
+    assertEquals(isPeriodDelimited.validate("value1.value2"), { value: "value1.value2" });
+    assertEquals(isPeriodDelimited.validate(""), { value: "" });
+
+    // Invalid inputs return issues with specific error message
+    assertEquals(isPeriodDelimited.validate(123), {
+      issues: [{ message: "Expected period-delimited string. Received: 123" }],
+    });
+    assertEquals(isPeriodDelimited.validate(null), {
+      issues: [{ message: "Expected period-delimited string. Received: null" }],
+    });
   });
 });
 
@@ -323,6 +465,23 @@ Deno.test("isCommaDelimitedIntegers", async (t) => {
     assertFalse(isCommaDelimitedIntegers({}));
     assertFalse(isCommaDelimitedIntegers([]));
     assertFalse(isCommaDelimitedIntegers(true));
+  });
+
+  await t.step("validate method", () => {
+    // Valid inputs return value
+    assertEquals(isCommaDelimitedIntegers.validate("1,2,3"), { value: "1,2,3" });
+    assertEquals(isCommaDelimitedIntegers.validate("-1,2,-3"), { value: "-1,2,-3" });
+
+    // Invalid inputs return issues with specific error message
+    assertEquals(isCommaDelimitedIntegers.validate("1, 2, 3"), {
+      issues: [{ message: 'Expected comma-delimited integers. Received: "1, 2, 3"' }],
+    });
+    assertEquals(isCommaDelimitedIntegers.validate(""), {
+      issues: [{ message: 'Expected comma-delimited integers. Received: ""' }],
+    });
+    assertEquals(isCommaDelimitedIntegers.validate(null), {
+      issues: [{ message: "Expected comma-delimited integers. Received: null" }],
+    });
   });
 });
 
@@ -427,5 +586,23 @@ Deno.test("isCommaDelimitedNumbers", async (t) => {
     assertFalse(isCommaDelimitedNumbers({}));
     assertFalse(isCommaDelimitedNumbers([]));
     assertFalse(isCommaDelimitedNumbers(true));
+  });
+
+  await t.step("validate method", () => {
+    // Valid inputs return value
+    assertEquals(isCommaDelimitedNumbers.validate("1,2,3"), { value: "1,2,3" });
+    assertEquals(isCommaDelimitedNumbers.validate("1.5,2.5,3.5"), { value: "1.5,2.5,3.5" });
+    assertEquals(isCommaDelimitedNumbers.validate("50%,75%"), { value: "50%,75%" });
+
+    // Invalid inputs return issues with specific error message
+    assertEquals(isCommaDelimitedNumbers.validate("1, 2, 3"), {
+      issues: [{ message: 'Expected comma-delimited numbers. Received: "1, 2, 3"' }],
+    });
+    assertEquals(isCommaDelimitedNumbers.validate(""), {
+      issues: [{ message: 'Expected comma-delimited numbers. Received: ""' }],
+    });
+    assertEquals(isCommaDelimitedNumbers.validate(null), {
+      issues: [{ message: "Expected comma-delimited numbers. Received: null" }],
+    });
   });
 });

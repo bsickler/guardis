@@ -2,7 +2,8 @@
  * Type guards for common string formats such as email, phone numbers, and UUIDs.
  * These guards extend the basic string type guard to include regex-based validation.
  */
-import { isString, type TypeGuard } from "../guard.ts";
+import { isString } from "../guard.ts";
+import type { TypeGuard } from "../types.ts";
 
 /** A regex statement to detect _most_ email formats. */
 const EMAIL_REGEX =
@@ -16,7 +17,10 @@ const EMAIL_REGEX =
  * @param t - The value to check.
  * @returns Boolean indicating whether the input is a valid email.
  */
-export const isEmail: TypeGuard<string> = isString.extend((t) => EMAIL_REGEX.test(t) ? t : null);
+export const isEmail: TypeGuard<string> = isString.extend(
+  "email",
+  (t) => EMAIL_REGEX.test(t) ? t : null,
+);
 
 /** Regex for validating international phone numbers. See
  * https://blog.stevenlevithan.com/archives/validate-phone-number#r4-3 for more
@@ -31,8 +35,9 @@ const INT_PHONE_REGEX = /^\+(?:[0-9] ?){6,14}[0-9]$/;
  * @param t - The value to check.
  * @returns Boolean indicating whether the input is a valid international phone number.
  */
-export const isInternationalPhone: TypeGuard<string> = isString.extend((t) =>
-  INT_PHONE_REGEX.test(t) ? t : null
+export const isInternationalPhone: TypeGuard<string> = isString.extend(
+  "international phone number",
+  (t) => INT_PHONE_REGEX.test(t) ? t : null,
 );
 
 /** Regex for validating US phone numbers. See
@@ -48,8 +53,9 @@ const US_PHONE_REGEX = /^(?:\+?1[-. ]?)?\(?([0-9]{3})\)?[-. ]?([0-9]{3})[-. ]?([
  * @param t - The value to check.
  * @returns Boolean indicating whether the input is a valid US phone number.
  */
-export const isUSPhone: TypeGuard<string> = isString.extend((t) =>
-  US_PHONE_REGEX.test(t) ? t : null
+export const isUSPhone: TypeGuard<string> = isString.extend(
+  "US phone number",
+  (t) => US_PHONE_REGEX.test(t) ? t : null,
 );
 
 /**
@@ -60,12 +66,15 @@ export const isUSPhone: TypeGuard<string> = isString.extend((t) =>
  * @param t - The value to check.
  * @returns Boolean indicating whether the input is a valid phone number.
  */
-export const isPhoneNumber: TypeGuard<string> = isString.extend((t) => {
-  if (INT_PHONE_REGEX.test(t) || US_PHONE_REGEX.test(t)) {
-    return t;
-  }
-  return null;
-});
+export const isPhoneNumber: TypeGuard<string> = isString.extend(
+  "phone number",
+  (t) => {
+    if (INT_PHONE_REGEX.test(t) || US_PHONE_REGEX.test(t)) {
+      return t;
+    }
+    return null;
+  },
+);
 
 /** Regex for validating UUID v4 strings. */
 const UUID_4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -76,7 +85,24 @@ const UUID_4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0
  * @param t - The value to be checked.
  * @returns  Boolean indicating whether the input is a valid UUID v4 string.
  */
-export const isUUIDv4: TypeGuard<string> = isString.extend((t) => UUID_4_REGEX.test(t) ? t : null);
+export const isUUIDv4: TypeGuard<string> = isString.extend(
+  "UUIDv4",
+  (t) => UUID_4_REGEX.test(t) ? t : null,
+);
+
+/** Regex for validating UUID v7 strings. */
+const UUID_7_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/**
+ * A type guard function that checks if a given value is a valid UUID version 7 string.
+ *
+ * @param t - The value to be checked.
+ * @returns  Boolean indicating whether the input is a valid UUID v7 string.
+ */
+export const isUUIDv7: TypeGuard<string> = isString.extend(
+  "UUIDv7",
+  (t) => UUID_7_REGEX.test(t) ? t : null,
+);
 
 /**
  * A regular expression used to validate comma-delimited strings.
@@ -103,8 +129,9 @@ const COMMA_DELIMITED_REGEX =
  * @param t - The input value to be checked.
  * @returns  Boolean indicating whether the input is a valid comma-delimited string.
  */
-export const isCommaDelimited: TypeGuard<string> = isString.extend((t) =>
-  COMMA_DELIMITED_REGEX.test(t) ? t : null
+export const isCommaDelimited: TypeGuard<string> = isString.extend(
+  "comma-delimited string",
+  (t) => COMMA_DELIMITED_REGEX.test(t) ? t : null,
 );
 
 const PERIOD_DELIMITED_REGEX =
@@ -118,8 +145,9 @@ const PERIOD_DELIMITED_REGEX =
  * @param t - The string to be validated.
  * @returns  Boolean indicating whether the input is a valid period-delimited string.
  */
-export const isPeriodDelimited: TypeGuard<string> = isString.extend((t) =>
-  PERIOD_DELIMITED_REGEX.test(t) ? t : null
+export const isPeriodDelimited: TypeGuard<string> = isString.extend(
+  "period-delimited string",
+  (t) => PERIOD_DELIMITED_REGEX.test(t) ? t : null,
 );
 
 const COMMA_DELIMITED_INTEGERS_REGEX = /^-?\d+(?:,-?\d+)*$/;
@@ -140,8 +168,9 @@ const COMMA_DELIMITED_INTEGERS_REGEX = /^-?\d+(?:,-?\d+)*$/;
  * - Valid: "1,2,3", "123,456,789", "-1,2,-3"
  * - Invalid: "1,,3", "1, 2, 3", "1 2,3", "", "1.5,2"
  */
-export const isCommaDelimitedIntegers: TypeGuard<string> = isString.extend((t) =>
-  COMMA_DELIMITED_INTEGERS_REGEX.test(t) ? t : null
+export const isCommaDelimitedIntegers: TypeGuard<string> = isString.extend(
+  "comma-delimited integers",
+  (t) => COMMA_DELIMITED_INTEGERS_REGEX.test(t) ? t : null,
 );
 
 const COMMA_DELIMITED_NUMBERS_REGEX = /^-?\d+(?:\.\d+)?%?(?:,-?\d+(?:\.\d+)?%?)*$/;
@@ -165,6 +194,7 @@ const COMMA_DELIMITED_NUMBERS_REGEX = /^-?\d+(?:\.\d+)?%?(?:,-?\d+(?:\.\d+)?%?)*
  * - Valid: "1,2,3", "1.5,2.5,3.5", "-1.5,2,3.14", "50%,75%,100%", "1.5%,2,3%"
  * - Invalid: "1,,3", "1, 2, 3", "1 2,3", "", "1..5,2", "1.5.5,2"
  */
-export const isCommaDelimitedNumbers: TypeGuard<string> = isString.extend((t) =>
-  COMMA_DELIMITED_NUMBERS_REGEX.test(t) ? t : null
+export const isCommaDelimitedNumbers: TypeGuard<string> = isString.extend(
+  "comma-delimited numbers",
+  (t) => COMMA_DELIMITED_NUMBERS_REGEX.test(t) ? t : null,
 );

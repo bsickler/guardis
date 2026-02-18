@@ -1,4 +1,5 @@
-import { createTypeGuard, type TypeGuard } from "../guard.ts";
+import { createTypeGuard } from "../guard.ts";
+import type { TypeGuard } from "../types.ts";
 
 /**
  * Returns true if input is an async function.
@@ -8,6 +9,7 @@ import { createTypeGuard, type TypeGuard } from "../guard.ts";
 export const isAsyncFunction: TypeGuard<(...args: unknown[]) => Promise<unknown>> = createTypeGuard<
   (...args: unknown[]) => Promise<unknown>
 >(
+  "async function",
   (t: unknown) => {
     return typeof t === "function" && t.constructor.name === "AsyncFunction"
       ? (t as (...args: unknown[]) => Promise<unknown>)
@@ -20,8 +22,9 @@ export const isAsyncFunction: TypeGuard<(...args: unknown[]) => Promise<unknown>
  * @param {unknown} t
  * @return {boolean}
  */
-export const isPromise: TypeGuard<Promise<unknown>> = createTypeGuard(<T>(t: unknown) =>
-  t instanceof Promise ? t as Promise<T> : null
+export const isPromise: TypeGuard<Promise<unknown>> = createTypeGuard(
+  "Promise",
+  <T>(t: unknown) => (t instanceof Promise ? (t as Promise<T>) : null),
 );
 
 /**
@@ -29,17 +32,20 @@ export const isPromise: TypeGuard<Promise<unknown>> = createTypeGuard(<T>(t: unk
  * @param {unknown} t
  * @return {boolean}
  */
-export const isPromiseLike: TypeGuard<PromiseLike<unknown>> = createTypeGuard(<T>(t: unknown) => {
-  if (
-    t &&
-    typeof t === "object" &&
-    "then" in t &&
-    typeof t.then === "function"
-  ) {
-    return t as PromiseLike<T>;
-  }
-  return null;
-});
+export const isPromiseLike: TypeGuard<PromiseLike<unknown>> = createTypeGuard(
+  "PromiseLike",
+  <T>(t: unknown) => {
+    if (
+      t &&
+      typeof t === "object" &&
+      "then" in t &&
+      typeof t.then === "function"
+    ) {
+      return t as PromiseLike<T>;
+    }
+    return null;
+  },
+);
 
 /**
  * Returns true if input is thenable (i.e. has a `then` method).
