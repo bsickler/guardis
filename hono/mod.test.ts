@@ -95,6 +95,7 @@ Deno.test("describeInput - nested object validation returns issues", async () =>
   const app = new Hono();
 
   app.post("/user-address", describeInput("json", isUserWithAddress), (c) => {
+    const a = c.req.valid("json");
     return c.json({ success: true });
   });
 
@@ -243,18 +244,15 @@ Deno.test("describeInput - query validation fails with issues", async () => {
 Deno.test("createDescribeInput - custom error format returns expected structure", async () => {
   const app = new Hono();
 
-  type CustomError = {
-    code: string;
-    details: Array<{ path: string; message: string }>;
-  };
-
-  const customDescribeInput = createDescribeInput<CustomError>({
+  const customDescribeInput = createDescribeInput({
     formatError: (ctx: ValidationErrorContext) => ({
-      code: "VALIDATION_ERROR",
-      details: ctx.issues.map((i) => ({
-        path: i.path?.map(String).join(".") ?? "root",
-        message: i.message,
-      })),
+      body: {
+        code: "VALIDATION_ERROR",
+        details: ctx.issues.map((i) => ({
+          path: i.path?.map(String).join(".") ?? "root",
+          message: i.message,
+        })),
+      },
     }),
   });
 
@@ -281,7 +279,10 @@ Deno.test("createDescribeInput - custom status code is respected", async () => {
   const app = new Hono();
 
   const customDescribeInput = createDescribeInput({
-    errorStatus: 422,
+    formatError: (ctx) => ({
+      body: { message: ctx.message, issues: ctx.issues },
+      status: 422,
+    }),
   });
 
   app.post("/user", customDescribeInput("json", isUser), (c) => {
@@ -304,8 +305,10 @@ Deno.test("createDescribeInput - valid input passes through correctly", async ()
   const app = new Hono();
 
   const customDescribeInput = createDescribeInput({
-    formatError: (ctx) => ({ error: ctx.message }),
-    errorStatus: 422,
+    formatError: (ctx) => ({
+      body: { error: ctx.message },
+      status: 422,
+    }),
   });
 
   app.post("/user", customDescribeInput("json", isUser), (c) => {
@@ -330,7 +333,10 @@ Deno.test("createDescribeInput - transform function works with factory-created v
   type TransformedUser = User & { validated: true };
 
   const customDescribeInput = createDescribeInput({
-    errorStatus: 422,
+    formatError: (ctx) => ({
+      body: { message: ctx.message, issues: ctx.issues },
+      status: 422,
+    }),
   });
 
   const transformUser = (user: User): TransformedUser => ({
@@ -377,4 +383,40 @@ Deno.test("createDescribeInput - default options work like describeInput", async
   const data = await res.json();
   assertEquals(data.message, "Input validation failed for target: json");
   assertEquals(Array.isArray(data.issues), true);
+});
+
+// Type helper: fails compilation if T is 'any'
+type IsNotAny<T> = 0 extends 1 & T ? never : T;
+
+Deno.test("describeInput - type inference preserves validated type", async () => {
+  const app = new Hono();
+
+  app.post("/user-address", describeInput("json", isUserWithAddress), (c) => {
+    const validated = c.req.valid("json");
+
+    // This line will fail to compile if validated is 'any'
+    // because IsNotAny<any> = never, and you can't assign never to a variable
+    const _typeCheck: IsNotAny<typeof validated> = validated;
+
+    // These assignments verify the specific type structure
+    const name: string = validated.name;
+    const street: string = validated.address.street;
+    const city: string = validated.address.city;
+    const zip: number = validated.address.zip;
+
+    return c.json({ name, street, city, zip });
+  });
+
+  const res = await app.request("/user-address", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: "John",
+      address: { street: "123 Main St", city: "Springfield", zip: 12345 },
+    }),
+  });
+
+  assertEquals(res.status, 200);
+  const data = await res.json();
+  assertEquals(data, { name: "John", street: "123 Main St", city: "Springfield", zip: 12345 });
 });

@@ -1,5 +1,5 @@
 import { validator } from "hono/validator";
-import type { ValidationTargets } from "hono/types";
+import type { Env, MiddlewareHandler, ValidationTargets } from "hono/types";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import type { TypeGuard } from "@spudlabs/guardis";
 
@@ -27,26 +27,34 @@ export interface ValidationErrorContext {
   value: unknown;
 }
 
-/** The default error response structure */
-export interface DefaultValidationError {
-  message: string;
-  issues: ReadonlyArray<ValidationIssue>;
-}
-
 /** Callback type for formatting validation errors */
-export type ErrorFormatter<ErrorBody = DefaultValidationError> = (
-  ctx: ValidationErrorContext,
-) => ErrorBody;
+export type ErrorFormatter = (ctx: ValidationErrorContext) => {
+  body: unknown;
+  status?: ContentfulStatusCode;
+};
 
 /** Options for creating a custom describeInput */
-export interface DescribeInputOptions<ErrorBody = DefaultValidationError> {
-  formatError?: ErrorFormatter<ErrorBody>;
-  errorStatus?: ContentfulStatusCode;
+export interface DescribeInputOptions {
+  formatError?: ErrorFormatter;
 }
 
 type ValidationTargetByMethod<M> = M extends "get" | "head"
   ? Exclude<keyof ValidationTargets, ValidationTargetKeysWithBody>
   : keyof ValidationTargets;
+
+/** Type of the describeInput function - preserves full Hono type inference */
+export type DescribeInputFn = <
+  ValidationType,
+  OutputType = ValidationType,
+  M extends string = string,
+  T extends ValidationTargetByMethod<M> = ValidationTargetByMethod<M>,
+  // deno-lint-ignore no-explicit-any
+  E extends Env = any,
+>(
+  target: T,
+  validationFn: TypeGuard<ValidationType>,
+  transformFn?: (input: ValidationType) => OutputType,
+) => MiddlewareHandler<E, string, { in: { [K in T]: OutputType }; out: { [K in T]: OutputType } }>;
 
 /**
  * Creates a customized describeInput function with custom error handling.
@@ -55,32 +63,25 @@ type ValidationTargetByMethod<M> = M extends "get" | "head"
  * ```typescript
  * const customDescribeInput = createDescribeInput({
  *   formatError: (ctx) => ({
- *     code: 'VALIDATION_ERROR',
- *     details: ctx.issues.map(i => ({
- *       path: i.path?.join('.') ?? 'root',
- *       message: i.message,
- *     })),
+ *     body: {
+ *       code: 'VALIDATION_ERROR',
+ *       details: ctx.issues.map(i => ({
+ *         path: i.path?.join('.') ?? 'root',
+ *         message: i.message,
+ *       })),
+ *     },
+ *     status: 422,
  *   }),
- *   errorStatus: 422,
  * });
  * ```
  */
-export const createDescribeInput = <ErrorBody = DefaultValidationError>(
-  {
-    formatError,
-    errorStatus = 400,
-  }: DescribeInputOptions<ErrorBody> = {},
-) => {
-  return <
-    ValidationType,
-    OutputType = ValidationType,
-    M extends string = string,
+export function createDescribeInput({ formatError }: DescribeInputOptions = {}): DescribeInputFn {
+  return ((
+    target: keyof ValidationTargets,
     // deno-lint-ignore no-explicit-any
-    T extends ValidationTargetByMethod<M> = any,
-  >(
-    target: T,
-    validationFn: TypeGuard<ValidationType>,
-    transformFn?: (input: ValidationType) => OutputType,
+    validationFn: TypeGuard<any>,
+    // deno-lint-ignore no-explicit-any
+    transformFn?: (input: any) => any,
   ) => {
     return validator(target, (value, c) => {
       const result = validationFn.validate(value);
@@ -92,21 +93,20 @@ export const createDescribeInput = <ErrorBody = DefaultValidationError>(
       const message = `Input validation failed for target: ${target}`;
 
       if (formatError) {
-        return c.json(
-          formatError({
-            target,
-            issues: result.issues,
-            message,
-            value,
-          }),
-          errorStatus,
-        );
+        const { body, status = 400 } = formatError({
+          target,
+          issues: result.issues,
+          message,
+          value,
+        });
+        return c.json(body, status);
       }
 
-      return c.json({ message, issues: result.issues }, errorStatus);
+      return c.json({ message, issues: result.issues }, 400);
     });
-  };
-};
+    // deno-lint-ignore no-explicit-any
+  }) as any;
+}
 
 /**
  * Describes and validates input for a specific validation target.
@@ -136,4 +136,4 @@ export const createDescribeInput = <ErrorBody = DefaultValidationError>(
  * );
  * ```
  */
-export const describeInput = createDescribeInput();
+export const describeInput: DescribeInputFn = createDescribeInput();
