@@ -173,7 +173,7 @@ function safeStringify(value: unknown): string {
 
   const type = typeof value;
 
-  if (type === "string") return JSON.stringify(value);
+  if (type === "string") return `'${value}'`;
   if (type === "boolean") return String(value);
   if (type === "symbol") return (value as symbol).toString();
   if (type === "function") {

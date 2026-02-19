@@ -102,7 +102,7 @@ Deno.test("isAsyncFunction", async (t) => {
       issues: [{ message: "Expected async function. Received: [Function]" }],
     });
     assertEquals(isAsyncFunction.validate("async"), {
-      issues: [{ message: 'Expected async function. Received: "async"' }],
+      issues: [{ message: "Expected async function. Received: 'async'" }],
     });
     assertEquals(isAsyncFunction.validate(null), {
       issues: [{ message: "Expected async function. Received: null" }],
@@ -177,7 +177,7 @@ Deno.test("isPromise", async (t) => {
       issues: [{ message: "Expected Promise. Received: {}" }],
     });
     assertEquals(isPromise.validate("promise"), {
-      issues: [{ message: 'Expected Promise. Received: "promise"' }],
+      issues: [{ message: "Expected Promise. Received: 'promise'" }],
     });
     assertEquals(isPromise.validate(null), {
       issues: [{ message: "Expected Promise. Received: null" }],
@@ -260,7 +260,7 @@ Deno.test("isPromiseLike", async (t) => {
       issues: [{ message: 'Expected PromiseLike. Received: {"then":"not a function"}' }],
     });
     assertEquals(isPromiseLike.validate("promise"), {
-      issues: [{ message: 'Expected PromiseLike. Received: "promise"' }],
+      issues: [{ message: "Expected PromiseLike. Received: 'promise'" }],
     });
     assertEquals(isPromiseLike.validate(null), {
       issues: [{ message: "Expected PromiseLike. Received: null" }],

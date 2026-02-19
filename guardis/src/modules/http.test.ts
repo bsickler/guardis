@@ -98,7 +98,7 @@ Deno.test("isNativeURL", async (t) => {
 
     // Invalid inputs return issues with specific error message
     assertEquals(isNativeURL.validate("https://example.com"), {
-      issues: [{ message: 'Expected URL. Received: "https://example.com"' }],
+      issues: [{ message: "Expected URL. Received: 'https://example.com'" }],
     });
     assertEquals(isNativeURL.validate(null), {
       issues: [{ message: "Expected URL. Received: null" }],
@@ -169,7 +169,7 @@ Deno.test("isRequest", async (t) => {
 
     // Invalid inputs return issues with specific error message
     assertEquals(isRequest.validate("https://example.com"), {
-      issues: [{ message: 'Expected Request. Received: "https://example.com"' }],
+      issues: [{ message: "Expected Request. Received: 'https://example.com'" }],
     });
     assertEquals(isRequest.validate(null), {
       issues: [{ message: "Expected Request. Received: null" }],
@@ -240,7 +240,7 @@ Deno.test("isResponse", async (t) => {
 
     // Invalid inputs return issues with specific error message
     assertEquals(isResponse.validate("Hello, world!"), {
-      issues: [{ message: 'Expected Response. Received: "Hello, world!"' }],
+      issues: [{ message: "Expected Response. Received: 'Hello, world!'" }],
     });
     assertEquals(isResponse.validate(null), {
       issues: [{ message: "Expected Response. Received: null" }],
@@ -340,10 +340,10 @@ Deno.test("isIpv4", async (t) => {
 
     // Invalid inputs return issues with specific error message
     assertEquals(isIpv4.validate("256.1.1.1"), {
-      issues: [{ message: 'Expected IPv4. Received: "256.1.1.1"' }],
+      issues: [{ message: "Expected IPv4. Received: '256.1.1.1'" }],
     });
     assertEquals(isIpv4.validate("not-an-ip"), {
-      issues: [{ message: 'Expected IPv4. Received: "not-an-ip"' }],
+      issues: [{ message: "Expected IPv4. Received: 'not-an-ip'" }],
     });
     assertEquals(isIpv4.validate(null), {
       issues: [{ message: "Expected IPv4. Received: null" }],
@@ -447,10 +447,10 @@ Deno.test("isIpv6", async (t) => {
 
     // Invalid inputs return issues with specific error message
     assertEquals(isIpv6.validate("gggg::1"), {
-      issues: [{ message: 'Expected IPv6. Received: "gggg::1"' }],
+      issues: [{ message: "Expected IPv6. Received: 'gggg::1'" }],
     });
     assertEquals(isIpv6.validate("not-an-ip"), {
-      issues: [{ message: 'Expected IPv6. Received: "not-an-ip"' }],
+      issues: [{ message: "Expected IPv6. Received: 'not-an-ip'" }],
     });
     assertEquals(isIpv6.validate(null), {
       issues: [{ message: "Expected IPv6. Received: null" }],

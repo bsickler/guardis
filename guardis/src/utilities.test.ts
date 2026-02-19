@@ -251,7 +251,7 @@ Deno.test("keyOf", async (t) => {
 
 Deno.test("formatErrorMessage", async (t) => {
   await t.step("handles primitive values", () => {
-    assertEquals(formatErrorMessage("hello", "number"), 'Expected number. Received: "hello"');
+    assertEquals(formatErrorMessage("hello", "number"), "Expected number. Received: 'hello'");
     assertEquals(formatErrorMessage(42, "string"), "Expected string. Received: 42");
     assertEquals(formatErrorMessage(true, "number"), "Expected number. Received: true");
     assertEquals(formatErrorMessage(null, "string"), "Expected string. Received: null");
@@ -303,7 +303,7 @@ Deno.test("formatErrorMessage", async (t) => {
   });
 
   await t.step("works without name parameter", () => {
-    assertEquals(formatErrorMessage("test"), 'Invalid value. Received: "test"');
+    assertEquals(formatErrorMessage("test"), "Invalid value. Received: 'test'");
     assertEquals(formatErrorMessage(42), "Invalid value. Received: 42");
   });
 });

@@ -85,7 +85,7 @@ Deno.test("isBoolean", async (t) => {
 
     // Invalid inputs return issues with specific error message
     assertEquals(isBoolean.validate("test"), {
-      issues: [{ message: 'Expected boolean. Received: "test"' }],
+      issues: [{ message: "Expected boolean. Received: 'test'" }],
     });
     assertEquals(isBoolean.validate(42), {
       issues: [{ message: "Expected boolean. Received: 42" }],
@@ -244,10 +244,10 @@ Deno.test("isString", async (t) => {
 
     // Invalid inputs return issues with specific error message
     assertEquals(isString.notEmpty.validate(""), {
-      issues: [{ message: 'Expected non-empty string. Received: ""' }],
+      issues: [{ message: "Expected non-empty string. Received: ''" }],
     });
     assertEquals(isString.notEmpty.validate("   "), {
-      issues: [{ message: 'Expected non-empty string. Received: "   "' }],
+      issues: [{ message: "Expected non-empty string. Received: '   '" }],
     });
     assertEquals(isString.notEmpty.validate(42), {
       issues: [{ message: "Expected non-empty string. Received: 42" }],
@@ -319,7 +319,7 @@ Deno.test("isNumber", async (t) => {
 
     // Invalid inputs return issues with specific error message
     assertEquals(isNumber.validate("42"), {
-      issues: [{ message: 'Expected number. Received: "42"' }],
+      issues: [{ message: "Expected number. Received: '42'" }],
     });
     assertEquals(isNumber.validate(NaN), {
       issues: [{ message: "Expected number. Received: NaN" }],
@@ -396,7 +396,7 @@ Deno.test("isBinary", async (t) => {
       issues: [{ message: "Expected binary. Received: -1" }],
     });
     assertEquals(isBinary.validate("1"), {
-      issues: [{ message: 'Expected binary. Received: "1"' }],
+      issues: [{ message: "Expected binary. Received: '1'" }],
     });
   });
 });
@@ -466,10 +466,10 @@ Deno.test("isNumeric", async (t) => {
 
     // Invalid inputs return issues with specific error message
     assertEquals(isNumeric.validate("abc"), {
-      issues: [{ message: 'Expected numeric. Received: "abc"' }],
+      issues: [{ message: "Expected numeric. Received: 'abc'" }],
     });
     assertEquals(isNumeric.validate(""), {
-      issues: [{ message: 'Expected numeric. Received: ""' }],
+      issues: [{ message: "Expected numeric. Received: ''" }],
     });
     assertEquals(isNumeric.validate(null), {
       issues: [{ message: "Expected numeric. Received: null" }],
@@ -534,7 +534,7 @@ Deno.test("isFunction", async (t) => {
 
     // Invalid inputs return issues with specific error message
     assertEquals(isFunction.validate("function"), {
-      issues: [{ message: 'Expected function. Received: "function"' }],
+      issues: [{ message: "Expected function. Received: 'function'" }],
     });
     assertEquals(isFunction.validate(42), {
       issues: [{ message: "Expected function. Received: 42" }],
@@ -611,7 +611,7 @@ Deno.test("isSymbol", async (t) => {
 
     // Invalid inputs return issues with specific error message
     assertEquals(isSymbol.validate("symbol"), {
-      issues: [{ message: 'Expected symbol. Received: "symbol"' }],
+      issues: [{ message: "Expected symbol. Received: 'symbol'" }],
     });
     assertEquals(isSymbol.validate(42), {
       issues: [{ message: "Expected symbol. Received: 42" }],
@@ -759,7 +759,7 @@ Deno.test("isNull", async (t) => {
       issues: [{ message: "Expected null. Received: undefined" }],
     });
     assertEquals(isNull.validate("null"), {
-      issues: [{ message: 'Expected null. Received: "null"' }],
+      issues: [{ message: "Expected null. Received: 'null'" }],
     });
     assertEquals(isNull.validate(0), {
       issues: [{ message: "Expected null. Received: 0" }],
@@ -823,7 +823,7 @@ Deno.test("isUndefined", async (t) => {
       issues: [{ message: "Expected undefined. Received: null" }],
     });
     assertEquals(isUndefined.validate("undefined"), {
-      issues: [{ message: 'Expected undefined. Received: "undefined"' }],
+      issues: [{ message: "Expected undefined. Received: 'undefined'" }],
     });
     assertEquals(isUndefined.validate(0), {
       issues: [{ message: "Expected undefined. Received: 0" }],
@@ -878,7 +878,7 @@ Deno.test("isNil", async (t) => {
 
     // Invalid inputs return issues with specific error message (union type name)
     assertEquals(isNil.validate("test"), {
-      issues: [{ message: 'Expected null | undefined. Received: "test"' }],
+      issues: [{ message: "Expected null | undefined. Received: 'test'" }],
     });
     assertEquals(isNil.validate(0), {
       issues: [{ message: "Expected null | undefined. Received: 0" }],
@@ -1001,7 +1001,7 @@ Deno.test("isObject", async (t) => {
       issues: [{ message: "Expected object. Received: [1,2,3]" }],
     });
     assertEquals(isObject.validate("object"), {
-      issues: [{ message: 'Expected object. Received: "object"' }],
+      issues: [{ message: "Expected object. Received: 'object'" }],
     });
     assertEquals(isObject.validate(null), {
       issues: [{ message: "Expected object. Received: null" }],
@@ -1103,7 +1103,7 @@ Deno.test("isArray", async (t) => {
       issues: [{ message: 'Expected array. Received: {"a":1}' }],
     });
     assertEquals(isArray.validate("array"), {
-      issues: [{ message: 'Expected array. Received: "array"' }],
+      issues: [{ message: "Expected array. Received: 'array'" }],
     });
     assertEquals(isArray.validate(null), {
       issues: [{ message: "Expected array. Received: null" }],
@@ -1119,7 +1119,7 @@ Deno.test("isArray", async (t) => {
       issues: [{ message: "Expected non-empty array. Received: []" }],
     });
     assertEquals(isArray.notEmpty.validate("array"), {
-      issues: [{ message: 'Expected non-empty array. Received: "array"' }],
+      issues: [{ message: "Expected non-empty array. Received: 'array'" }],
     });
   });
 });
@@ -1465,7 +1465,7 @@ Deno.test("isDate", async (t) => {
 
     // Invalid inputs return issues with specific error message
     assertEquals(isDate.validate("2023-01-01"), {
-      issues: [{ message: 'Expected Date. Received: "2023-01-01"' }],
+      issues: [{ message: "Expected Date. Received: '2023-01-01'" }],
     });
     assertEquals(isDate.validate(1672531200000), {
       issues: [{ message: "Expected Date. Received: 1672531200000" }],
@@ -1746,7 +1746,7 @@ Deno.test("isJsonObject", async (t) => {
       issues: [{ message: "Expected JsonObject. Received: [1,2,3]" }],
     });
     assertEquals(isJsonObject.validate("object"), {
-      issues: [{ message: 'Expected JsonObject. Received: "object"' }],
+      issues: [{ message: "Expected JsonObject. Received: 'object'" }],
     });
     assertEquals(isJsonObject.validate(null), {
       issues: [{ message: "Expected JsonObject. Received: null" }],
@@ -1824,7 +1824,7 @@ Deno.test("isJsonArray", async (t) => {
       issues: [{ message: 'Expected JsonArray. Received: {"a":1}' }],
     });
     assertEquals(isJsonArray.validate("array"), {
-      issues: [{ message: 'Expected JsonArray. Received: "array"' }],
+      issues: [{ message: "Expected JsonArray. Received: 'array'" }],
     });
     assertEquals(isJsonArray.validate(null), {
       issues: [{ message: "Expected JsonArray. Received: null" }],
@@ -2434,7 +2434,7 @@ Deno.test("createTypeGuard", async (t) => {
     assertEquals(invalidResult1, { issues: [{ message: "Invalid value. Received: 0" }] });
 
     const invalidResult2 = isPositiveNumber.validate("test");
-    assertEquals(invalidResult2, { issues: [{ message: 'Invalid value. Received: "test"' }] });
+    assertEquals(invalidResult2, { issues: [{ message: "Invalid value. Received: 'test'" }] });
 
     // Verify ~standard property exists
     assert(isPositiveNumber["~standard"]);
@@ -2486,7 +2486,7 @@ Deno.test("Guard name edge cases", async (t) => {
     assert(result.issues !== undefined);
     assertFalse(result.issues[0].message.includes("non-empty undefined"));
     // Should be a generic message since no name is available
-    assertEquals(result.issues[0].message, 'Invalid value. Received: ""');
+    assertEquals(result.issues[0].message, "Invalid value. Received: ''");
   });
 
   await t.step("union with one named and one unnamed guard falls back to generic", () => {
@@ -2519,7 +2519,7 @@ Deno.test("Guard name edge cases", async (t) => {
     // Verify that when the guard has a name, notEmpty still works
     const result = isString.notEmpty.validate("");
     assertEquals(result, {
-      issues: [{ message: 'Expected non-empty string. Received: ""' }],
+      issues: [{ message: "Expected non-empty string. Received: ''" }],
     });
   });
 });
@@ -2533,7 +2533,7 @@ Deno.test("Validation path tracking", async (t) => {
     assertEquals(result, { issues: [{ message: "Expected string. Received: 123" }] });
 
     const result2 = isNumber.validate("test");
-    assertEquals(result2, { issues: [{ message: 'Expected number. Received: "test"' }] });
+    assertEquals(result2, { issues: [{ message: "Expected number. Received: 'test'" }] });
   });
 
   await t.step("array validation - includes index in path", () => {
@@ -2575,7 +2575,7 @@ Deno.test("Validation path tracking", async (t) => {
     const invalidResult = isPerson.validate({ name: "Alice", age: "thirty" });
     assert("issues" in invalidResult && invalidResult.issues);
     assertEquals(invalidResult.issues.length, 1);
-    assertEquals(invalidResult.issues[0].message, 'Expected number. Received: "thirty"');
+    assertEquals(invalidResult.issues[0].message, "Expected number. Received: 'thirty'");
     assertEquals(invalidResult.issues[0].path, ["age"]);
   });
 
@@ -2614,7 +2614,7 @@ Deno.test("Validation path tracking", async (t) => {
     ]);
     assert("issues" in invalidResult && invalidResult.issues);
     assertEquals(invalidResult.issues.length, 1);
-    assertEquals(invalidResult.issues[0].message, 'Expected number. Received: "invalid"');
+    assertEquals(invalidResult.issues[0].message, "Expected number. Received: 'invalid'");
     assertEquals(invalidResult.issues[0].path, [1, "age"]);
   });
 
@@ -2636,7 +2636,7 @@ Deno.test("Validation path tracking", async (t) => {
     });
     assert("issues" in result && result.issues);
     assertEquals(result.issues.length, 1);
-    assertEquals(result.issues[0].message, 'Expected number. Received: "invalid"');
+    assertEquals(result.issues[0].message, "Expected number. Received: 'invalid'");
     assertEquals(result.issues[0].path, ["address", "zip"]);
   });
 
@@ -2695,7 +2695,7 @@ Deno.test("Validation path tracking", async (t) => {
     });
     assert("issues" in invalidLat && invalidLat.issues);
     assertEquals(invalidLat.issues.length, 1);
-    assertEquals(invalidLat.issues[0].message, 'Expected number. Received: "invalid"');
+    assertEquals(invalidLat.issues[0].message, "Expected number. Received: 'invalid'");
     assertEquals(invalidLat.issues[0].path, ["headquarters", "location", "coordinates", "lat"]);
 
     // Invalid at level 2 - wrong type for location.name
@@ -2765,7 +2765,7 @@ Deno.test("Validation path tracking", async (t) => {
     const invalidResult = isPerson.validate({ name: "Alice", age: "thirty" });
     assert("issues" in invalidResult && invalidResult.issues);
     assertEquals(invalidResult.issues.length, 1);
-    assertEquals(invalidResult.issues[0].message, 'Expected number. Received: "thirty"');
+    assertEquals(invalidResult.issues[0].message, "Expected number. Received: 'thirty'");
     assertEquals(invalidResult.issues[0].path, ["age"]);
   });
 
@@ -2780,7 +2780,7 @@ Deno.test("Validation path tracking", async (t) => {
     const invalidResult = isNumberMatrix.validate([[1, 2], [3, "four"]]);
     assert("issues" in invalidResult && invalidResult.issues);
     assertEquals(invalidResult.issues.length, 1);
-    assertEquals(invalidResult.issues[0].message, 'Expected number. Received: "four"');
+    assertEquals(invalidResult.issues[0].message, "Expected number. Received: 'four'");
     assertEquals(invalidResult.issues[0].path, [1, 1]);
   });
 
@@ -3176,7 +3176,7 @@ Deno.test("Strict mode error messaging", async (t) => {
       assert(false, "Expected to throw");
     } catch (e) {
       assert(e instanceof TypeError);
-      assertEquals(e.message, 'Expected number. Received: "not a number"');
+      assertEquals(e.message, "Expected number. Received: 'not a number'");
     }
   });
 
@@ -3275,7 +3275,7 @@ Deno.test("Strict mode error messaging", async (t) => {
       assert(false, "Expected to throw");
     } catch (e) {
       assert(e instanceof TypeError);
-      assertEquals(e.message, 'Expected non-empty string. Received: ""');
+      assertEquals(e.message, "Expected non-empty string. Received: ''");
     }
   });
 
