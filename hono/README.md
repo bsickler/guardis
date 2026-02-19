@@ -6,12 +6,13 @@ A type-safe input validation utility for Hono framework that integrates with Gua
 
 `describeInput` is a higher-order function that creates Hono validators for different validation
 targets (json, form, query, etc.). It combines Hono's validator middleware with Guardis type guards
-to provide runtime type checking with compile-time type safety.
+to provide runtime type checking with compile-time type safety. It also supports an optional
+transformation function to reshape validated data before it reaches your handler.
 
 ## Installation
 
 ```typescript
-import { describeInput } from "@spudlabs/guardis-hono";
+import { describeInput, createDescribeInput } from "@spudlabs/guardis-hono";
 import { createTypeGuard } from "@spudlabs/guardis";
 ```
 
@@ -120,31 +121,115 @@ app.get("/users", describeInput("json", isUserInput), handler);
 
 ## Error Handling
 
-When validation fails, `describeInput` automatically returns a 400 Bad Request response:
+When validation fails, `describeInput` automatically returns a 400 Bad Request response with detailed validation issues:
 
 ```json
 {
-  "message": "Input validation failed for target: json"
+  "message": "Input validation failed for target: json",
+  "issues": [
+    { "message": "Expected string, got number", "path": ["name"] }
+  ]
 }
 ```
 
-You can customize error handling by wrapping the validator:
+### Custom Error Formatting
+
+Use `createDescribeInput` to customize the error response format and status code:
 
 ```typescript
-const customValidator = (target, guard) => {
-  return validator(target, (value, c) => {
-    if (guard(value)) return value;
+import { createDescribeInput } from "@spudlabs/guardis-hono";
 
-    return c.json(
-      {
-        error: "Validation Error",
-        target,
-        details: "Custom error message",
-      },
-      422,
-    );
-  });
-};
+const customDescribeInput = createDescribeInput({
+  formatError: (ctx) => ({
+    body: {
+      code: "VALIDATION_ERROR",
+      message: ctx.message,
+      details: ctx.issues.map((issue) => ({
+        path: issue.path?.join(".") ?? "root",
+        message: issue.message,
+      })),
+    },
+    status: 422,
+  }),
+});
+
+app.post(
+  "/users",
+  customDescribeInput("json", isUserInput),
+  (c) => {
+    const data = c.req.valid("json");
+    return c.json({ success: true });
+  },
+);
+```
+
+The `formatError` callback receives a `ValidationErrorContext` with:
+
+- `target` - The validation target (e.g., "json", "query")
+- `issues` - Array of validation issues from the type guard
+- `message` - Default error message
+- `value` - The original value that failed validation
+
+The callback returns an object with:
+
+- `body` - The error response body (any shape)
+- `status` - Optional HTTP status code (defaults to 400)
+
+## Transformation Functions
+
+`describeInput` supports an optional transformation function as its third parameter. This allows you to transform validated input into a different shape after validation passes.
+
+### Basic Transformation
+
+```typescript
+interface RawInput {
+  hello: string;
+}
+
+interface TransformedOutput {
+  greeting: string;
+  timestamp: number;
+}
+
+const isRawInput = createTypeGuard<RawInput>({
+  hello: "string",
+});
+
+app.post(
+  "/greet",
+  describeInput("json", isRawInput, (input) => ({
+    greeting: `Hello, ${input.hello}!`,
+    timestamp: Date.now(),
+  })),
+  (c) => {
+    const data = c.req.valid("json"); // Typed as TransformedOutput
+    return c.json({ greeting: data.greeting, timestamp: data.timestamp });
+  },
+);
+```
+
+### Use Cases
+
+Transformation functions are useful for:
+
+- **Adding computed fields**: Timestamps, UUIDs, derived values
+- **Normalizing data**: Converting strings to lowercase, trimming whitespace
+- **Enriching input**: Adding default values or server-side data
+- **Reshaping data**: Converting between different data structures
+
+### Type Safety
+
+The transformation function receives the validated input type and can return any output type. TypeScript will correctly infer the output type for `c.req.valid()`:
+
+```typescript
+// Input: { name: string }
+// Output: { name: string; createdAt: Date; id: string }
+
+describeInput("json", isNameInput, (input) => ({
+  ...input,
+  createdAt: new Date(),
+  id: crypto.randomUUID(),
+}));
 ```
 
 ## Advanced Examples

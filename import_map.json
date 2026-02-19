@@ -5,7 +5,7 @@
     "hono": "npm:/hono@^4.10.0/",
     "hono/": "npm:/hono@^4.10.0/",
 
-    "@spudlabs/guardis": "jsr:@spudlabs/guardis@^0.3.4",
-    "@spudlabs/guardis-hono": "jsr:@spudlabs/guardis-hono@^0.0.6"
+    "@spudlabs/guardis": "jsr:@spudlabs/guardis@^0.3.22",
+    "@spudlabs/guardis-hono": "jsr:@spudlabs/guardis-hono@^0.0.7"
   }
 }
