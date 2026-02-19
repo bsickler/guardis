@@ -35,7 +35,7 @@ Deno.test("isEmail", async (t) => {
 
     // Invalid inputs return issues with specific error message
     assertEquals(isEmail.validate("plainaddress"), {
-      issues: [{ message: 'Expected email. Received: "plainaddress"' }],
+      issues: [{ message: "Expected email. Received: 'plainaddress'" }],
     });
     assertEquals(isEmail.validate(123), {
       issues: [{ message: "Expected email. Received: 123" }],
@@ -131,7 +131,7 @@ Deno.test("isInternationalPhone", async (t) => {
 
     // Invalid inputs return issues with specific error message
     assertEquals(isInternationalPhone.validate("12345678901"), {
-      issues: [{ message: 'Expected international phone number. Received: "12345678901"' }],
+      issues: [{ message: "Expected international phone number. Received: '12345678901'" }],
     });
     assertEquals(isInternationalPhone.validate(123), {
       issues: [{ message: "Expected international phone number. Received: 123" }],
@@ -193,10 +193,10 @@ Deno.test("isUUIDv4", async (t) => {
 
     // Invalid inputs return issues with specific error message
     assertEquals(isUUIDv4.validate("not-a-uuid"), {
-      issues: [{ message: 'Expected UUIDv4. Received: "not-a-uuid"' }],
+      issues: [{ message: "Expected UUIDv4. Received: 'not-a-uuid'" }],
     });
     assertEquals(isUUIDv4.validate("550e8400-e29b-31d4-a716-446655440000"), {
-      issues: [{ message: 'Expected UUIDv4. Received: "550e8400-e29b-31d4-a716-446655440000"' }],
+      issues: [{ message: "Expected UUIDv4. Received: '550e8400-e29b-31d4-a716-446655440000'" }],
     });
     assertEquals(isUUIDv4.validate(null), {
       issues: [{ message: "Expected UUIDv4. Received: null" }],
@@ -256,10 +256,10 @@ Deno.test("isUUIDv7", async (t) => {
 
     // Invalid inputs return issues with specific error message
     assertEquals(isUUIDv7.validate("not-a-uuid"), {
-      issues: [{ message: 'Expected UUIDv7. Received: "not-a-uuid"' }],
+      issues: [{ message: "Expected UUIDv7. Received: 'not-a-uuid'" }],
     });
     assertEquals(isUUIDv7.validate("550e8400-e29b-41d4-a716-446655440000"), {
-      issues: [{ message: 'Expected UUIDv7. Received: "550e8400-e29b-41d4-a716-446655440000"' }],
+      issues: [{ message: "Expected UUIDv7. Received: '550e8400-e29b-41d4-a716-446655440000'" }],
     });
     assertEquals(isUUIDv7.validate(null), {
       issues: [{ message: "Expected UUIDv7. Received: null" }],
@@ -474,10 +474,10 @@ Deno.test("isCommaDelimitedIntegers", async (t) => {
 
     // Invalid inputs return issues with specific error message
     assertEquals(isCommaDelimitedIntegers.validate("1, 2, 3"), {
-      issues: [{ message: 'Expected comma-delimited integers. Received: "1, 2, 3"' }],
+      issues: [{ message: "Expected comma-delimited integers. Received: '1, 2, 3'" }],
     });
     assertEquals(isCommaDelimitedIntegers.validate(""), {
-      issues: [{ message: 'Expected comma-delimited integers. Received: ""' }],
+      issues: [{ message: "Expected comma-delimited integers. Received: ''" }],
     });
     assertEquals(isCommaDelimitedIntegers.validate(null), {
       issues: [{ message: "Expected comma-delimited integers. Received: null" }],
@@ -596,10 +596,10 @@ Deno.test("isCommaDelimitedNumbers", async (t) => {
 
     // Invalid inputs return issues with specific error message
     assertEquals(isCommaDelimitedNumbers.validate("1, 2, 3"), {
-      issues: [{ message: 'Expected comma-delimited numbers. Received: "1, 2, 3"' }],
+      issues: [{ message: "Expected comma-delimited numbers. Received: '1, 2, 3'" }],
     });
     assertEquals(isCommaDelimitedNumbers.validate(""), {
-      issues: [{ message: 'Expected comma-delimited numbers. Received: ""' }],
+      issues: [{ message: "Expected comma-delimited numbers. Received: ''" }],
     });
     assertEquals(isCommaDelimitedNumbers.validate(null), {
       issues: [{ message: "Expected comma-delimited numbers. Received: null" }],
