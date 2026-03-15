@@ -8,18 +8,19 @@ Use the included type guards to perform validation or quickly generate your own 
 code, using your existing type definitions.
 
 ```ts
-import { createTypeGuard, isString } from "jsr:@spudlabs/guardis";
+import { createTypeGuard, isNumber, isString } from "jsr:@spudlabs/guardis";
 
 // Use built-in guards
 if (isString(userInput)) {
   console.log(userInput.toUpperCase()); // TypeScript knows this is a string
 }
 
-// Create custom guards from your types
-type User = { id: number; name: string };
+// Create guards from shapes — types are inferred automatically
+const isUser = createTypeGuard({ name: isString, age: isNumber });
 
-const isUser = createTypeGuard<User>((val, { has }) =>
-  has(val, "id", Is.Number) && has(val, "name", Is.String) ? val : null
+// Or from parser functions for full control
+const isPositive = createTypeGuard<number>((val) =>
+  typeof val === "number" && val > 0 ? val : null
 );
 ```
 
@@ -340,7 +341,85 @@ isPositive.validate(-5);
 
 ## Creating Custom Type Guards
 
-Use `createTypeGuard` to build validators for your own types:
+Use `createTypeGuard` to build validators for your own types. You can pass either a **shape object** for declarative validation or a **parser function** for full control.
+
+### Shape-Based Validation
+
+The simplest way to create a type guard for an object. Pass an object mapping property names to guards — the TypeScript type is inferred automatically:
+
+```ts
+import { createTypeGuard, isArray, isNumber, isString } from "jsr:@spudlabs/guardis";
+
+// Basic shape
+const isUser = createTypeGuard({ name: isString, age: isNumber });
+
+isUser({ name: "Alice", age: 30 }); // true
+isUser({ name: "Alice", age: "thirty" }); // false
+
+// Type is inferred as { name: string; age: number }
+type User = typeof isUser._TYPE;
+```
+
+Shapes support all guard modes as field values:
+
+```ts
+const isForm = createTypeGuard({
+  name: isString.notEmpty,        // rejects empty strings
+  email: isString,
+  nickname: isString.optional,    // accepts undefined
+  role: isString.or(isNumber),    // union type
+  tags: isArray.of(isString),     // typed array
+});
+```
+
+Shapes can be nested:
+
+```ts
+const isAddress = createTypeGuard({
+  street: isString,
+  city: isString,
+  zip: isNumber,
+});
+
+const isPerson = createTypeGuard({
+  name: isString,
+  address: isAddress,  // nested TypeGuard
+});
+
+// Or inline:
+const isPerson2 = createTypeGuard({
+  name: isString,
+  address: { street: isString, city: isString, zip: isNumber },
+});
+```
+
+Named shapes provide better error messages in strict mode:
+
+```ts
+const isUser = createTypeGuard("User", { name: isString, age: isNumber });
+```
+
+All modes work on shape-created guards — strict, assert, optional, notEmpty, validate, or, and extend:
+
+```ts
+const isUser = createTypeGuard({ name: isString, age: isNumber });
+
+isUser.strict({ name: 123, age: 30 });
+// TypeError: Expected string. Received: 123 at path: name
+
+isUser.validate({ name: 123, age: "old" });
+// { issues: [
+//   { message: "Expected string. Received: 123", path: ["name"] },
+//   { message: "Expected number. Received: \"old\"", path: ["age"] }
+// ]}
+
+const isAdult = isUser.extend((val) => val.age >= 18 ? val : null);
+const isUserOrString = isUser.or(isString);
+```
+
+### Parser-Based Validation
+
+For validation logic that goes beyond property checks, use a parser function:
 
 ### Simple Types
 
@@ -644,49 +723,57 @@ isPhoneNumber.optional(value); // allows undefined
 
 ## Batch Creation
 
-Generate multiple type guards at once:
+Generate multiple type guards at once. Accepts parser functions, named parsers, or shapes:
 
 ```ts
-import { batch } from "jsr:@spudlabs/guardis";
+import { batch, isNumber, isString } from "jsr:@spudlabs/guardis";
 
+// Parser functions
 const { isRed, isBlue, isGreen } = batch({
   Red: (val) => val === "red" ? val : null,
   Blue: (val) => val === "blue" ? val : null,
   Green: (val) => val === "green" ? val : null,
 });
 
-// Automatic camelCase conversion
-const { isUserRole, isAdminRole } = batch({
-  "user-role": (val) => val === "user" ? val : null,
-  AdminRole: (val) => val === "admin" ? val : null,
+// Shapes
+const { isPerson, isAddress } = batch({
+  Person: { name: isString, age: isNumber },
+  Address: { street: isString, city: isString, zip: isNumber },
+});
+
+// Mix parsers and shapes
+const { isColor, isUser } = batch({
+  Color: (val) => typeof val === "string" && ["red", "green", "blue"].includes(val) ? val : null,
+  User: { name: isString, email: isString },
 });
 
 // All guards get full mode support
 isRed.strict("blue"); // throws
-isBlue.optional(undefined); // true
+isPerson.validate({ name: 123 }); // { issues: [...] }
 ```
 
 ## Extending the Is Object
 
-Add your own type guards to the `Is` namespace:
+Add your own type guards to the `Is` namespace. Accepts parser functions, named parsers, or shapes:
 
 ```ts
-import { extend, Is as BaseIs } from "jsr:@spudlabs/guardis";
+import { extend, Is as BaseIs, isNumber, isString } from "jsr:@spudlabs/guardis";
 
 // Create new Is object with custom guards
 const Is = extend(BaseIs, {
   Email: (val) => typeof val === "string" && val.includes("@") ? val : null,
   PositiveNumber: (val) => typeof val === "number" && val > 0 ? val : null,
+  User: { name: isString, age: isNumber }, // shapes work too
 });
 
 // Use built-in and custom guards together
 Is.String("hello"); // built-in
 Is.Email("user@domain.com"); // custom
-Is.PositiveNumber(42); // custom
+Is.User({ name: "Alice", age: 30 }); // shape-based
 
 // All modes work with custom guards
 Is.Email.strict(invalidEmail); // throws
-Is.PositiveNumber.optional(undefined); // true
+Is.User.validate({ name: 123 }); // { issues: [...] }
 ```
 
 ## Real-World Examples

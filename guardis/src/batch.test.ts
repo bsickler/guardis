@@ -1,5 +1,6 @@
-import { assert, assertFalse, assertThrows } from "@std/assert";
+import { assert, assertEquals, assertFalse, assertThrows } from "@std/assert";
 import { batch } from "./batch.ts";
+import { isArray, isNumber, isString } from "./guard.ts";
 
 // Standard test values for consistency across all type guard tests
 const TEST_VALUES = {
@@ -125,5 +126,141 @@ Deno.test("batch function", async (t) => {
     assert("notEmpty" in isMeatball);
     assert("notEmpty" in isSausage);
     assert("notEmpty" in isSpaghetti);
+  });
+});
+
+Deno.test("batch with TypeGuardShape", async (t) => {
+  const { isPerson, isAddress } = batch({
+    Person: { name: isString, age: isNumber },
+    Address: { street: isString, city: isString, zip: isNumber },
+  });
+
+  await t.step("basic functionality", () => {
+    assert(isPerson({ name: "Alice", age: 30 }));
+    assert(isAddress({ street: "123 Main", city: "Springfield", zip: 62701 }));
+
+    assertFalse(isPerson({ name: "Alice", age: "thirty" }));
+    assertFalse(isPerson({ name: 123, age: 30 }));
+    assertFalse(isPerson("not an object"));
+    assertFalse(isPerson(null));
+    assertFalse(isPerson(undefined));
+
+    assertFalse(isAddress({ street: "123 Main", city: "Springfield", zip: "62701" }));
+    assertFalse(isAddress({ street: "123 Main" }));
+  });
+
+  await t.step("strict mode", () => {
+    isPerson.strict({ name: "Alice", age: 30 });
+    isAddress.strict({ street: "123 Main", city: "Springfield", zip: 62701 });
+
+    assertThrows(() => isPerson.strict({ name: "Alice", age: "thirty" }), TypeError);
+    assertThrows(() => isAddress.strict({ street: 123, city: "Springfield", zip: 62701 }), TypeError);
+  });
+
+  await t.step("assert mode", () => {
+    const assertIsPerson: typeof isPerson.assert = isPerson.assert;
+    assertIsPerson({ name: "Alice", age: 30 });
+    assertThrows(() => assertIsPerson({ name: "Alice", age: "thirty" }), TypeError);
+  });
+
+  await t.step("optional mode", () => {
+    assert(isPerson.optional({ name: "Alice", age: 30 }));
+    assert(isPerson.optional(undefined));
+    assertFalse(isPerson.optional(null));
+    assertFalse(isPerson.optional({ name: "Alice", age: "thirty" }));
+  });
+
+  await t.step("notEmpty mode", () => {
+    assert(isPerson.notEmpty({ name: "Alice", age: 30 }));
+    assertFalse(isPerson.notEmpty(null));
+    assertFalse(isPerson.notEmpty(undefined));
+    assertFalse(isPerson.notEmpty({}));
+  });
+
+  await t.step("validate method", () => {
+    const valid = isPerson.validate({ name: "Alice", age: 30 });
+    assert("value" in valid);
+    assertEquals(valid.value, { name: "Alice", age: 30 });
+
+    const invalid = isPerson.validate({ name: "Alice", age: "thirty" });
+    assert("issues" in invalid && invalid.issues);
+    assert(invalid.issues.length > 0);
+  });
+
+  await t.step("or method", () => {
+    const isPersonOrString = isPerson.or(isString);
+    assert(isPersonOrString({ name: "Alice", age: 30 }));
+    assert(isPersonOrString("hello"));
+    assertFalse(isPersonOrString(42));
+  });
+
+  await t.step("extend method", () => {
+    const isAdult = isPerson.extend((val) => val.age >= 18 ? val : null);
+    assert(isAdult({ name: "Alice", age: 30 }));
+    assertFalse(isAdult({ name: "Charlie", age: 10 }));
+  });
+});
+
+Deno.test("batch with mixed parsers and shapes", async (t) => {
+  const { isColor, isUser } = batch({
+    Color: (v) => typeof v === "string" && ["red", "green", "blue"].includes(v) ? v : null,
+    User: { name: isString, email: isString },
+  });
+
+  await t.step("parser-based guard works", () => {
+    assert(isColor("red"));
+    assert(isColor("green"));
+    assertFalse(isColor("yellow"));
+    assertFalse(isColor(42));
+  });
+
+  await t.step("shape-based guard works", () => {
+    assert(isUser({ name: "Alice", email: "alice@example.com" }));
+    assertFalse(isUser({ name: "Alice" }));
+    assertFalse(isUser({ name: 123, email: "test" }));
+  });
+
+  await t.step("both have full TypeGuard API", () => {
+    // Parser guard
+    isColor.strict("red");
+    assertThrows(() => isColor.strict("yellow"), TypeError);
+    assert(isColor.optional("red"));
+    assert(isColor.optional(undefined));
+
+    // Shape guard
+    isUser.strict({ name: "Alice", email: "alice@example.com" });
+    assertThrows(() => isUser.strict({ name: 123, email: "test" }), TypeError);
+    assert(isUser.optional({ name: "Alice", email: "alice@example.com" }));
+    assert(isUser.optional(undefined));
+  });
+});
+
+Deno.test("batch with shape using guard modes as field values", async (t) => {
+  const { isForm } = batch({
+    Form: {
+      required: isString,
+      optional: isString.optional,
+      union: isString.or(isNumber),
+      tags: isArray.of(isString),
+    },
+  });
+
+  await t.step("accepts valid input with all mode variants", () => {
+    assert(isForm({ required: "hello", optional: "world", union: 42, tags: ["a"] }));
+    assert(isForm({ required: "hello", optional: undefined, union: "text", tags: [] }));
+    assert(isForm({ required: "hello", union: 42, tags: ["a", "b"] }));
+  });
+
+  await t.step("rejects invalid inputs per field mode", () => {
+    assertFalse(isForm({ required: 123, optional: undefined, union: 42, tags: ["a"] }));
+    assertFalse(isForm({ required: "hello", optional: 123, union: 42, tags: ["a"] }));
+    assertFalse(isForm({ required: "hello", optional: undefined, union: true, tags: ["a"] }));
+    assertFalse(isForm({ required: "hello", optional: undefined, union: 42, tags: [1] }));
+  });
+
+  await t.step("validate returns issues", () => {
+    const result = isForm.validate({ required: 123, optional: 456, union: true, tags: "bad" });
+    assert("issues" in result && result.issues);
+    assert(result.issues.length > 0);
   });
 });

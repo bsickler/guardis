@@ -6,45 +6,58 @@ A type-safe input validation utility for Hono framework that integrates with Gua
 
 `describeInput` is a higher-order function that creates Hono validators for different validation
 targets (json, form, query, etc.). It combines Hono's validator middleware with Guardis type guards
-to provide runtime type checking with compile-time type safety. It also supports an optional
-transformation function to reshape validated data before it reaches your handler.
+to provide runtime type checking with compile-time type safety. It supports both **TypeGuard** and
+**shape object** inputs, as well as an optional transformation function to reshape validated data
+before it reaches your handler.
 
 ## Installation
 
 ```typescript
 import { describeInput, createDescribeInput } from "@spudlabs/guardis-hono";
-import { createTypeGuard } from "@spudlabs/guardis";
+import { createTypeGuard, isNumber, isString } from "@spudlabs/guardis";
 ```
 
 ## Basic Usage
 
+### With a Shape Object
+
+The simplest approach — pass a shape object mapping property names to guards. The TypeScript type is inferred automatically:
+
 ```typescript
 import { Hono } from "hono";
 import { describeInput } from "@spudlabs/guardis-hono";
-import { createTypeGuard } from "@spudlabs/guardis";
+import { isNumber, isString } from "@spudlabs/guardis";
 
 const app = new Hono();
 
-// Define your input type
-interface UserInput {
-  name: string;
-  age: number;
-  email: string;
-}
+app.post(
+  "/users",
+  describeInput("json", { name: isString, age: isNumber, email: isString }),
+  (c) => {
+    const data = c.req.valid("json"); // Typed as { name: string; age: number; email: string }
+    return c.json({ message: "User created", data });
+  },
+);
+```
 
-// Create a type guard
-const isUserInput = guard<UserInput>({
-  name: "string",
-  age: "number",
-  email: "string",
+### With a TypeGuard
+
+For more complex validation logic, create a TypeGuard first:
+
+```typescript
+import { createTypeGuard, isNumber, isString } from "@spudlabs/guardis";
+
+const isUserInput = createTypeGuard({
+  name: isString,
+  age: isNumber,
+  email: isString,
 });
 
-// Use describeInput to validate JSON body
 app.post(
   "/users",
   describeInput("json", isUserInput),
   (c) => {
-    const data = c.req.valid("json"); // Fully typed as UserInput
+    const data = c.req.valid("json"); // Typed as { name: string; age: number; email: string }
     return c.json({ message: "User created", data });
   },
 );
@@ -57,10 +70,8 @@ app.post(
 ### JSON Body Validation
 
 ```typescript
-const validateJson = describeInput("json", isUserInput);
-
-app.post("/api/users", validateJson, (c) => {
-  const body = c.req.valid("json"); // UserInput
+app.post("/api/users", describeInput("json", { name: isString, age: isNumber }), (c) => {
+  const body = c.req.valid("json"); // { name: string; age: number }
   // ...
 });
 ```
@@ -68,14 +79,7 @@ app.post("/api/users", validateJson, (c) => {
 ### Form Data Validation
 
 ```typescript
-const isFormData = guard<{ username: string; password: string }>({
-  username: "string",
-  password: "string",
-});
-
-const validateForm = describeInput("form", isFormData);
-
-app.post("/login", validateForm, (c) => {
+app.post("/login", describeInput("form", { username: isString, password: isString }), (c) => {
   const formData = c.req.valid("form"); // { username: string; password: string }
   // ...
 });
@@ -84,14 +88,7 @@ app.post("/login", validateForm, (c) => {
 ### Query Parameters Validation
 
 ```typescript
-const isQueryParams = guard<{ page: string; limit: string }>({
-  page: "string",
-  limit: "string",
-});
-
-const validateQuery = describeInput("query", isQueryParams);
-
-app.get("/items", validateQuery, (c) => {
+app.get("/items", describeInput("query", { page: isString, limit: isString }), (c) => {
   const query = c.req.valid("query"); // { page: string; limit: string }
   // ...
 });
@@ -112,11 +109,11 @@ app.get("/items", validateQuery, (c) => {
 
 ```typescript
 // ✅ Valid
-app.get("/users", describeInput("query", isQuery), handler);
-app.post("/users", describeInput("json", isUserInput), handler);
+app.get("/users", describeInput("query", { page: isString }), handler);
+app.post("/users", describeInput("json", { name: isString }), handler);
 
 // ❌ TypeScript error - GET cannot have json body
-app.get("/users", describeInput("json", isUserInput), handler);
+app.get("/users", describeInput("json", { name: isString }), handler);
 ```
 
 ## Error Handling
@@ -155,7 +152,7 @@ const customDescribeInput = createDescribeInput({
 
 app.post(
   "/users",
-  customDescribeInput("json", isUserInput),
+  customDescribeInput("json", { name: isString, age: isNumber }),
   (c) => {
     const data = c.req.valid("json");
     return c.json({ success: true });
@@ -182,27 +179,14 @@ The callback returns an object with:
 ### Basic Transformation
 
 ```typescript
-interface RawInput {
-  hello: string;
-}
-
-interface TransformedOutput {
-  greeting: string;
-  timestamp: number;
-}
-
-const isRawInput = createTypeGuard<RawInput>({
-  hello: "string",
-});
-
 app.post(
   "/greet",
-  describeInput("json", isRawInput, (input) => ({
+  describeInput("json", { hello: isString }, (input) => ({
     greeting: `Hello, ${input.hello}!`,
     timestamp: Date.now(),
   })),
   (c) => {
-    const data = c.req.valid("json"); // Typed as TransformedOutput
+    const data = c.req.valid("json"); // Typed as { greeting: string; timestamp: number }
     return c.json({ greeting: data.greeting, timestamp: data.timestamp });
   },
 );
@@ -225,7 +209,7 @@ The transformation function receives the validated input type and can return any
 // Input: { name: string }
 // Output: { name: string; createdAt: Date; id: string }
 
-describeInput("json", isNameInput, (input) => ({
+describeInput("json", { name: isString }, (input) => ({
   ...input,
   createdAt: new Date(),
   id: crypto.randomUUID(),
@@ -237,34 +221,32 @@ describeInput("json", isNameInput, (input) => ({
 ### Nested Objects
 
 ```typescript
-interface Address {
-  street: string;
-  city: string;
-  zipCode: string;
-}
-
-interface UserWithAddress {
-  name: string;
-  address: Address;
-}
-
-const isAddress = createTypeGuard<Address>({
-  street: "string",
-  city: "string",
-  zipCode: "string",
+const isAddress = createTypeGuard({
+  street: isString,
+  city: isString,
+  zipCode: isString,
 });
 
-const isUserWithAddress = createTypeGuard<UserWithAddress>({
-  name: "string",
-  address: isAddress,
-});
-
+// Use a TypeGuard as a field value for nesting
 app.post(
   "/users",
-  describeInput("json", isUserWithAddress),
+  describeInput("json", { name: isString, address: isAddress }),
   (c) => {
     const user = c.req.valid("json");
-    // user.address.city is properly typed
+    // user.address.city is properly typed as string
+    return c.json({ success: true });
+  },
+);
+
+// Or nest shapes inline
+app.post(
+  "/users",
+  describeInput("json", {
+    name: isString,
+    address: { street: isString, city: isString, zipCode: isString },
+  }),
+  (c) => {
+    const user = c.req.valid("json");
     return c.json({ success: true });
   },
 );
@@ -275,8 +257,8 @@ app.post(
 ```typescript
 app.post(
   "/search",
-  describeInput("query", isQueryParams),
-  describeInput("json", isSearchBody),
+  describeInput("query", { q: isString, page: isString }),
+  describeInput("json", { filters: isArray.of(isString) }),
   (c) => {
     const query = c.req.valid("query");
     const body = c.req.valid("json");
@@ -286,20 +268,23 @@ app.post(
 );
 ```
 
-### Arrays and Complex Types
+### Guard Modes in Shapes
+
+Shapes support all guard modes as field values:
 
 ```typescript
-interface BatchRequest {
-  items: Array<{ id: string; quantity: number }>;
-  metadata?: Record<string, string>;
-}
-
 app.post(
-  "/batch",
-  describeInput("json", isBatchRequest),
+  "/users",
+  describeInput("json", {
+    name: isString.notEmpty,          // rejects empty strings
+    email: isString,
+    nickname: isString.optional,      // accepts undefined
+    role: isString.or(isNumber),      // union type
+    tags: isArray.of(isString),       // typed array
+  }),
   (c) => {
-    const batch = c.req.valid("json");
-    return c.json({ processed: batch.items.length });
+    const data = c.req.valid("json");
+    return c.json({ success: true });
   },
 );
 ```

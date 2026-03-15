@@ -1,7 +1,14 @@
 import { validator } from "hono/validator";
 import type { Env, MiddlewareHandler, ValidationTargets } from "hono/types";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
-import type { TypeGuard } from "@spudlabs/guardis";
+import {
+  createTypeGuard,
+  type TypeGuardShape,
+  type InferShape,
+  isFunction,
+  isObject,
+  type TypeGuard,
+} from "@spudlabs/guardis";
 
 type ValidationTargetKeysWithBody = "form" | "json";
 
@@ -43,18 +50,39 @@ type ValidationTargetByMethod<M> = M extends "get" | "head"
   : keyof ValidationTargets;
 
 /** Type of the describeInput function - preserves full Hono type inference */
-export type DescribeInputFn = <
-  ValidationType,
-  OutputType = ValidationType,
-  M extends string = string,
-  T extends ValidationTargetByMethod<M> = ValidationTargetByMethod<M>,
-  // deno-lint-ignore no-explicit-any
-  E extends Env = any,
->(
-  target: T,
-  validationFn: TypeGuard<ValidationType>,
-  transformFn?: (input: ValidationType) => OutputType,
-) => MiddlewareHandler<E, string, { in: { [K in T]: OutputType }; out: { [K in T]: OutputType } }>;
+interface DescribeInputFn {
+  // Overload 1: Shape object
+  <
+    S extends TypeGuardShape,
+    OutputType = InferShape<S>,
+    M extends string = string,
+    T extends ValidationTargetByMethod<M> = ValidationTargetByMethod<M>,
+    // deno-lint-ignore no-explicit-any
+    E extends Env = any,
+  >(
+    target: T,
+    shape: S,
+    transformFn?: (input: InferShape<S>) => OutputType,
+  ): MiddlewareHandler<E, string, { in: { [K in T]: OutputType }; out: { [K in T]: OutputType } }>;
+
+  // Overload 2: TypeGuard (existing)
+  <
+    ValidationType,
+    OutputType = ValidationType,
+    M extends string = string,
+    T extends ValidationTargetByMethod<M> = ValidationTargetByMethod<M>,
+    // deno-lint-ignore no-explicit-any
+    E extends Env = any,
+  >(
+    target: T,
+    validationFn: TypeGuard<ValidationType>,
+    transformFn?: (input: ValidationType) => OutputType,
+  ): MiddlewareHandler<E, string, { in: { [K in T]: OutputType }; out: { [K in T]: OutputType } }>;
+}
+
+function isTypeGuardShape(value: unknown): value is TypeGuardShape {
+  return isObject(value) && !isFunction(value);
+}
 
 /**
  * Creates a customized describeInput function with custom error handling.
@@ -79,12 +107,17 @@ export function createDescribeInput({ formatError }: DescribeInputOptions = {}):
   return ((
     target: keyof ValidationTargets,
     // deno-lint-ignore no-explicit-any
-    validationFn: TypeGuard<any>,
+    validationFnOrShape: TypeGuard<any> | TypeGuardShape,
     // deno-lint-ignore no-explicit-any
     transformFn?: (input: any) => any,
   ) => {
+    // Convert shape to TypeGuard so we can use .validate() uniformly
+    const guard = isTypeGuardShape(validationFnOrShape)
+      ? createTypeGuard(validationFnOrShape)
+      : validationFnOrShape;
+
     return validator(target, (value, c) => {
-      const result = validationFn.validate(value);
+      const result = guard.validate(value);
 
       if ("value" in result) {
         return transformFn ? transformFn(result.value) : result.value;

@@ -1,5 +1,6 @@
-import { assert, assertFalse, assertThrows } from "@std/assert";
+import { assert, assertEquals, assertFalse, assertThrows } from "@std/assert";
 import { extend } from "./extend.ts";
+import { isArray, isNumber, isString } from "./guard.ts";
 
 // Standard test values for consistency across all type guard tests
 const TEST_VALUES = {
@@ -237,5 +238,187 @@ Deno.test("extend iteration and chaining", async (t) => {
     assertFalse(IsTwo.Sausage.optional(TEST_VALUES.meatball));
     assertFalse(IsTwo.Meatball.optional(TEST_VALUES.nullValue));
     assertFalse(IsTwo.Sausage.optional(TEST_VALUES.nullValue));
+  });
+});
+
+Deno.test("extend with TypeGuardShape", async (t) => {
+  const Is = extend({
+    Person: { name: isString, age: isNumber },
+    Address: { street: isString, city: isString, zip: isNumber },
+  });
+
+  await t.step("basic functionality", () => {
+    assert(Is.Person({ name: "Alice", age: 30 }));
+    assert(Is.Address({ street: "123 Main", city: "Springfield", zip: 62701 }));
+
+    assertFalse(Is.Person({ name: "Alice", age: "thirty" }));
+    assertFalse(Is.Person("not an object"));
+    assertFalse(Is.Person(null));
+
+    assertFalse(Is.Address({ street: "123 Main" }));
+    assertFalse(Is.Address({ street: 123, city: "Springfield", zip: 62701 }));
+  });
+
+  await t.step("strict mode", () => {
+    Is.Person.strict({ name: "Alice", age: 30 });
+    assertThrows(() => Is.Person.strict({ name: "Alice", age: "thirty" }), TypeError);
+  });
+
+  await t.step("assert mode", () => {
+    const assertIsPerson: typeof Is.Person.assert = Is.Person.assert;
+    assertIsPerson({ name: "Alice", age: 30 });
+    assertThrows(() => assertIsPerson({ name: 123, age: 30 }), TypeError);
+  });
+
+  await t.step("optional mode", () => {
+    assert(Is.Person.optional({ name: "Alice", age: 30 }));
+    assert(Is.Person.optional(undefined));
+    assertFalse(Is.Person.optional(null));
+    assertFalse(Is.Person.optional({ name: "Alice", age: "thirty" }));
+  });
+
+  await t.step("notEmpty mode", () => {
+    assert(Is.Person.notEmpty({ name: "Alice", age: 30 }));
+    assertFalse(Is.Person.notEmpty(null));
+    assertFalse(Is.Person.notEmpty(undefined));
+    assertFalse(Is.Person.notEmpty({}));
+  });
+
+  await t.step("validate method", () => {
+    const valid = Is.Person.validate({ name: "Alice", age: 30 });
+    assert("value" in valid);
+    assertEquals(valid.value, { name: "Alice", age: 30 });
+
+    const invalid = Is.Person.validate({ name: "Alice", age: "thirty" });
+    assert("issues" in invalid && invalid.issues);
+    assert(invalid.issues.length > 0);
+  });
+
+  await t.step("or method", () => {
+    const isPersonOrString = Is.Person.or(isString);
+    assert(isPersonOrString({ name: "Alice", age: 30 }));
+    assert(isPersonOrString("hello"));
+    assertFalse(isPersonOrString(42));
+  });
+
+  await t.step("extend method", () => {
+    const isAdult = Is.Person.extend((val) => val.age >= 18 ? val : null);
+    assert(isAdult({ name: "Alice", age: 30 }));
+    assertFalse(isAdult({ name: "Charlie", age: 10 }));
+  });
+
+  await t.step("preserves built-in Is guards", () => {
+    assert(Is.String("hello"));
+    assert(Is.Number(42));
+    assert(Is.Boolean(true));
+    assert(Is.Array([1, 2]));
+    assert(Is.Object({ a: 1 }));
+  });
+});
+
+Deno.test("extend with mixed parsers and shapes", async (t) => {
+  const Is = extend({
+    Color: (v: unknown) =>
+      typeof v === "string" && ["red", "green", "blue"].includes(v) ? v : null,
+    User: { name: isString, email: isString },
+  });
+
+  await t.step("parser-based guard works", () => {
+    assert(Is.Color("red"));
+    assertFalse(Is.Color("yellow"));
+    assertFalse(Is.Color(42));
+  });
+
+  await t.step("shape-based guard works", () => {
+    assert(Is.User({ name: "Alice", email: "a@b.com" }));
+    assertFalse(Is.User({ name: "Alice" }));
+    assertFalse(Is.User({ name: 123, email: "a@b.com" }));
+  });
+
+  await t.step("both have full TypeGuard API", () => {
+    Is.Color.strict("red");
+    assertThrows(() => Is.Color.strict("yellow"), TypeError);
+
+    Is.User.strict({ name: "Alice", email: "a@b.com" });
+    assertThrows(() => Is.User.strict({ name: 123, email: "a@b.com" }), TypeError);
+
+    assert(Is.Color.optional("red"));
+    assert(Is.Color.optional(undefined));
+    assert(Is.User.optional({ name: "Alice", email: "a@b.com" }));
+    assert(Is.User.optional(undefined));
+  });
+
+  await t.step("preserves built-in Is guards alongside custom", () => {
+    assert(Is.String("hello"));
+    assert(Is.Number(42));
+    assert(Is.Color("red"));
+    assert(Is.User({ name: "Alice", email: "a@b.com" }));
+  });
+});
+
+Deno.test("extend chaining with shapes", async (t) => {
+  await t.step("second extend adds shape to existing extension", () => {
+    const Is1 = extend({
+      Color: (v: unknown) =>
+        typeof v === "string" && ["red", "green", "blue"].includes(v) ? v : null,
+    });
+
+    const Is2 = extend(Is1, {
+      Person: { name: isString, age: isNumber },
+    });
+
+    // Both guards work
+    assert(Is2.Color("red"));
+    assert(Is2.Person({ name: "Alice", age: 30 }));
+
+    // Built-ins preserved
+    assert(Is2.String("hello"));
+
+    // Original unchanged
+    assertFalse("Person" in Is1);
+  });
+
+  await t.step("chaining shape then parser", () => {
+    const Is1 = extend({
+      Person: { name: isString, age: isNumber },
+    });
+
+    const Is2 = extend(Is1, {
+      Meatball: (v: unknown) => v === "meatball" ? v : null,
+    });
+
+    assert(Is2.Person({ name: "Alice", age: 30 }));
+    assert(Is2.Meatball("meatball"));
+    assertFalse(Is2.Person({ name: 123, age: 30 }));
+    assertFalse(Is2.Meatball("sausage"));
+  });
+});
+
+Deno.test("extend with shape using guard modes as field values", async (t) => {
+  const Is = extend({
+    Form: {
+      required: isString,
+      optional: isString.optional,
+      union: isString.or(isNumber),
+      tags: isArray.of(isString),
+    },
+  });
+
+  await t.step("accepts valid input with all mode variants", () => {
+    assert(Is.Form({ required: "hello", optional: undefined, union: 42, tags: ["a"] }));
+    assert(Is.Form({ required: "hello", optional: "world", union: "text", tags: [] }));
+  });
+
+  await t.step("rejects invalid inputs per field mode", () => {
+    assertFalse(Is.Form({ required: 123, optional: undefined, union: 42, tags: ["a"] }));
+    assertFalse(Is.Form({ required: "hello", optional: 123, union: 42, tags: ["a"] }));
+    assertFalse(Is.Form({ required: "hello", optional: undefined, union: true, tags: ["a"] }));
+    assertFalse(Is.Form({ required: "hello", optional: undefined, union: 42, tags: [1] }));
+  });
+
+  await t.step("validate returns issues", () => {
+    const result = Is.Form.validate({ required: 123, optional: 456, union: true, tags: "bad" });
+    assert("issues" in result && result.issues);
+    assert(result.issues.length > 0);
   });
 });

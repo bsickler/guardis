@@ -388,6 +388,258 @@ Deno.test("createDescribeInput - default options work like describeInput", async
 // Type helper: fails compilation if T is 'any'
 type IsNotAny<T> = 0 extends 1 & T ? never : T;
 
+// --- Shape object overload tests ---
+
+Deno.test("describeInput shape - valid input returns 200", async () => {
+  const app = new Hono();
+
+  app.post("/user", describeInput("json", { name: Is.String, age: Is.Number }), (c) => {
+    return c.json({ success: true });
+  });
+
+  const res = await app.request("/user", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "John", age: 30 }),
+  });
+
+  assertEquals(res.status, 200);
+  const data = await res.json();
+  assertEquals(data, { success: true });
+});
+
+Deno.test("describeInput shape - invalid input returns 400 with paths", async () => {
+  const app = new Hono();
+
+  app.post("/user", describeInput("json", { name: Is.String, age: Is.Number }), (c) => {
+    return c.json({ success: true });
+  });
+
+  const res = await app.request("/user", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: 123, age: "invalid" }),
+  });
+
+  assertEquals(res.status, 400);
+  const data = await res.json();
+  assertEquals(data.message, "Input validation failed for target: json");
+  assertEquals(Array.isArray(data.issues), true);
+  assertEquals(data.issues.length > 0, true);
+});
+
+Deno.test("describeInput shape - nested shape validates correctly", async () => {
+  const app = new Hono();
+
+  const shape = {
+    name: Is.String,
+    address: {
+      street: Is.String,
+      city: Is.String,
+    },
+  };
+
+  app.post("/user", describeInput("json", shape), (c) => {
+    return c.json({ success: true });
+  });
+
+  // Valid nested input
+  const res = await app.request("/user", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "John", address: { street: "123 Main", city: "Springfield" } }),
+  });
+  assertEquals(res.status, 200);
+
+  // Invalid nested input
+  const res2 = await app.request("/user", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "John", address: { street: 123, city: 456 } }),
+  });
+  assertEquals(res2.status, 400);
+  const data = await res2.json();
+  assertEquals(Array.isArray(data.issues), true);
+});
+
+Deno.test("describeInput shape - optional fields pass when missing", async () => {
+  const app = new Hono();
+
+  app.post(
+    "/user",
+    describeInput("json", { name: Is.String, nickname: Is.String.optional }),
+    (c) => {
+      const user = c.req.valid("json");
+      return c.json(user);
+    },
+  );
+
+  // Missing optional field
+  const res = await app.request("/user", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "John" }),
+  });
+  assertEquals(res.status, 200);
+  const data = await res.json();
+  assertEquals(data.name, "John");
+
+  // Provided optional field
+  const res2 = await app.request("/user", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "John", nickname: "Johnny" }),
+  });
+  assertEquals(res2.status, 200);
+  const data2 = await res2.json();
+  assertEquals(data2.nickname, "Johnny");
+});
+
+Deno.test("describeInput shape - notEmpty field rejects empty string", async () => {
+  const app = new Hono();
+
+  app.post(
+    "/user",
+    describeInput("json", { name: Is.String.notEmpty }),
+    (c) => {
+      return c.json({ success: true });
+    },
+  );
+
+  // Valid non-empty string
+  const res = await app.request("/user", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "John" }),
+  });
+  assertEquals(res.status, 200);
+
+  // Empty string should fail
+  const res2 = await app.request("/user", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "" }),
+  });
+  assertEquals(res2.status, 400);
+});
+
+Deno.test("describeInput shape - transform function works", async () => {
+  const app = new Hono();
+
+  const shape = { name: Is.String, age: Is.Number };
+
+  app.post(
+    "/user",
+    describeInput("json", shape, (input) => ({ ...input, transformed: true })),
+    (c) => {
+      const user = c.req.valid("json");
+      return c.json(user);
+    },
+  );
+
+  const res = await app.request("/user", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "John", age: 30 }),
+  });
+
+  assertEquals(res.status, 200);
+  const data = await res.json();
+  assertEquals(data, { name: "John", age: 30, transformed: true });
+});
+
+Deno.test("describeInput shape - non-object input returns expected error", async () => {
+  const app = new Hono();
+
+  app.post("/user", describeInput("json", { name: Is.String }), (c) => {
+    return c.json({ success: true });
+  });
+
+  const res = await app.request("/user", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify("not an object"),
+  });
+
+  assertEquals(res.status, 400);
+  const data = await res.json();
+  assertEquals(data.issues[0].message, "Expected an object");
+});
+
+Deno.test("describeInput shape - works with createDescribeInput factory", async () => {
+  const app = new Hono();
+
+  const customDescribeInput = createDescribeInput({
+    formatError: (ctx: ValidationErrorContext) => ({
+      body: {
+        code: "VALIDATION_ERROR",
+        details: ctx.issues.map((i) => ({
+          path: i.path?.map(String).join(".") ?? "root",
+          message: i.message,
+        })),
+      },
+      status: 422,
+    }),
+  });
+
+  app.post("/user", customDescribeInput("json", { name: Is.String, age: Is.Number }), (c) => {
+    return c.json({ success: true });
+  });
+
+  const res = await app.request("/user", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: 123 }),
+  });
+
+  assertEquals(res.status, 422);
+  const data = await res.json();
+  assertEquals(data.code, "VALIDATION_ERROR");
+  assertEquals(Array.isArray(data.details), true);
+});
+
+Deno.test("describeInput shape - type inference works correctly", async () => {
+  const app = new Hono();
+
+  const shape = {
+    name: Is.String,
+    age: Is.Number,
+    address: {
+      street: Is.String,
+      city: Is.String,
+    },
+  };
+
+  app.post("/user", describeInput("json", shape), (c) => {
+    const validated = c.req.valid("json");
+
+    // This line will fail to compile if validated is 'any'
+    const _typeCheck: IsNotAny<typeof validated> = validated;
+
+    // These assignments verify the specific type structure
+    const name: string = validated.name;
+    const age: number = validated.age;
+    const street: string = validated.address.street;
+    const city: string = validated.address.city;
+
+    return c.json({ name, age, street, city });
+  });
+
+  const res = await app.request("/user", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: "John",
+      age: 30,
+      address: { street: "123 Main St", city: "Springfield" },
+    }),
+  });
+
+  assertEquals(res.status, 200);
+  const data = await res.json();
+  assertEquals(data, { name: "John", age: 30, street: "123 Main St", city: "Springfield" });
+});
+
 Deno.test("describeInput - type inference preserves validated type", async () => {
   const app = new Hono();
 
