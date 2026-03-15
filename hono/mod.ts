@@ -51,21 +51,10 @@ type ValidationTargetByMethod<M> = M extends "get" | "head"
 
 /** Type of the describeInput function - preserves full Hono type inference */
 interface DescribeInputFn {
-  // Overload 1: Shape object
-  <
-    S extends TypeGuardShape,
-    OutputType = InferShape<S>,
-    M extends string = string,
-    T extends ValidationTargetByMethod<M> = ValidationTargetByMethod<M>,
-    // deno-lint-ignore no-explicit-any
-    E extends Env = any,
-  >(
-    target: T,
-    shape: S,
-    transformFn?: (input: InferShape<S>) => OutputType,
-  ): MiddlewareHandler<E, string, { in: { [K in T]: OutputType }; out: { [K in T]: OutputType } }>;
-
-  // Overload 2: TypeGuard (existing)
+  // Overload 1: TypeGuard — must come first because TypeGuard is callable with
+  // properties (including ~standard from StandardSchemaV1), and TypeScript resolves
+  // overloads top-to-bottom. If the Shape overload were first, TypeGuard's structural
+  // shape could partially match the index signature, causing incorrect inference.
   <
     ValidationType,
     OutputType = ValidationType,
@@ -77,6 +66,20 @@ interface DescribeInputFn {
     target: T,
     validationFn: TypeGuard<ValidationType>,
     transformFn?: (input: ValidationType) => OutputType,
+  ): MiddlewareHandler<E, string, { in: { [K in T]: OutputType }; out: { [K in T]: OutputType } }>;
+
+  // Overload 2: Shape object
+  <
+    S extends TypeGuardShape,
+    OutputType = InferShape<S>,
+    M extends string = string,
+    T extends ValidationTargetByMethod<M> = ValidationTargetByMethod<M>,
+    // deno-lint-ignore no-explicit-any
+    E extends Env = any,
+  >(
+    target: T,
+    shape: S,
+    transformFn?: (input: InferShape<S>) => OutputType,
   ): MiddlewareHandler<E, string, { in: { [K in T]: OutputType }; out: { [K in T]: OutputType } }>;
 }
 
