@@ -267,9 +267,21 @@ export interface TypeGuard<T1> extends StandardSchemaV1<T1> {
 /** Helper type to extract the guarded type from a TypeGuard */
 export type GuardedType<G> = G extends TypeGuard<infer T> ? T : never;
 
-/** A record describing various types and their parsers. This can be used to generate
+/** A named parser entry with an explicit name for error messages. */
+export type NamedParser = { parse: Parser; name: string };
+
+/** A single entry in a ParserRecords config: a parser function, a named parser, or a shape. */
+export type ParserEntry = Parser | NamedParser | TypeGuardShape;
+
+/** A record describing various types and their parsers or shapes. This can be used to generate
  * a customized Is dictionary. */
-export type ParserRecords = Record<string, Parser | { parse: Parser; name: string }>;
+export type ParserRecords = Record<string, ParserEntry>;
+
+/** Infers the guarded type from a ParserEntry (parser function, named parser, or shape). */
+export type InferEntry<P> = P extends Parser<infer T> ? T
+  : P extends NamedParser ? (P["parse"] extends Parser<infer T> ? T : never)
+  : P extends TypeGuardShape ? InferShape<P>
+  : never;
 
 /** Any valid primitive json value. */
 export type JsonPrimitive = string | number | boolean | null;
@@ -315,3 +327,21 @@ export type CanBeEmpty<T> = T extends
 
 /** Utility type to determine if a type is extensible */
 export type IsExtensible<T> = T extends null | undefined ? false : true;
+
+/** A guard predicate function — broad enough for TypeGuard, .optional, .notEmpty, and custom guards */
+// deno-lint-ignore no-explicit-any
+export type TypeGuardPredicate = ((value: unknown) => boolean) & { validate?: (value: unknown) => any };
+
+/** A shape object mapping property names to guard predicates or nested shapes */
+export type TypeGuardShape = { [key: string]: TypeGuardPredicate | TypeGuardShape };
+
+/** Cosmetic type flattener for IDE tooltips */
+// deno-lint-ignore ban-types
+export type Simplify<T> = { [K in keyof T]: T[K] } & {};
+
+/** Recursively infers the TypeScript type from a TypeGuardShape */
+export type InferShape<S extends TypeGuardShape> = Simplify<{
+  [K in keyof S]: S[K] extends (value: unknown) => value is infer T ? T
+    : S[K] extends TypeGuardShape ? InferShape<S[K]>
+    : never;
+}>;

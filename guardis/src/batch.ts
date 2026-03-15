@@ -1,15 +1,9 @@
-import type { Parser, ParserRecords } from "./types.ts";
-import { createTypeGuard } from "./guard.ts";
+import type { InferEntry, ParserRecords, TypeGuard } from "./types.ts";
+import { entryToGuard } from "./guard.ts";
 import { toPascalCase } from "./helpers/strings.helpers.ts";
 
-type GetParserReturnType<P> = P extends Parser<infer T> ? T
-  : P extends { parse: Parser<infer T> } ? T
-  : never;
-
 type GuardRecords<E extends ParserRecords, K extends keyof E = keyof E> = {
-  [key in K as `is${Capitalize<key & string>}`]: ReturnType<
-    typeof createTypeGuard<GetParserReturnType<E[key]>>
-  >;
+  [key in K as `is${Capitalize<key & string>}`]: TypeGuard<InferEntry<E[key]>>;
 };
 
 /**
@@ -30,14 +24,7 @@ type GuardRecords<E extends ParserRecords, K extends keyof E = keyof E> = {
  */
 export function batch<B extends ParserRecords>(config: B): GuardRecords<B> {
   const entries = Object.entries(config)
-    .map((
-      [name, parser],
-    ) => [
-      `is${toPascalCase(name)}`,
-      typeof parser === "function"
-        ? createTypeGuard(parser)
-        : createTypeGuard(parser.name, parser.parse),
-    ]);
+    .map(([name, entry]) => [`is${toPascalCase(name)}`, entryToGuard(entry)]);
 
   return Object.fromEntries(entries);
 }

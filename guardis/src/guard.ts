@@ -9,19 +9,23 @@ import type {
   Context,
   ExtendedParser,
   HelpersWithContext,
+  InferShape,
   IsExtensible,
   JsonArray,
   JsonObject,
   JsonPrimitive,
   JsonValue,
+  NamedParser,
   Parser,
+  ParserEntry,
   Predicate,
   StrictTypeGuard,
   TupleOfLength,
   TypeGuard,
+  TypeGuardShape,
 } from "./types.ts";
 import { createContext, createStrictContext } from "./context.ts";
-import { type GuardMeta, hasContext, hasName } from "./introspect.ts";
+import { type GuardMeta, type GuardWithContext, hasContext, hasName } from "./introspect.ts";
 import {
   doesNotHaveProperty,
   formatErrorMessage,
@@ -32,7 +36,6 @@ import {
   tupleHas,
   unionOf,
 } from "./utilities.ts";
-
 
 /**
  * Creates a helpers object for use in type guard parsers.
@@ -61,6 +64,129 @@ function createHelpers(ctx?: Context): HelpersWithContext {
 
 /** Default helpers for boolean type guard calls (no validation context) */
 const defaultHelpers = createHelpers();
+
+/**
+ * Checks if a value is a TypeGuardShape object (plain object, not a function).
+ * Uses raw checks instead of isObject/isFunction to avoid temporal dead zone
+ * issues — this function is called during createTypeGuard's implementation,
+ * which runs before isObject and isFunction are initialized.
+ */
+function isTypeGuardShape(value: unknown): value is TypeGuardShape {
+  return typeof value === "object" && value !== null && !Array.isArray(value) &&
+    typeof value !== "function";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Adds issues from a guard result to the context if not already tracked. */
+function propagateIssues(
+  issues: ReadonlyArray<StandardSchemaV1.Issue>,
+  key: string,
+  ctx: Context,
+): void {
+  for (const issue of issues) {
+    const alreadyTracked = ctx.issues.some((i) =>
+      i.message === issue.message &&
+      JSON.stringify(i.path) === JSON.stringify(issue.path)
+    );
+    if (!alreadyTracked) {
+      ctx.issues.push({ message: issue.message, path: issue.path ?? [key] });
+    }
+  }
+}
+
+/**
+ * Validates a single shape field against its guard.
+ * When ctx is provided, issues are pushed to the shared context.
+ * When ctx is absent, issues are collected into localIssues.
+ */
+function validateField(
+  obj: Record<string, unknown>,
+  key: string,
+  guard: TypeGuardShape[string],
+  ctx: Context | undefined,
+  localIssues: StandardSchemaV1.Issue[],
+  result: Record<string, unknown>,
+): void {
+  const childCtx = ctx?.pushPath(key);
+
+  // Nested shape — recurse
+  if (isTypeGuardShape(guard)) {
+    const r = validateShape(obj[key], guard, childCtx);
+
+    if ("value" in r) {
+      result[key] = r.value;
+    } else if (!childCtx) {
+      localIssues.push(...r.issues);
+    }
+
+    return;
+  }
+
+  if (typeof guard !== "function") return;
+
+  // Context-aware guard (TypeGuard with _.context)
+  if (hasContext(guard as Predicate<unknown>)) {
+    const guardCtx = childCtx ?? createContext([key]);
+
+    const r = (guard as unknown as GuardWithContext<unknown>)._.context(obj[key], guardCtx);
+    if ("value" in r) {
+      result[key] = r.value;
+    } else if (childCtx) {
+      propagateIssues(r.issues, key, ctx!);
+    } else {
+      localIssues.push(...r.issues);
+    }
+
+    return;
+  }
+
+  // Plain boolean guard
+  if (guard(obj[key])) {
+    result[key] = obj[key];
+    return;
+  }
+
+  const message = `Validation failed for property "${String(key)}"`;
+  if (childCtx) {
+    childCtx.addIssue(message);
+  } else {
+    localIssues.push({ message, path: [key] });
+  }
+}
+
+/**
+ * Recursively validates a value against a TypeGuardShape.
+ * When ctx is provided, issues are pushed to the shared context for path tracking.
+ * When ctx is absent, issues are collected locally and returned.
+ */
+function validateShape(
+  value: unknown,
+  shape: TypeGuardShape,
+  ctx?: Context,
+): StandardSchemaV1.Result<Record<string, unknown>> {
+  if (!isRecord(value)) {
+    const message = "Expected an object";
+
+    if (!ctx) return { issues: [{ message }] };
+
+    ctx.addIssue(message);
+    return { issues: ctx.issues };
+  }
+
+  const result: Record<string, unknown> = {};
+  const localIssues: StandardSchemaV1.Issue[] = [];
+
+  for (const key of Object.keys(shape)) {
+    validateField(value, key, shape[key], ctx, localIssues, result);
+  }
+
+  const issues = ctx ? ctx.issues : localIssues;
+
+  return issues.length > 0 ? { issues } : { value: result };
+}
 
 /**
  * Creates a type guard that strictly checks the type, throwing
@@ -126,10 +252,8 @@ const createOrTypeGuard =
   };
 
 /**
- * Returns false if the value fails the "empty" type guard
- * or if it fails the parser.
- * @param {unknown} value
- * @returns
+ * Creates a notEmpty variant of a type guard that rejects empty values
+ * (null, undefined, empty string, empty array, empty object).
  */
 const createNotEmptyTypeGuard = <T>(guard: Predicate<T>) => {
   const notEmpty = (value: unknown): value is T => !isEmpty(value) && guard(value);
@@ -205,9 +329,46 @@ export function createTypeGuard<T1>(parser: Parser<T1>): TypeGuard<T1>;
  * ```
  */
 export function createTypeGuard<T1>(name: string, parser: Parser<T1>): TypeGuard<T1>;
-export function createTypeGuard<T1>(...args: [Parser<T1>] | [string, Parser<T1>]): TypeGuard<T1> {
-  const parser = args.length === 1 ? args[0] : args[1];
-  const name = args.length === 2 ? args[0] : undefined;
+/**
+ * Creates a type guard from a shape object.
+ *
+ * The shape maps property names to guard predicates or nested shapes.
+ * The resulting type guard validates that an object matches the shape.
+ *
+ * @param shape A shape object mapping keys to guards or nested shapes.
+ * @returns A type guard function with utility methods.
+ *
+ * @example
+ * ```typescript
+ * const isUser = createTypeGuard({ name: isString, age: isNumber });
+ * ```
+ */
+export function createTypeGuard<S extends TypeGuardShape>(shape: S): TypeGuard<InferShape<S>>;
+/**
+ * Creates a type guard from a shape object with a custom type name.
+ *
+ * @param name The type name to use for error messages.
+ * @param shape A shape object mapping keys to guards or nested shapes.
+ * @returns A type guard function with utility methods.
+ */
+export function createTypeGuard<S extends TypeGuardShape>(
+  name: string,
+  shape: S,
+): TypeGuard<InferShape<S>>;
+export function createTypeGuard<T1>(
+  ...args: [Parser<T1> | TypeGuardShape] | [string, Parser<T1> | TypeGuardShape]
+): TypeGuard<T1> {
+  const parserOrShape = args.length === 1 ? args[0] : args[1];
+  const name = args.length === 2 ? args[0] as string : undefined;
+
+  // Convert shape to parser, then continue with normal guard creation
+  const parser: Parser<T1> = isTypeGuardShape(parserOrShape)
+    ? (val, helpers) => {
+      const ctx = (helpers as HelpersWithContext)._ctx;
+      const result = validateShape(val, parserOrShape, ctx);
+      return "value" in result ? result.value as T1 : null;
+    }
+    : parserOrShape as Parser<T1>;
 
   /**
    * Internal validation method that accepts a context for path tracking.
@@ -323,6 +484,24 @@ export function createTypeGuard<T1>(...args: [Parser<T1>] | [string, Parser<T1>]
 
   // Attach the type to the function for easy access
   return (<T1>(t: unknown): TypeGuard<T1> => t as TypeGuard<T1>)(callback);
+}
+
+function isParser(entry: ParserEntry): entry is Parser {
+  return typeof entry === "function";
+}
+
+function isNamedParser(entry: ParserEntry): entry is NamedParser {
+  return typeof entry === "object" && "parse" in entry && typeof entry.parse === "function";
+}
+
+/**
+ * Converts a ParserEntry (parser function, named parser object, or shape) into a TypeGuard.
+ * Shared by `batch` and `extend` to avoid duplicating entry detection logic.
+ */
+export function entryToGuard(entry: ParserEntry): TypeGuard<unknown> {
+  if (isParser(entry)) return createTypeGuard(entry);
+  if (isNamedParser(entry)) return createTypeGuard(entry.name, entry.parse);
+  return createTypeGuard(entry);
 }
 
 /**

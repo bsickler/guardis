@@ -1,7 +1,14 @@
 import { validator } from "hono/validator";
 import type { Env, MiddlewareHandler, ValidationTargets } from "hono/types";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
-import { isArray, isFunction, isObject, type TypeGuard } from "@spudlabs/guardis";
+import {
+  createTypeGuard,
+  type TypeGuardShape,
+  type InferShape,
+  isFunction,
+  isObject,
+  type TypeGuard,
+} from "@spudlabs/guardis";
 
 type ValidationTargetKeysWithBody = "form" | "json";
 
@@ -42,28 +49,11 @@ type ValidationTargetByMethod<M> = M extends "get" | "head"
   ? Exclude<keyof ValidationTargets, ValidationTargetKeysWithBody>
   : keyof ValidationTargets;
 
-// deno-lint-ignore no-explicit-any
-type GuardPredicate = ((value: unknown) => boolean) & { validate?: (value: unknown) => any };
-
-/** A shape object mapping property names to guard predicates or nested shapes. */
-export type GuardShape = { [key: string]: GuardPredicate | GuardShape };
-
-// deno-lint-ignore ban-types
-type Simplify<T> = { [K in keyof T]: T[K] } & {};
-
-/** Infers the validated type from a GuardShape. */
-type InferShape<S extends GuardShape> = Simplify<{
-  [K in keyof S]: S[K] extends TypeGuard<infer T> ? T
-    : S[K] extends (value: unknown) => value is infer T ? T
-    : S[K] extends GuardShape ? InferShape<S[K]>
-    : never;
-}>;
-
 /** Type of the describeInput function - preserves full Hono type inference */
 interface DescribeInputFn {
   // Overload 1: Shape object
   <
-    S extends GuardShape,
+    S extends TypeGuardShape,
     OutputType = InferShape<S>,
     M extends string = string,
     T extends ValidationTargetByMethod<M> = ValidationTargetByMethod<M>,
@@ -90,60 +80,8 @@ interface DescribeInputFn {
   ): MiddlewareHandler<E, string, { in: { [K in T]: OutputType }; out: { [K in T]: OutputType } }>;
 }
 
-function isGuardShape(value: unknown): value is GuardShape {
+function isTypeGuardShape(value: unknown): value is TypeGuardShape {
   return isObject(value) && !isFunction(value);
-}
-
-function validateShape(
-  value: unknown,
-  shape: GuardShape,
-  path: PropertyKey[] = [],
-): { value: Record<string, unknown> } | { issues: ValidationIssue[] } {
-  if (!isObject(value) || isArray(value)) {
-    return { issues: [{ message: "Expected an object", path: [...path] }] };
-  }
-  const obj = value as Record<string, unknown>;
-  const result: Record<string, unknown> = {};
-  const issues: ValidationIssue[] = [];
-
-  for (const key of Object.keys(shape)) {
-    const guard = shape[key];
-    const currentPath = [...path, key];
-
-    if (isFunction(guard)) {
-      if ("validate" in guard && isFunction(guard.validate)) {
-        const r = guard.validate(obj[key]);
-        if ("value" in r) {
-          result[key] = r.value;
-        } else {
-          for (const issue of r.issues) {
-            issues.push({
-              message: issue.message,
-              path: issue.path ? [...currentPath, ...issue.path] : currentPath,
-            });
-          }
-        }
-      } else {
-        if (guard(obj[key])) {
-          result[key] = obj[key];
-        } else {
-          issues.push({
-            message: `Validation failed for property "${String(key)}"`,
-            path: currentPath,
-          });
-        }
-      }
-    } else {
-      const r = validateShape(obj[key], guard, currentPath);
-      if ("value" in r) {
-        result[key] = r.value;
-      } else {
-        issues.push(...r.issues);
-      }
-    }
-  }
-
-  return issues.length > 0 ? { issues } : { value: result };
 }
 
 /**
@@ -169,14 +107,17 @@ export function createDescribeInput({ formatError }: DescribeInputOptions = {}):
   return ((
     target: keyof ValidationTargets,
     // deno-lint-ignore no-explicit-any
-    validationFnOrShape: TypeGuard<any> | GuardShape,
+    validationFnOrShape: TypeGuard<any> | TypeGuardShape,
     // deno-lint-ignore no-explicit-any
     transformFn?: (input: any) => any,
   ) => {
+    // Convert shape to TypeGuard so we can use .validate() uniformly
+    const guard = isTypeGuardShape(validationFnOrShape)
+      ? createTypeGuard(validationFnOrShape)
+      : validationFnOrShape;
+
     return validator(target, (value, c) => {
-      const result = isGuardShape(validationFnOrShape)
-        ? validateShape(value, validationFnOrShape)
-        : validationFnOrShape.validate(value);
+      const result = guard.validate(value);
 
       if ("value" in result) {
         return transformFn ? transformFn(result.value) : result.value;
