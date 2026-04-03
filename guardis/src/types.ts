@@ -142,10 +142,18 @@ export interface TypeGuard<T1> extends StandardSchemaV1<T1> {
    * @param {Function} parse An additional parser to further validate the type.
    * @returns {Function} A new type guard that combines the original and additional parsers.
    */
-  extend: IsExtensible<T1> extends false ? never : {
-    <T2 extends T1>(parse: ExtendedParser<T1, T2>): TypeGuard<T2>;
-    <T2 extends T1>(name: string, parse: ExtendedParser<T1, T2>): TypeGuard<T2>;
-  };
+  extend: IsExtensible<T1> extends false ? never
+    : T1 extends Record<string, unknown>
+      ? {
+          <S extends TypeGuardShape>(shape: S): TypeGuard<T1 & InferShape<S>>;
+          <S extends TypeGuardShape>(name: string, shape: S): TypeGuard<T1 & InferShape<S>>;
+          <T2 extends T1>(parse: ExtendedParser<T1, T2>): TypeGuard<T2>;
+          <T2 extends T1>(name: string, parse: ExtendedParser<T1, T2>): TypeGuard<T2>;
+        }
+      : {
+          <T2 extends T1>(parse: ExtendedParser<T1, T2>): TypeGuard<T2>;
+          <T2 extends T1>(name: string, parse: ExtendedParser<T1, T2>): TypeGuard<T2>;
+        };
   optional: {
     /**
      * A type guard that checks if the value is either undefined or of type T.
@@ -181,6 +189,19 @@ export interface TypeGuard<T1> extends StandardSchemaV1<T1> {
      * @returns Asserts that the value is of type T
      */
     assert: (value: unknown, errorMsg?: string) => asserts value is T1 | undefined;
+    /**
+     * Validates the value against the schema, accepting undefined as valid.
+     * @param value The value to validate
+     * @returns A success result with the value (including undefined), or a failure result with issues.
+     */
+    validate: (value: unknown) => StandardSchemaV1.Result<T1 | undefined>;
+    /**
+     * A type guard function that checks if the value is of type T1 | undefined | T2.
+     * This is useful for creating unions of types.
+     * @param guard A type guard for T2
+     * @returns A new type guard that checks if the value is of type T1 | undefined | T2
+     */
+    or: <T2>(guard: Predicate<T2>) => TypeGuard<T1 | undefined | T2>;
     /**
      * A type guard that checks if the value is not empty and of type T | undefined.
      * An empty value is defined as null, an empty string, an empty array,
