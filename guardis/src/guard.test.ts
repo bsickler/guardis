@@ -3366,990 +3366,992 @@ Deno.test("Strict mode error messaging", async (t) => {
 // These tests verify that shape-created guards have complete functional parity
 // with parser-created guards across all TypeGuard features.
 
-Deno.test("createTypeGuard shape - basic boolean guard behavior", async (t) => {
-  // Parser-based equivalent for comparison
-  const isPersonParser = createTypeGuard<{ name: string; age: number }>(
-    "Person",
-    (v, { has }) => isObject(v) && has(v, "name", isString) && has(v, "age", isNumber) ? v : null,
-  );
-
-  // Shape-based equivalent
-  const isPersonShape = createTypeGuard({ name: isString, age: isNumber });
-
-  const valid = { name: "Alice", age: 30 };
-  const missingAge = { name: "Alice" };
-  const wrongType = { name: "Alice", age: "thirty" };
-  const notAnObject = "not an object";
-  const extraFields = { name: "Alice", age: 30, email: "alice@example.com" };
-
-  await t.step("valid objects pass both", () => {
-    assert(isPersonParser(valid));
-    assert(isPersonShape(valid));
-  });
-
-  await t.step("objects with extra fields pass both", () => {
-    assert(isPersonParser(extraFields));
-    assert(isPersonShape(extraFields));
-  });
-
-  await t.step("missing properties fail both", () => {
-    assertFalse(isPersonParser(missingAge));
-    assertFalse(isPersonShape(missingAge));
-  });
-
-  await t.step("wrong property types fail both", () => {
-    assertFalse(isPersonParser(wrongType));
-    assertFalse(isPersonShape(wrongType));
-  });
-
-  await t.step("non-objects fail both", () => {
-    assertFalse(isPersonParser(notAnObject));
-    assertFalse(isPersonShape(notAnObject));
-    assertFalse(isPersonParser(null));
-    assertFalse(isPersonShape(null));
-    assertFalse(isPersonParser(undefined));
-    assertFalse(isPersonShape(undefined));
-    assertFalse(isPersonParser(42));
-    assertFalse(isPersonShape(42));
-    assertFalse(isPersonParser([1, 2]));
-    assertFalse(isPersonShape([1, 2]));
-  });
-});
-
-Deno.test("createTypeGuard shape - validate method", async (t) => {
-  const isPersonShape = createTypeGuard({ name: isString, age: isNumber });
-
-  await t.step("valid input returns value", () => {
-    const result = isPersonShape.validate({ name: "Alice", age: 30 });
-    assert("value" in result);
-    assertEquals(result.value, { name: "Alice", age: 30 });
-  });
-
-  await t.step("invalid property type returns issues with path", () => {
-    const result = isPersonShape.validate({ name: "Alice", age: "thirty" });
-    assert("issues" in result && result.issues);
-    assert(result.issues.length > 0);
-    // Should contain path information pointing to the failing field
-    const ageIssue = result.issues.find((i) =>
-      i.path && (i.path as PropertyKey[]).includes("age")
+Deno.test("createTypeGuard shape", async (t) => {
+  await t.step("basic boolean guard behavior", async (t) => {
+    // Parser-based equivalent for comparison
+    const isPersonParser = createTypeGuard<{ name: string; age: number }>(
+      "Person",
+      (v, { has }) => isObject(v) && has(v, "name", isString) && has(v, "age", isNumber) ? v : null,
     );
-    assert(ageIssue, "Expected an issue with path containing 'age'");
-  });
 
-  await t.step("missing property returns issues with path", () => {
-    const result = isPersonShape.validate({ name: "Alice" });
-    assert("issues" in result && result.issues);
-    assert(result.issues.length > 0);
-  });
+    // Shape-based equivalent
+    const isPersonShape = createTypeGuard({ name: isString, age: isNumber });
 
-  await t.step("non-object returns issues", () => {
-    const result = isPersonShape.validate("not an object");
-    assert("issues" in result && result.issues);
-    assert(result.issues.length > 0);
+    const valid = { name: "Alice", age: 30 };
+    const missingAge = { name: "Alice" };
+    const wrongType = { name: "Alice", age: "thirty" };
+    const notAnObject = "not an object";
+    const extraFields = { name: "Alice", age: 30, email: "alice@example.com" };
 
-    const nullResult = isPersonShape.validate(null);
-    assert("issues" in nullResult);
-
-    const arrayResult = isPersonShape.validate([1, 2]);
-    assert("issues" in arrayResult);
-  });
-
-  await t.step("multiple invalid fields produce multiple issues", () => {
-    const result = isPersonShape.validate({ name: 123, age: "thirty" });
-    assert("issues" in result && result.issues);
-    assert(result.issues.length >= 2, `Expected at least 2 issues, got ${result.issues.length}`);
-  });
-});
-
-Deno.test("createTypeGuard shape - strict mode", async (t) => {
-  const isPersonShape = createTypeGuard({ name: isString, age: isNumber });
-
-  await t.step("valid input does not throw", () => {
-    isPersonShape.strict({ name: "Alice", age: 30 });
-  });
-
-  await t.step("invalid input throws TypeError", () => {
-    assertThrows(
-      () => isPersonShape.strict({ name: "Alice", age: "thirty" }),
-      TypeError,
-    );
-  });
-
-  await t.step("non-object input throws TypeError", () => {
-    assertThrows(() => isPersonShape.strict("not an object"), TypeError);
-    assertThrows(() => isPersonShape.strict(null), TypeError);
-    assertThrows(() => isPersonShape.strict(undefined), TypeError);
-  });
-
-  await t.step("custom error message overrides on non-object input", () => {
-    // Custom error message is used when the parser returns null without
-    // the strict context throwing first (e.g. non-object input)
-    assertThrows(
-      () => isPersonShape.strict(42, "Custom error"),
-      TypeError,
-    );
-  });
-
-  await t.step("field-level errors include path info", () => {
-    // For object inputs with invalid fields, strict mode throws with
-    // the specific field error and path information
-    try {
-      isPersonShape.strict({ name: "Alice", age: "thirty" });
-      assert(false, "Expected to throw");
-    } catch (e) {
-      assert(e instanceof TypeError);
-      assert(e.message.includes("at path: age"), `Expected path in error, got: ${e.message}`);
-    }
-  });
-});
-
-Deno.test("createTypeGuard shape - assert mode", async (t) => {
-  const isPersonShape = createTypeGuard({ name: isString, age: isNumber });
-
-  await t.step("valid input does not throw", () => {
-    const assertIsPerson: typeof isPersonShape.assert = isPersonShape.assert;
-    assertIsPerson({ name: "Alice", age: 30 });
-  });
-
-  await t.step("invalid input throws TypeError", () => {
-    const assertIsPerson: typeof isPersonShape.assert = isPersonShape.assert;
-    assertThrows(
-      () => assertIsPerson({ name: "Alice", age: "thirty" }),
-      TypeError,
-    );
-  });
-});
-
-Deno.test("createTypeGuard shape - optional mode", async (t) => {
-  const isPersonShape = createTypeGuard({ name: isString, age: isNumber });
-
-  await t.step("valid input returns true", () => {
-    assert(isPersonShape.optional({ name: "Alice", age: 30 }));
-  });
-
-  await t.step("undefined returns true", () => {
-    assert(isPersonShape.optional(undefined));
-  });
-
-  await t.step("invalid input returns false", () => {
-    assertFalse(isPersonShape.optional({ name: "Alice", age: "thirty" }));
-    assertFalse(isPersonShape.optional(null));
-    assertFalse(isPersonShape.optional("string"));
-    assertFalse(isPersonShape.optional(42));
-  });
-
-  await t.step("optional.strict - valid input does not throw", () => {
-    isPersonShape.optional.strict({ name: "Alice", age: 30 });
-    isPersonShape.optional.strict(undefined);
-  });
-
-  await t.step("optional.strict - invalid input throws", () => {
-    assertThrows(
-      () => isPersonShape.optional.strict({ name: "Alice", age: "thirty" }),
-      TypeError,
-    );
-    assertThrows(() => isPersonShape.optional.strict(null), TypeError);
-  });
-
-  await t.step("optional.assert works", () => {
-    const assertFn: typeof isPersonShape.optional.assert = isPersonShape.optional.assert;
-    assertFn({ name: "Alice", age: 30 });
-    assertFn(undefined);
-    assertThrows(() => assertFn(42), TypeError);
-  });
-});
-
-Deno.test("createTypeGuard shape - notEmpty mode", async (t) => {
-  const isPersonShape = createTypeGuard({ name: isString, age: isNumber });
-
-  await t.step("valid non-empty object returns true", () => {
-    assert(isPersonShape.notEmpty({ name: "Alice", age: 30 }));
-  });
-
-  await t.step("empty-like values return false", () => {
-    assertFalse(isPersonShape.notEmpty(null));
-    assertFalse(isPersonShape.notEmpty(undefined));
-    assertFalse(isPersonShape.notEmpty({}));
-  });
-
-  await t.step("invalid object returns false", () => {
-    assertFalse(isPersonShape.notEmpty({ name: 123, age: "thirty" }));
-  });
-
-  await t.step("notEmpty.strict works", () => {
-    isPersonShape.notEmpty.strict({ name: "Alice", age: 30 });
-    assertThrows(() => isPersonShape.notEmpty.strict(null), TypeError);
-    assertThrows(() => isPersonShape.notEmpty.strict({}), TypeError);
-  });
-
-  await t.step("notEmpty.validate works", () => {
-    const valid = isPersonShape.notEmpty.validate({ name: "Alice", age: 30 });
-    assert("value" in valid);
-
-    const invalid = isPersonShape.notEmpty.validate({});
-    assert("issues" in invalid);
-  });
-
-  await t.step("notEmpty.or works", () => {
-    const isPersonOrString = isPersonShape.notEmpty.or(isString);
-    assert(isPersonOrString({ name: "Alice", age: 30 }));
-    assert(isPersonOrString("hello"));
-    assertFalse(isPersonOrString(null));
-    assertFalse(isPersonOrString({}));
-  });
-
-  await t.step("notEmpty.optional works", () => {
-    assert(isPersonShape.notEmpty.optional({ name: "Alice", age: 30 }));
-    assert(isPersonShape.notEmpty.optional(undefined));
-    assertFalse(isPersonShape.notEmpty.optional(null));
-    assertFalse(isPersonShape.notEmpty.optional({}));
-  });
-});
-
-Deno.test("createTypeGuard shape - or method", async (t) => {
-  const isPersonShape = createTypeGuard({ name: isString, age: isNumber });
-
-  await t.step("union with primitive guard", () => {
-    const isPersonOrString = isPersonShape.or(isString);
-
-    assert(isPersonOrString({ name: "Alice", age: 30 }));
-    assert(isPersonOrString("hello"));
-    assertFalse(isPersonOrString(42));
-    assertFalse(isPersonOrString(null));
-  });
-
-  await t.step("union with another shape guard", () => {
-    const isAddressShape = createTypeGuard({ street: isString, city: isString });
-    const isPersonOrAddress = isPersonShape.or(isAddressShape);
-
-    assert(isPersonOrAddress({ name: "Alice", age: 30 }));
-    assert(isPersonOrAddress({ street: "123 Main St", city: "Springfield" }));
-    assertFalse(isPersonOrAddress({ foo: "bar" }));
-    assertFalse(isPersonOrAddress(42));
-  });
-
-  await t.step("chained unions", () => {
-    const isPersonOrStringOrNumber = isPersonShape.or(isString).or(isNumber);
-
-    assert(isPersonOrStringOrNumber({ name: "Alice", age: 30 }));
-    assert(isPersonOrStringOrNumber("hello"));
-    assert(isPersonOrStringOrNumber(42));
-    assertFalse(isPersonOrStringOrNumber(null));
-    assertFalse(isPersonOrStringOrNumber(true));
-  });
-
-  await t.step("all modes work on union guards", () => {
-    const isPersonOrString = isPersonShape.or(isString);
-
-    // Strict
-    isPersonOrString.strict({ name: "Alice", age: 30 });
-    isPersonOrString.strict("hello");
-    assertThrows(() => isPersonOrString.strict(42), TypeError);
-
-    // Optional
-    assert(isPersonOrString.optional({ name: "Alice", age: 30 }));
-    assert(isPersonOrString.optional("hello"));
-    assert(isPersonOrString.optional(undefined));
-    assertFalse(isPersonOrString.optional(42));
-
-    // NotEmpty
-    assert(isPersonOrString.notEmpty({ name: "Alice", age: 30 }));
-    assert(isPersonOrString.notEmpty("hello"));
-    assertFalse(isPersonOrString.notEmpty(""));
-    assertFalse(isPersonOrString.notEmpty(null));
-  });
-});
-
-Deno.test("createTypeGuard shape - extend method", async (t) => {
-  const isPersonShape = createTypeGuard({ name: isString, age: isNumber });
-
-  await t.step("basic extension narrows the type", () => {
-    const isAdult = isPersonShape.extend((val) => {
-      return val.age >= 18 ? val : null;
+    await t.step("valid objects pass both", () => {
+      assert(isPersonParser(valid));
+      assert(isPersonShape(valid));
     });
 
-    assert(isAdult({ name: "Alice", age: 30 }));
-    assert(isAdult({ name: "Bob", age: 18 }));
-    assertFalse(isAdult({ name: "Charlie", age: 17 }));
-    assertFalse(isAdult({ name: "Dave", age: -1 }));
-
-    // Base validation still applies
-    assertFalse(isAdult({ name: 123, age: 30 }));
-    assertFalse(isAdult("not an object"));
-  });
-
-  await t.step("chained extensions", () => {
-    const isAdult = isPersonShape.extend((val) => val.age >= 18 ? val : null);
-    const isNamedAdult = isAdult.extend((val) => val.name.length > 0 ? val : null);
-
-    assert(isNamedAdult({ name: "Alice", age: 30 }));
-    assertFalse(isNamedAdult({ name: "", age: 30 }));
-    assertFalse(isNamedAdult({ name: "Alice", age: 10 }));
-  });
-
-  await t.step("named extension", () => {
-    const isAdult = isPersonShape.extend("Adult", (val) => val.age >= 18 ? val : null);
-
-    assert(isAdult({ name: "Alice", age: 30 }));
-    assertThrows(
-      () => isAdult.strict({ name: "Alice", age: 10 }),
-      TypeError,
-      "Expected Adult",
-    );
-  });
-
-  await t.step("all modes work on extended shape guards", () => {
-    const isAdult = isPersonShape.extend((val) => val.age >= 18 ? val : null);
-
-    // Strict
-    isAdult.strict({ name: "Alice", age: 30 });
-    assertThrows(() => isAdult.strict({ name: "Alice", age: 10 }), TypeError);
-
-    // Assert
-    const assertIsAdult: typeof isAdult.assert = isAdult.assert;
-    assertIsAdult({ name: "Alice", age: 30 });
-    assertThrows(() => assertIsAdult({ name: "Alice", age: 10 }), TypeError);
-
-    // Optional
-    assert(isAdult.optional({ name: "Alice", age: 30 }));
-    assert(isAdult.optional(undefined));
-    assertFalse(isAdult.optional({ name: "Alice", age: 10 }));
-    assertFalse(isAdult.optional(null));
-
-    // Validate
-    const validResult = isAdult.validate({ name: "Alice", age: 30 });
-    assert("value" in validResult);
-    const invalidResult = isAdult.validate({ name: "Alice", age: 10 });
-    assert("issues" in invalidResult);
-  });
-});
-
-Deno.test("createTypeGuard shape - StandardSchemaV1 compatibility", async (t) => {
-  const isPersonShape = createTypeGuard({ name: isString, age: isNumber });
-
-  await t.step("~standard property exists with correct values", () => {
-    assert(isPersonShape["~standard"]);
-    assertEquals(isPersonShape["~standard"].version, 1);
-    assertEquals(isPersonShape["~standard"].vendor, "guardis");
-    assert(typeof isPersonShape["~standard"].validate === "function");
-  });
-
-  await t.step("~standard.validate returns same result as .validate", () => {
-    const input = { name: "Alice", age: 30 };
-    const directResult = isPersonShape.validate(input);
-    const standardResult = isPersonShape["~standard"].validate(input);
-    assertEquals(directResult, standardResult);
-  });
-});
-
-Deno.test("createTypeGuard shape - named shape", async (t) => {
-  const isPersonShape = createTypeGuard("Person", { name: isString, age: isNumber });
-
-  await t.step("basic guard behavior works", () => {
-    assert(isPersonShape({ name: "Alice", age: 30 }));
-    assertFalse(isPersonShape({ name: 123, age: "thirty" }));
-  });
-
-  await t.step("strict mode throws with field-level error", () => {
-    // Strict mode on shape guards throws the first specific field error
-    // rather than the generic "Expected Person" — this provides more
-    // useful error messages with path info
-    try {
-      isPersonShape.strict({ name: 123, age: "thirty" });
-      assert(false, "Expected to throw");
-    } catch (e) {
-      assert(e instanceof TypeError);
-      assert(e.message.includes("at path:"), `Expected path in error, got: ${e.message}`);
-    }
-  });
-});
-
-Deno.test("createTypeGuard shape - nested shapes", async (t) => {
-  const isAddressShape = createTypeGuard({
-    street: isString,
-    city: isString,
-    zip: isNumber,
-  });
-
-  const isPersonWithAddress = createTypeGuard({
-    name: isString,
-    address: isAddressShape,
-  });
-
-  await t.step("valid nested object passes", () => {
-    assert(isPersonWithAddress({
-      name: "Alice",
-      address: { street: "123 Main", city: "Springfield", zip: 62701 },
-    }));
-  });
-
-  await t.step("invalid nested property fails", () => {
-    assertFalse(isPersonWithAddress({
-      name: "Alice",
-      address: { street: "123 Main", city: "Springfield", zip: "62701" },
-    }));
-  });
-
-  await t.step("missing nested property fails", () => {
-    assertFalse(isPersonWithAddress({
-      name: "Alice",
-      address: { street: "123 Main", city: "Springfield" },
-    }));
-  });
-
-  await t.step("validate returns path-aware issues for nested failures", () => {
-    const result = isPersonWithAddress.validate({
-      name: "Alice",
-      address: { street: "123 Main", city: "Springfield", zip: "62701" },
+    await t.step("objects with extra fields pass both", () => {
+      assert(isPersonParser(extraFields));
+      assert(isPersonShape(extraFields));
     });
-    assert("issues" in result && result.issues);
-    assert(result.issues.length > 0);
-    // Should have path pointing into the nested object
-    const hasNestedPath = result.issues.some((i) =>
-      i.path && (i.path as PropertyKey[]).length >= 2
-    );
-    assert(hasNestedPath, "Expected nested path in issues");
+
+    await t.step("missing properties fail both", () => {
+      assertFalse(isPersonParser(missingAge));
+      assertFalse(isPersonShape(missingAge));
+    });
+
+    await t.step("wrong property types fail both", () => {
+      assertFalse(isPersonParser(wrongType));
+      assertFalse(isPersonShape(wrongType));
+    });
+
+    await t.step("non-objects fail both", () => {
+      assertFalse(isPersonParser(notAnObject));
+      assertFalse(isPersonShape(notAnObject));
+      assertFalse(isPersonParser(null));
+      assertFalse(isPersonShape(null));
+      assertFalse(isPersonParser(undefined));
+      assertFalse(isPersonShape(undefined));
+      assertFalse(isPersonParser(42));
+      assertFalse(isPersonShape(42));
+      assertFalse(isPersonParser([1, 2]));
+      assertFalse(isPersonShape([1, 2]));
+    });
   });
 
-  await t.step("all modes work on nested shapes", () => {
-    const valid = { name: "Alice", address: { street: "123 Main", city: "Springfield", zip: 62701 } };
-    const invalid = { name: "Alice", address: { street: 123, city: "Springfield", zip: 62701 } };
+  await t.step("validate method", async (t) => {
+    const isPersonShape = createTypeGuard({ name: isString, age: isNumber });
 
-    // Strict
-    isPersonWithAddress.strict(valid);
-    assertThrows(() => isPersonWithAddress.strict(invalid), TypeError);
+    await t.step("valid input returns value", () => {
+      const result = isPersonShape.validate({ name: "Alice", age: 30 });
+      assert("value" in result);
+      assertEquals(result.value, { name: "Alice", age: 30 });
+    });
 
-    // Optional
-    assert(isPersonWithAddress.optional(valid));
-    assert(isPersonWithAddress.optional(undefined));
-    assertFalse(isPersonWithAddress.optional(invalid));
+    await t.step("invalid property type returns issues with path", () => {
+      const result = isPersonShape.validate({ name: "Alice", age: "thirty" });
+      assert("issues" in result && result.issues);
+      assert(result.issues.length > 0);
+      // Should contain path information pointing to the failing field
+      const ageIssue = result.issues.find((i) =>
+        i.path && (i.path as PropertyKey[]).includes("age")
+      );
+      assert(ageIssue, "Expected an issue with path containing 'age'");
+    });
 
-    // Or
-    const isPersonOrString = isPersonWithAddress.or(isString);
-    assert(isPersonOrString(valid));
-    assert(isPersonOrString("hello"));
-    assertFalse(isPersonOrString(invalid));
+    await t.step("missing property returns issues with path", () => {
+      const result = isPersonShape.validate({ name: "Alice" });
+      assert("issues" in result && result.issues);
+      assert(result.issues.length > 0);
+    });
 
-    // Extend
-    const isNamedPerson = isPersonWithAddress.extend((val) =>
-      val.name.length > 0 ? val : null
-    );
-    assert(isNamedPerson(valid));
-    assertFalse(isNamedPerson({ ...valid, name: "" }));
+    await t.step("non-object returns issues", () => {
+      const result = isPersonShape.validate("not an object");
+      assert("issues" in result && result.issues);
+      assert(result.issues.length > 0);
+
+      const nullResult = isPersonShape.validate(null);
+      assert("issues" in nullResult);
+
+      const arrayResult = isPersonShape.validate([1, 2]);
+      assert("issues" in arrayResult);
+    });
+
+    await t.step("multiple invalid fields produce multiple issues", () => {
+      const result = isPersonShape.validate({ name: 123, age: "thirty" });
+      assert("issues" in result && result.issues);
+      assert(result.issues.length >= 2, `Expected at least 2 issues, got ${result.issues.length}`);
+    });
   });
-});
 
-Deno.test("createTypeGuard shape - inline nested shape objects", async (t) => {
-  // Shapes defined inline (not via createTypeGuard) should also work recursively
-  const isPersonInline = createTypeGuard({
-    name: isString,
-    address: {
+  await t.step("strict mode", async (t) => {
+    const isPersonShape = createTypeGuard({ name: isString, age: isNumber });
+
+    await t.step("valid input does not throw", () => {
+      isPersonShape.strict({ name: "Alice", age: 30 });
+    });
+
+    await t.step("invalid input throws TypeError", () => {
+      assertThrows(
+        () => isPersonShape.strict({ name: "Alice", age: "thirty" }),
+        TypeError,
+      );
+    });
+
+    await t.step("non-object input throws TypeError", () => {
+      assertThrows(() => isPersonShape.strict("not an object"), TypeError);
+      assertThrows(() => isPersonShape.strict(null), TypeError);
+      assertThrows(() => isPersonShape.strict(undefined), TypeError);
+    });
+
+    await t.step("custom error message overrides on non-object input", () => {
+      // Custom error message is used when the parser returns null without
+      // the strict context throwing first (e.g. non-object input)
+      assertThrows(
+        () => isPersonShape.strict(42, "Custom error"),
+        TypeError,
+      );
+    });
+
+    await t.step("field-level errors include path info", () => {
+      // For object inputs with invalid fields, strict mode throws with
+      // the specific field error and path information
+      try {
+        isPersonShape.strict({ name: "Alice", age: "thirty" });
+        assert(false, "Expected to throw");
+      } catch (e) {
+        assert(e instanceof TypeError);
+        assert(e.message.includes("at path: age"), `Expected path in error, got: ${e.message}`);
+      }
+    });
+  });
+
+  await t.step("assert mode", async (t) => {
+    const isPersonShape = createTypeGuard({ name: isString, age: isNumber });
+
+    await t.step("valid input does not throw", () => {
+      const assertIsPerson: typeof isPersonShape.assert = isPersonShape.assert;
+      assertIsPerson({ name: "Alice", age: 30 });
+    });
+
+    await t.step("invalid input throws TypeError", () => {
+      const assertIsPerson: typeof isPersonShape.assert = isPersonShape.assert;
+      assertThrows(
+        () => assertIsPerson({ name: "Alice", age: "thirty" }),
+        TypeError,
+      );
+    });
+  });
+
+  await t.step("optional mode", async (t) => {
+    const isPersonShape = createTypeGuard({ name: isString, age: isNumber });
+
+    await t.step("valid input returns true", () => {
+      assert(isPersonShape.optional({ name: "Alice", age: 30 }));
+    });
+
+    await t.step("undefined returns true", () => {
+      assert(isPersonShape.optional(undefined));
+    });
+
+    await t.step("invalid input returns false", () => {
+      assertFalse(isPersonShape.optional({ name: "Alice", age: "thirty" }));
+      assertFalse(isPersonShape.optional(null));
+      assertFalse(isPersonShape.optional("string"));
+      assertFalse(isPersonShape.optional(42));
+    });
+
+    await t.step("optional.strict - valid input does not throw", () => {
+      isPersonShape.optional.strict({ name: "Alice", age: 30 });
+      isPersonShape.optional.strict(undefined);
+    });
+
+    await t.step("optional.strict - invalid input throws", () => {
+      assertThrows(
+        () => isPersonShape.optional.strict({ name: "Alice", age: "thirty" }),
+        TypeError,
+      );
+      assertThrows(() => isPersonShape.optional.strict(null), TypeError);
+    });
+
+    await t.step("optional.assert works", () => {
+      const assertFn: typeof isPersonShape.optional.assert = isPersonShape.optional.assert;
+      assertFn({ name: "Alice", age: 30 });
+      assertFn(undefined);
+      assertThrows(() => assertFn(42), TypeError);
+    });
+  });
+
+  await t.step("notEmpty mode", async (t) => {
+    const isPersonShape = createTypeGuard({ name: isString, age: isNumber });
+
+    await t.step("valid non-empty object returns true", () => {
+      assert(isPersonShape.notEmpty({ name: "Alice", age: 30 }));
+    });
+
+    await t.step("empty-like values return false", () => {
+      assertFalse(isPersonShape.notEmpty(null));
+      assertFalse(isPersonShape.notEmpty(undefined));
+      assertFalse(isPersonShape.notEmpty({}));
+    });
+
+    await t.step("invalid object returns false", () => {
+      assertFalse(isPersonShape.notEmpty({ name: 123, age: "thirty" }));
+    });
+
+    await t.step("notEmpty.strict works", () => {
+      isPersonShape.notEmpty.strict({ name: "Alice", age: 30 });
+      assertThrows(() => isPersonShape.notEmpty.strict(null), TypeError);
+      assertThrows(() => isPersonShape.notEmpty.strict({}), TypeError);
+    });
+
+    await t.step("notEmpty.validate works", () => {
+      const valid = isPersonShape.notEmpty.validate({ name: "Alice", age: 30 });
+      assert("value" in valid);
+
+      const invalid = isPersonShape.notEmpty.validate({});
+      assert("issues" in invalid);
+    });
+
+    await t.step("notEmpty.or works", () => {
+      const isPersonOrString = isPersonShape.notEmpty.or(isString);
+      assert(isPersonOrString({ name: "Alice", age: 30 }));
+      assert(isPersonOrString("hello"));
+      assertFalse(isPersonOrString(null));
+      assertFalse(isPersonOrString({}));
+    });
+
+    await t.step("notEmpty.optional works", () => {
+      assert(isPersonShape.notEmpty.optional({ name: "Alice", age: 30 }));
+      assert(isPersonShape.notEmpty.optional(undefined));
+      assertFalse(isPersonShape.notEmpty.optional(null));
+      assertFalse(isPersonShape.notEmpty.optional({}));
+    });
+  });
+
+  await t.step("or method", async (t) => {
+    const isPersonShape = createTypeGuard({ name: isString, age: isNumber });
+
+    await t.step("union with primitive guard", () => {
+      const isPersonOrString = isPersonShape.or(isString);
+
+      assert(isPersonOrString({ name: "Alice", age: 30 }));
+      assert(isPersonOrString("hello"));
+      assertFalse(isPersonOrString(42));
+      assertFalse(isPersonOrString(null));
+    });
+
+    await t.step("union with another shape guard", () => {
+      const isAddressShape = createTypeGuard({ street: isString, city: isString });
+      const isPersonOrAddress = isPersonShape.or(isAddressShape);
+
+      assert(isPersonOrAddress({ name: "Alice", age: 30 }));
+      assert(isPersonOrAddress({ street: "123 Main St", city: "Springfield" }));
+      assertFalse(isPersonOrAddress({ foo: "bar" }));
+      assertFalse(isPersonOrAddress(42));
+    });
+
+    await t.step("chained unions", () => {
+      const isPersonOrStringOrNumber = isPersonShape.or(isString).or(isNumber);
+
+      assert(isPersonOrStringOrNumber({ name: "Alice", age: 30 }));
+      assert(isPersonOrStringOrNumber("hello"));
+      assert(isPersonOrStringOrNumber(42));
+      assertFalse(isPersonOrStringOrNumber(null));
+      assertFalse(isPersonOrStringOrNumber(true));
+    });
+
+    await t.step("all modes work on union guards", () => {
+      const isPersonOrString = isPersonShape.or(isString);
+
+      // Strict
+      isPersonOrString.strict({ name: "Alice", age: 30 });
+      isPersonOrString.strict("hello");
+      assertThrows(() => isPersonOrString.strict(42), TypeError);
+
+      // Optional
+      assert(isPersonOrString.optional({ name: "Alice", age: 30 }));
+      assert(isPersonOrString.optional("hello"));
+      assert(isPersonOrString.optional(undefined));
+      assertFalse(isPersonOrString.optional(42));
+
+      // NotEmpty
+      assert(isPersonOrString.notEmpty({ name: "Alice", age: 30 }));
+      assert(isPersonOrString.notEmpty("hello"));
+      assertFalse(isPersonOrString.notEmpty(""));
+      assertFalse(isPersonOrString.notEmpty(null));
+    });
+  });
+
+  await t.step("extend method", async (t) => {
+    const isPersonShape = createTypeGuard({ name: isString, age: isNumber });
+
+    await t.step("basic extension narrows the type", () => {
+      const isAdult = isPersonShape.extend((val) => {
+        return val.age >= 18 ? val : null;
+      });
+
+      assert(isAdult({ name: "Alice", age: 30 }));
+      assert(isAdult({ name: "Bob", age: 18 }));
+      assertFalse(isAdult({ name: "Charlie", age: 17 }));
+      assertFalse(isAdult({ name: "Dave", age: -1 }));
+
+      // Base validation still applies
+      assertFalse(isAdult({ name: 123, age: 30 }));
+      assertFalse(isAdult("not an object"));
+    });
+
+    await t.step("chained extensions", () => {
+      const isAdult = isPersonShape.extend((val) => val.age >= 18 ? val : null);
+      const isNamedAdult = isAdult.extend((val) => val.name.length > 0 ? val : null);
+
+      assert(isNamedAdult({ name: "Alice", age: 30 }));
+      assertFalse(isNamedAdult({ name: "", age: 30 }));
+      assertFalse(isNamedAdult({ name: "Alice", age: 10 }));
+    });
+
+    await t.step("named extension", () => {
+      const isAdult = isPersonShape.extend("Adult", (val) => val.age >= 18 ? val : null);
+
+      assert(isAdult({ name: "Alice", age: 30 }));
+      assertThrows(
+        () => isAdult.strict({ name: "Alice", age: 10 }),
+        TypeError,
+        "Expected Adult",
+      );
+    });
+
+    await t.step("all modes work on extended shape guards", () => {
+      const isAdult = isPersonShape.extend((val) => val.age >= 18 ? val : null);
+
+      // Strict
+      isAdult.strict({ name: "Alice", age: 30 });
+      assertThrows(() => isAdult.strict({ name: "Alice", age: 10 }), TypeError);
+
+      // Assert
+      const assertIsAdult: typeof isAdult.assert = isAdult.assert;
+      assertIsAdult({ name: "Alice", age: 30 });
+      assertThrows(() => assertIsAdult({ name: "Alice", age: 10 }), TypeError);
+
+      // Optional
+      assert(isAdult.optional({ name: "Alice", age: 30 }));
+      assert(isAdult.optional(undefined));
+      assertFalse(isAdult.optional({ name: "Alice", age: 10 }));
+      assertFalse(isAdult.optional(null));
+
+      // Validate
+      const validResult = isAdult.validate({ name: "Alice", age: 30 });
+      assert("value" in validResult);
+      const invalidResult = isAdult.validate({ name: "Alice", age: 10 });
+      assert("issues" in invalidResult);
+    });
+  });
+
+  await t.step("StandardSchemaV1 compatibility", async (t) => {
+    const isPersonShape = createTypeGuard({ name: isString, age: isNumber });
+
+    await t.step("~standard property exists with correct values", () => {
+      assert(isPersonShape["~standard"]);
+      assertEquals(isPersonShape["~standard"].version, 1);
+      assertEquals(isPersonShape["~standard"].vendor, "guardis");
+      assert(typeof isPersonShape["~standard"].validate === "function");
+    });
+
+    await t.step("~standard.validate returns same result as .validate", () => {
+      const input = { name: "Alice", age: 30 };
+      const directResult = isPersonShape.validate(input);
+      const standardResult = isPersonShape["~standard"].validate(input);
+      assertEquals(directResult, standardResult);
+    });
+  });
+
+  await t.step("named shape", async (t) => {
+    const isPersonShape = createTypeGuard("Person", { name: isString, age: isNumber });
+
+    await t.step("basic guard behavior works", () => {
+      assert(isPersonShape({ name: "Alice", age: 30 }));
+      assertFalse(isPersonShape({ name: 123, age: "thirty" }));
+    });
+
+    await t.step("strict mode throws with field-level error", () => {
+      // Strict mode on shape guards throws the first specific field error
+      // rather than the generic "Expected Person" — this provides more
+      // useful error messages with path info
+      try {
+        isPersonShape.strict({ name: 123, age: "thirty" });
+        assert(false, "Expected to throw");
+      } catch (e) {
+        assert(e instanceof TypeError);
+        assert(e.message.includes("at path:"), `Expected path in error, got: ${e.message}`);
+      }
+    });
+  });
+
+  await t.step("nested shapes", async (t) => {
+    const isAddressShape = createTypeGuard({
       street: isString,
       city: isString,
-    },
-  });
-
-  await t.step("valid nested object passes", () => {
-    assert(isPersonInline({ name: "Alice", address: { street: "123 Main", city: "Springfield" } }));
-  });
-
-  await t.step("invalid nested property fails", () => {
-    assertFalse(isPersonInline({ name: "Alice", address: { street: 123, city: "Springfield" } }));
-  });
-
-  await t.step("validate returns issues for nested inline shapes", () => {
-    const result = isPersonInline.validate({
-      name: "Alice",
-      address: { street: 123, city: "Springfield" },
+      zip: isNumber,
     });
-    assert("issues" in result && result.issues);
-    assert(result.issues.length > 0);
-  });
-});
 
-Deno.test("createTypeGuard shape - guards with .optional and .notEmpty in shapes", async (t) => {
-  await t.step("optional guard in shape accepts undefined values", () => {
-    const isFormShape = createTypeGuard({
+    const isPersonWithAddress = createTypeGuard({
       name: isString,
-      nickname: isString.optional,
+      address: isAddressShape,
     });
 
-    assert(isFormShape({ name: "Alice", nickname: "Ali" }));
-    assert(isFormShape({ name: "Alice", nickname: undefined }));
-    assert(isFormShape({ name: "Alice" })); // missing = undefined
-    assertFalse(isFormShape({ name: "Alice", nickname: 42 }));
-  });
-
-  await t.step("notEmpty guard in shape rejects empty values", () => {
-    const isFormShape = createTypeGuard({
-      name: isString.notEmpty,
-      bio: isString,
+    await t.step("valid nested object passes", () => {
+      assert(isPersonWithAddress({
+        name: "Alice",
+        address: { street: "123 Main", city: "Springfield", zip: 62701 },
+      }));
     });
 
-    assert(isFormShape({ name: "Alice", bio: "A person" }));
-    assert(isFormShape({ name: "Alice", bio: "" }));
-    assertFalse(isFormShape({ name: "", bio: "A person" }));
-    assertFalse(isFormShape({ name: "  ", bio: "A person" }));
-  });
-
-  await t.step("notEmpty validate returns issues with path", () => {
-    const isFormShape = createTypeGuard({
-      name: isString.notEmpty,
-      bio: isString,
+    await t.step("invalid nested property fails", () => {
+      assertFalse(isPersonWithAddress({
+        name: "Alice",
+        address: { street: "123 Main", city: "Springfield", zip: "62701" },
+      }));
     });
 
-    const result = isFormShape.validate({ name: "", bio: "A person" });
-    assert("issues" in result && result.issues);
-    assert(result.issues.length > 0);
+    await t.step("missing nested property fails", () => {
+      assertFalse(isPersonWithAddress({
+        name: "Alice",
+        address: { street: "123 Main", city: "Springfield" },
+      }));
+    });
+
+    await t.step("validate returns path-aware issues for nested failures", () => {
+      const result = isPersonWithAddress.validate({
+        name: "Alice",
+        address: { street: "123 Main", city: "Springfield", zip: "62701" },
+      });
+      assert("issues" in result && result.issues);
+      assert(result.issues.length > 0);
+      // Should have path pointing into the nested object
+      const hasNestedPath = result.issues.some((i) =>
+        i.path && (i.path as PropertyKey[]).length >= 2
+      );
+      assert(hasNestedPath, "Expected nested path in issues");
+    });
+
+    await t.step("all modes work on nested shapes", () => {
+      const valid = { name: "Alice", address: { street: "123 Main", city: "Springfield", zip: 62701 } };
+      const invalid = { name: "Alice", address: { street: 123, city: "Springfield", zip: 62701 } };
+
+      // Strict
+      isPersonWithAddress.strict(valid);
+      assertThrows(() => isPersonWithAddress.strict(invalid), TypeError);
+
+      // Optional
+      assert(isPersonWithAddress.optional(valid));
+      assert(isPersonWithAddress.optional(undefined));
+      assertFalse(isPersonWithAddress.optional(invalid));
+
+      // Or
+      const isPersonOrString = isPersonWithAddress.or(isString);
+      assert(isPersonOrString(valid));
+      assert(isPersonOrString("hello"));
+      assertFalse(isPersonOrString(invalid));
+
+      // Extend
+      const isNamedPerson = isPersonWithAddress.extend((val) =>
+        val.name.length > 0 ? val : null
+      );
+      assert(isNamedPerson(valid));
+      assertFalse(isNamedPerson({ ...valid, name: "" }));
+    });
   });
 
-  await t.step("optional.notEmpty guard in shape works", () => {
-    const isFormShape = createTypeGuard({
+  await t.step("inline nested shape objects", async (t) => {
+    // Shapes defined inline (not via createTypeGuard) should also work recursively
+    const isPersonInline = createTypeGuard({
       name: isString,
-      nickname: isString.optional.notEmpty,
-    });
-
-    assert(isFormShape({ name: "Alice", nickname: "Ali" }));
-    assert(isFormShape({ name: "Alice", nickname: undefined }));
-    assert(isFormShape({ name: "Alice" }));
-    assertFalse(isFormShape({ name: "Alice", nickname: "" }));
-  });
-});
-
-Deno.test("createTypeGuard shape - isArray.of in shapes", async (t) => {
-  const isTeamShape = createTypeGuard({
-    name: isString,
-    members: isArray.of(isString),
-  });
-
-  await t.step("valid array field passes", () => {
-    assert(isTeamShape({ name: "Alpha", members: ["Alice", "Bob"] }));
-    assert(isTeamShape({ name: "Alpha", members: [] }));
-  });
-
-  await t.step("invalid array elements fail", () => {
-    assertFalse(isTeamShape({ name: "Alpha", members: [1, 2, 3] }));
-    assertFalse(isTeamShape({ name: "Alpha", members: ["Alice", 42] }));
-  });
-
-  await t.step("non-array fails", () => {
-    assertFalse(isTeamShape({ name: "Alpha", members: "not an array" }));
-  });
-
-  await t.step("validate returns issues for invalid array elements", () => {
-    const result = isTeamShape.validate({ name: "Alpha", members: ["Alice", 42] });
-    assert("issues" in result && result.issues);
-    assert(result.issues.length > 0);
-  });
-});
-
-Deno.test("createTypeGuard shape - complex real-world shapes", async (t) => {
-  await t.step("API response shape", () => {
-    const isApiResponse = createTypeGuard({
-      status: isNumber,
-      message: isString,
-      data: isObject,
-    });
-
-    assert(isApiResponse({ status: 200, message: "OK", data: { id: 1 } }));
-    assertFalse(isApiResponse({ status: "200", message: "OK", data: {} }));
-    assertFalse(isApiResponse({ status: 200, message: "OK" }));
-
-    // Validate
-    const result = isApiResponse.validate({ status: 200, message: "OK", data: { id: 1 } });
-    assert("value" in result);
-    assertEquals(result.value, { status: 200, message: "OK", data: { id: 1 } });
-  });
-
-  await t.step("deeply nested shape (3 levels)", () => {
-    const isDeep = createTypeGuard({
-      level1: {
-        level2: {
-          level3: isString,
-        },
+      address: {
+        street: isString,
+        city: isString,
       },
     });
 
-    assert(isDeep({ level1: { level2: { level3: "deep" } } }));
-    assertFalse(isDeep({ level1: { level2: { level3: 42 } } }));
-    assertFalse(isDeep({ level1: { level2: {} } }));
-  });
-});
-
-Deno.test("createTypeGuard shape - .or() as shape field value", async (t) => {
-  const isRecord = createTypeGuard({
-    id: isString.or(isNumber),
-    label: isString,
-  });
-
-  await t.step("accepts first union member", () => {
-    assert(isRecord({ id: "abc", label: "test" }));
-  });
-
-  await t.step("accepts second union member", () => {
-    assert(isRecord({ id: 42, label: "test" }));
-  });
-
-  await t.step("rejects values matching neither member", () => {
-    assertFalse(isRecord({ id: true, label: "test" }));
-    assertFalse(isRecord({ id: null, label: "test" }));
-    assertFalse(isRecord({ id: [1], label: "test" }));
-  });
-
-  await t.step("validate returns issues for non-matching union field", () => {
-    const result = isRecord.validate({ id: true, label: "test" });
-    assert("issues" in result && result.issues);
-    assert(result.issues.length > 0);
-    const idIssue = result.issues.find((i) =>
-      i.path && (i.path as PropertyKey[]).includes("id")
-    );
-    assert(idIssue, "Expected an issue with path containing 'id'");
-  });
-
-  await t.step("validate succeeds for both union members", () => {
-    const r1 = isRecord.validate({ id: "abc", label: "test" });
-    assert("value" in r1);
-    assertEquals(r1.value, { id: "abc", label: "test" });
-
-    const r2 = isRecord.validate({ id: 42, label: "test" });
-    assert("value" in r2);
-    assertEquals(r2.value, { id: 42, label: "test" });
-  });
-
-  await t.step("chained .or() as shape field value", () => {
-    const isFlexible = createTypeGuard({
-      value: isString.or(isNumber).or(isBoolean),
+    await t.step("valid nested object passes", () => {
+      assert(isPersonInline({ name: "Alice", address: { street: "123 Main", city: "Springfield" } }));
     });
 
-    assert(isFlexible({ value: "hello" }));
-    assert(isFlexible({ value: 42 }));
-    assert(isFlexible({ value: true }));
-    assertFalse(isFlexible({ value: null }));
-    assertFalse(isFlexible({ value: [] }));
-  });
-});
-
-Deno.test("createTypeGuard shape - .extend() as shape field value", async (t) => {
-  const isPositiveNumber = isNumber.extend((v) => v > 0 ? v : null);
-
-  const isProduct = createTypeGuard({
-    name: isString,
-    price: isPositiveNumber,
-  });
-
-  await t.step("accepts valid extended field", () => {
-    assert(isProduct({ name: "Widget", price: 9.99 }));
-    assert(isProduct({ name: "Gadget", price: 1 }));
-  });
-
-  await t.step("rejects values failing extension", () => {
-    assertFalse(isProduct({ name: "Widget", price: 0 }));
-    assertFalse(isProduct({ name: "Widget", price: -5 }));
-  });
-
-  await t.step("rejects values failing base guard", () => {
-    assertFalse(isProduct({ name: "Widget", price: "9.99" }));
-    assertFalse(isProduct({ name: "Widget", price: null }));
-  });
-
-  await t.step("validate returns issues for extended field failure", () => {
-    const result = isProduct.validate({ name: "Widget", price: -5 });
-    assert("issues" in result && result.issues);
-    assert(result.issues.length > 0);
-  });
-
-  await t.step("validate succeeds for valid extended field", () => {
-    const result = isProduct.validate({ name: "Widget", price: 9.99 });
-    assert("value" in result);
-    assertEquals(result.value, { name: "Widget", price: 9.99 });
-  });
-
-  await t.step("named .extend() as shape field value", () => {
-    const isNonEmptyString = isString.extend(
-      "non-empty string",
-      (v) => v.length > 0 ? v : null,
-    );
-
-    const isEntry = createTypeGuard({
-      title: isNonEmptyString,
-      count: isNumber,
+    await t.step("invalid nested property fails", () => {
+      assertFalse(isPersonInline({ name: "Alice", address: { street: 123, city: "Springfield" } }));
     });
 
-    assert(isEntry({ title: "Hello", count: 1 }));
-    assertFalse(isEntry({ title: "", count: 1 }));
-    assertFalse(isEntry({ title: 123, count: 1 }));
+    await t.step("validate returns issues for nested inline shapes", () => {
+      const result = isPersonInline.validate({
+        name: "Alice",
+        address: { street: 123, city: "Springfield" },
+      });
+      assert("issues" in result && result.issues);
+      assert(result.issues.length > 0);
+    });
   });
 
-  await t.step("chained .extend() as shape field value", () => {
-    const isPercentage = isNumber
-      .extend((v) => v >= 0 ? v : null)
-      .extend((v) => v <= 100 ? v : null);
+  await t.step("guards with .optional and .notEmpty in shapes", async (t) => {
+    await t.step("optional guard in shape accepts undefined values", () => {
+      const isFormShape = createTypeGuard({
+        name: isString,
+        nickname: isString.optional,
+      });
 
-    const isScore = createTypeGuard({
+      assert(isFormShape({ name: "Alice", nickname: "Ali" }));
+      assert(isFormShape({ name: "Alice", nickname: undefined }));
+      assert(isFormShape({ name: "Alice" })); // missing = undefined
+      assertFalse(isFormShape({ name: "Alice", nickname: 42 }));
+    });
+
+    await t.step("notEmpty guard in shape rejects empty values", () => {
+      const isFormShape = createTypeGuard({
+        name: isString.notEmpty,
+        bio: isString,
+      });
+
+      assert(isFormShape({ name: "Alice", bio: "A person" }));
+      assert(isFormShape({ name: "Alice", bio: "" }));
+      assertFalse(isFormShape({ name: "", bio: "A person" }));
+      assertFalse(isFormShape({ name: "  ", bio: "A person" }));
+    });
+
+    await t.step("notEmpty validate returns issues with path", () => {
+      const isFormShape = createTypeGuard({
+        name: isString.notEmpty,
+        bio: isString,
+      });
+
+      const result = isFormShape.validate({ name: "", bio: "A person" });
+      assert("issues" in result && result.issues);
+      assert(result.issues.length > 0);
+    });
+
+    await t.step("optional.notEmpty guard in shape works", () => {
+      const isFormShape = createTypeGuard({
+        name: isString,
+        nickname: isString.optional.notEmpty,
+      });
+
+      assert(isFormShape({ name: "Alice", nickname: "Ali" }));
+      assert(isFormShape({ name: "Alice", nickname: undefined }));
+      assert(isFormShape({ name: "Alice" }));
+      assertFalse(isFormShape({ name: "Alice", nickname: "" }));
+    });
+  });
+
+  await t.step("isArray.of in shapes", async (t) => {
+    const isTeamShape = createTypeGuard({
+      name: isString,
+      members: isArray.of(isString),
+    });
+
+    await t.step("valid array field passes", () => {
+      assert(isTeamShape({ name: "Alpha", members: ["Alice", "Bob"] }));
+      assert(isTeamShape({ name: "Alpha", members: [] }));
+    });
+
+    await t.step("invalid array elements fail", () => {
+      assertFalse(isTeamShape({ name: "Alpha", members: [1, 2, 3] }));
+      assertFalse(isTeamShape({ name: "Alpha", members: ["Alice", 42] }));
+    });
+
+    await t.step("non-array fails", () => {
+      assertFalse(isTeamShape({ name: "Alpha", members: "not an array" }));
+    });
+
+    await t.step("validate returns issues for invalid array elements", () => {
+      const result = isTeamShape.validate({ name: "Alpha", members: ["Alice", 42] });
+      assert("issues" in result && result.issues);
+      assert(result.issues.length > 0);
+    });
+  });
+
+  await t.step("complex real-world shapes", async (t) => {
+    await t.step("API response shape", () => {
+      const isApiResponse = createTypeGuard({
+        status: isNumber,
+        message: isString,
+        data: isObject,
+      });
+
+      assert(isApiResponse({ status: 200, message: "OK", data: { id: 1 } }));
+      assertFalse(isApiResponse({ status: "200", message: "OK", data: {} }));
+      assertFalse(isApiResponse({ status: 200, message: "OK" }));
+
+      // Validate
+      const result = isApiResponse.validate({ status: 200, message: "OK", data: { id: 1 } });
+      assert("value" in result);
+      assertEquals(result.value, { status: 200, message: "OK", data: { id: 1 } });
+    });
+
+    await t.step("deeply nested shape (3 levels)", () => {
+      const isDeep = createTypeGuard({
+        level1: {
+          level2: {
+            level3: isString,
+          },
+        },
+      });
+
+      assert(isDeep({ level1: { level2: { level3: "deep" } } }));
+      assertFalse(isDeep({ level1: { level2: { level3: 42 } } }));
+      assertFalse(isDeep({ level1: { level2: {} } }));
+    });
+  });
+
+  await t.step(".or() as shape field value", async (t) => {
+    const isRecord = createTypeGuard({
+      id: isString.or(isNumber),
       label: isString,
-      pct: isPercentage,
     });
 
-    assert(isScore({ label: "A", pct: 95 }));
-    assert(isScore({ label: "B", pct: 0 }));
-    assert(isScore({ label: "C", pct: 100 }));
-    assertFalse(isScore({ label: "D", pct: -1 }));
-    assertFalse(isScore({ label: "E", pct: 101 }));
-  });
-});
+    await t.step("accepts first union member", () => {
+      assert(isRecord({ id: "abc", label: "test" }));
+    });
 
-Deno.test("createTypeGuard shape - .notEmpty as shape field value", async (t) => {
-  const isProfile = createTypeGuard({
-    name: isString.notEmpty,
-    tags: isArray.notEmpty,
-    meta: isObject.notEmpty,
-  });
+    await t.step("accepts second union member", () => {
+      assert(isRecord({ id: 42, label: "test" }));
+    });
 
-  await t.step("accepts non-empty values", () => {
-    assert(isProfile({ name: "Alice", tags: ["a"], meta: { k: 1 } }));
-  });
+    await t.step("rejects values matching neither member", () => {
+      assertFalse(isRecord({ id: true, label: "test" }));
+      assertFalse(isRecord({ id: null, label: "test" }));
+      assertFalse(isRecord({ id: [1], label: "test" }));
+    });
 
-  await t.step("rejects empty string", () => {
-    assertFalse(isProfile({ name: "", tags: ["a"], meta: { k: 1 } }));
-    assertFalse(isProfile({ name: "  ", tags: ["a"], meta: { k: 1 } }));
-  });
+    await t.step("validate returns issues for non-matching union field", () => {
+      const result = isRecord.validate({ id: true, label: "test" });
+      assert("issues" in result && result.issues);
+      assert(result.issues.length > 0);
+      const idIssue = result.issues.find((i) =>
+        i.path && (i.path as PropertyKey[]).includes("id")
+      );
+      assert(idIssue, "Expected an issue with path containing 'id'");
+    });
 
-  await t.step("rejects empty array", () => {
-    assertFalse(isProfile({ name: "Alice", tags: [], meta: { k: 1 } }));
-  });
+    await t.step("validate succeeds for both union members", () => {
+      const r1 = isRecord.validate({ id: "abc", label: "test" });
+      assert("value" in r1);
+      assertEquals(r1.value, { id: "abc", label: "test" });
 
-  await t.step("rejects empty object", () => {
-    assertFalse(isProfile({ name: "Alice", tags: ["a"], meta: {} }));
-  });
+      const r2 = isRecord.validate({ id: 42, label: "test" });
+      assert("value" in r2);
+      assertEquals(r2.value, { id: 42, label: "test" });
+    });
 
-  await t.step("validate returns issues for empty fields", () => {
-    const result = isProfile.validate({ name: "", tags: [], meta: {} });
-    assert("issues" in result && result.issues);
-    assert(result.issues.length >= 3, `Expected at least 3 issues, got ${result.issues.length}`);
-  });
-});
+    await t.step("chained .or() as shape field value", () => {
+      const isFlexible = createTypeGuard({
+        value: isString.or(isNumber).or(isBoolean),
+      });
 
-Deno.test("createTypeGuard shape - .notEmpty.or() as shape field value", async (t) => {
-  const isRecord = createTypeGuard({
-    value: isString.notEmpty.or(isNumber),
-  });
-
-  await t.step("accepts non-empty string", () => {
-    assert(isRecord({ value: "hello" }));
-  });
-
-  await t.step("accepts number", () => {
-    assert(isRecord({ value: 42 }));
-    assert(isRecord({ value: 0 }));
+      assert(isFlexible({ value: "hello" }));
+      assert(isFlexible({ value: 42 }));
+      assert(isFlexible({ value: true }));
+      assertFalse(isFlexible({ value: null }));
+      assertFalse(isFlexible({ value: [] }));
+    });
   });
 
-  await t.step("rejects empty string", () => {
-    assertFalse(isRecord({ value: "" }));
+  await t.step(".extend() as shape field value", async (t) => {
+    const isPositiveNumber = isNumber.extend((v) => v > 0 ? v : null);
+
+    const isProduct = createTypeGuard({
+      name: isString,
+      price: isPositiveNumber,
+    });
+
+    await t.step("accepts valid extended field", () => {
+      assert(isProduct({ name: "Widget", price: 9.99 }));
+      assert(isProduct({ name: "Gadget", price: 1 }));
+    });
+
+    await t.step("rejects values failing extension", () => {
+      assertFalse(isProduct({ name: "Widget", price: 0 }));
+      assertFalse(isProduct({ name: "Widget", price: -5 }));
+    });
+
+    await t.step("rejects values failing base guard", () => {
+      assertFalse(isProduct({ name: "Widget", price: "9.99" }));
+      assertFalse(isProduct({ name: "Widget", price: null }));
+    });
+
+    await t.step("validate returns issues for extended field failure", () => {
+      const result = isProduct.validate({ name: "Widget", price: -5 });
+      assert("issues" in result && result.issues);
+      assert(result.issues.length > 0);
+    });
+
+    await t.step("validate succeeds for valid extended field", () => {
+      const result = isProduct.validate({ name: "Widget", price: 9.99 });
+      assert("value" in result);
+      assertEquals(result.value, { name: "Widget", price: 9.99 });
+    });
+
+    await t.step("named .extend() as shape field value", () => {
+      const isNonEmptyString = isString.extend(
+        "non-empty string",
+        (v) => v.length > 0 ? v : null,
+      );
+
+      const isEntry = createTypeGuard({
+        title: isNonEmptyString,
+        count: isNumber,
+      });
+
+      assert(isEntry({ title: "Hello", count: 1 }));
+      assertFalse(isEntry({ title: "", count: 1 }));
+      assertFalse(isEntry({ title: 123, count: 1 }));
+    });
+
+    await t.step("chained .extend() as shape field value", () => {
+      const isPercentage = isNumber
+        .extend((v) => v >= 0 ? v : null)
+        .extend((v) => v <= 100 ? v : null);
+
+      const isScore = createTypeGuard({
+        label: isString,
+        pct: isPercentage,
+      });
+
+      assert(isScore({ label: "A", pct: 95 }));
+      assert(isScore({ label: "B", pct: 0 }));
+      assert(isScore({ label: "C", pct: 100 }));
+      assertFalse(isScore({ label: "D", pct: -1 }));
+      assertFalse(isScore({ label: "E", pct: 101 }));
+    });
   });
 
-  await t.step("rejects other types", () => {
-    assertFalse(isRecord({ value: true }));
-    assertFalse(isRecord({ value: null }));
+  await t.step(".notEmpty as shape field value", async (t) => {
+    const isProfile = createTypeGuard({
+      name: isString.notEmpty,
+      tags: isArray.notEmpty,
+      meta: isObject.notEmpty,
+    });
+
+    await t.step("accepts non-empty values", () => {
+      assert(isProfile({ name: "Alice", tags: ["a"], meta: { k: 1 } }));
+    });
+
+    await t.step("rejects empty string", () => {
+      assertFalse(isProfile({ name: "", tags: ["a"], meta: { k: 1 } }));
+      assertFalse(isProfile({ name: "  ", tags: ["a"], meta: { k: 1 } }));
+    });
+
+    await t.step("rejects empty array", () => {
+      assertFalse(isProfile({ name: "Alice", tags: [], meta: { k: 1 } }));
+    });
+
+    await t.step("rejects empty object", () => {
+      assertFalse(isProfile({ name: "Alice", tags: ["a"], meta: {} }));
+    });
+
+    await t.step("validate returns issues for empty fields", () => {
+      const result = isProfile.validate({ name: "", tags: [], meta: {} });
+      assert("issues" in result && result.issues);
+      assert(result.issues.length >= 3, `Expected at least 3 issues, got ${result.issues.length}`);
+    });
   });
-});
 
-Deno.test("createTypeGuard shape - combined guard modes as field values", async (t) => {
-  await t.step("mix of .optional, .notEmpty, .or, .extend in one shape", () => {
-    const isPositive = isNumber.extend((v) => v > 0 ? v : null);
+  await t.step(".notEmpty.or() as shape field value", async (t) => {
+    const isRecord = createTypeGuard({
+      value: isString.notEmpty.or(isNumber),
+    });
 
+    await t.step("accepts non-empty string", () => {
+      assert(isRecord({ value: "hello" }));
+    });
+
+    await t.step("accepts number", () => {
+      assert(isRecord({ value: 42 }));
+      assert(isRecord({ value: 0 }));
+    });
+
+    await t.step("rejects empty string", () => {
+      assertFalse(isRecord({ value: "" }));
+    });
+
+    await t.step("rejects other types", () => {
+      assertFalse(isRecord({ value: true }));
+      assertFalse(isRecord({ value: null }));
+    });
+  });
+
+  await t.step("combined guard modes as field values", async (t) => {
+    await t.step("mix of .optional, .notEmpty, .or, .extend in one shape", () => {
+      const isPositive = isNumber.extend((v) => v > 0 ? v : null);
+
+      const isForm = createTypeGuard({
+        required: isString,
+        optional: isString.optional,
+        nonEmpty: isString.notEmpty,
+        union: isString.or(isNumber),
+        extended: isPositive,
+        arrayOf: isArray.of(isNumber),
+      });
+
+      // All valid
+      assert(isForm({
+        required: "hello",
+        optional: undefined,
+        nonEmpty: "world",
+        union: 42,
+        extended: 5,
+        arrayOf: [1, 2, 3],
+      }));
+
+      assert(isForm({
+        required: "hello",
+        optional: "present",
+        nonEmpty: "world",
+        union: "text",
+        extended: 1,
+        arrayOf: [],
+      }));
+
+      // Each field mode failure
+      assertFalse(isForm({
+        required: 123,
+        optional: undefined,
+        nonEmpty: "world",
+        union: 42,
+        extended: 5,
+        arrayOf: [1],
+      }));
+
+      assertFalse(isForm({
+        required: "hello",
+        optional: 123,
+        nonEmpty: "world",
+        union: 42,
+        extended: 5,
+        arrayOf: [1],
+      }));
+
+      assertFalse(isForm({
+        required: "hello",
+        optional: undefined,
+        nonEmpty: "",
+        union: 42,
+        extended: 5,
+        arrayOf: [1],
+      }));
+
+      assertFalse(isForm({
+        required: "hello",
+        optional: undefined,
+        nonEmpty: "world",
+        union: true,
+        extended: 5,
+        arrayOf: [1],
+      }));
+
+      assertFalse(isForm({
+        required: "hello",
+        optional: undefined,
+        nonEmpty: "world",
+        union: 42,
+        extended: -1,
+        arrayOf: [1],
+      }));
+
+      assertFalse(isForm({
+        required: "hello",
+        optional: undefined,
+        nonEmpty: "world",
+        union: 42,
+        extended: 5,
+        arrayOf: ["bad"],
+      }));
+    });
+
+    await t.step("validate reports all field failures in mixed shape", () => {
+      const isForm = createTypeGuard({
+        name: isString.notEmpty,
+        age: isNumber,
+        tag: isString.or(isNumber),
+      });
+
+      const result = isForm.validate({ name: "", age: "old", tag: true });
+      assert("issues" in result && result.issues);
+      assert(result.issues.length >= 3, `Expected at least 3 issues, got ${result.issues.length}`);
+    });
+  });
+
+  // === Compile-time type inference tests ===
+  // These tests verify that createTypeGuard with shapes produces correct types.
+  // They have no runtime assertions — they pass if the file type-checks.
+
+  await t.step("type inference", () => {
+    // Basic shape infers correct property types
+    const isUser = createTypeGuard({ name: isString, age: isNumber });
+    type User = typeof isUser._TYPE;
+    assertType<Equals<User, { name: string; age: number }>>();
+
+    // GuardedType utility works on shape guards
+    type UserViaGuardedType = GuardedType<typeof isUser>;
+    assertType<Equals<UserViaGuardedType, { name: string; age: number }>>();
+
+    // Shape guard is a proper TypeGuard
+    assertType<Equals<typeof isUser, TypeGuard<{ name: string; age: number }>>>();
+  });
+
+  await t.step("type inference with guard modes", () => {
+    // .optional field infers T | undefined
     const isForm = createTypeGuard({
       required: isString,
       optional: isString.optional,
-      nonEmpty: isString.notEmpty,
-      union: isString.or(isNumber),
-      extended: isPositive,
-      arrayOf: isArray.of(isNumber),
     });
+    type Form = typeof isForm._TYPE;
+    assertType<Equals<Form, { required: string; optional: string | undefined }>>();
 
-    // All valid
-    assert(isForm({
-      required: "hello",
-      optional: undefined,
-      nonEmpty: "world",
-      union: 42,
-      extended: 5,
-      arrayOf: [1, 2, 3],
-    }));
+    // .or() field infers union
+    const isRecord = createTypeGuard({
+      id: isString.or(isNumber),
+    });
+    type Record_ = typeof isRecord._TYPE;
+    assertType<Equals<Record_, { id: string | number }>>();
 
-    assert(isForm({
-      required: "hello",
-      optional: "present",
-      nonEmpty: "world",
-      union: "text",
-      extended: 1,
-      arrayOf: [],
-    }));
-
-    // Each field mode failure
-    assertFalse(isForm({
-      required: 123,
-      optional: undefined,
-      nonEmpty: "world",
-      union: 42,
-      extended: 5,
-      arrayOf: [1],
-    }));
-
-    assertFalse(isForm({
-      required: "hello",
-      optional: 123,
-      nonEmpty: "world",
-      union: 42,
-      extended: 5,
-      arrayOf: [1],
-    }));
-
-    assertFalse(isForm({
-      required: "hello",
-      optional: undefined,
-      nonEmpty: "",
-      union: 42,
-      extended: 5,
-      arrayOf: [1],
-    }));
-
-    assertFalse(isForm({
-      required: "hello",
-      optional: undefined,
-      nonEmpty: "world",
-      union: true,
-      extended: 5,
-      arrayOf: [1],
-    }));
-
-    assertFalse(isForm({
-      required: "hello",
-      optional: undefined,
-      nonEmpty: "world",
-      union: 42,
-      extended: -1,
-      arrayOf: [1],
-    }));
-
-    assertFalse(isForm({
-      required: "hello",
-      optional: undefined,
-      nonEmpty: "world",
-      union: 42,
-      extended: 5,
-      arrayOf: ["bad"],
-    }));
-  });
-
-  await t.step("validate reports all field failures in mixed shape", () => {
-    const isForm = createTypeGuard({
+    // .notEmpty still infers the base type
+    const isProfile = createTypeGuard({
       name: isString.notEmpty,
-      age: isNumber,
-      tag: isString.or(isNumber),
     });
+    type Profile = typeof isProfile._TYPE;
+    assertType<Equals<Profile, { name: string }>>();
 
-    const result = isForm.validate({ name: "", age: "old", tag: true });
-    assert("issues" in result && result.issues);
-    assert(result.issues.length >= 3, `Expected at least 3 issues, got ${result.issues.length}`);
+    // isArray.of infers typed array
+    const isTeam = createTypeGuard({
+      members: isArray.of(isString),
+    });
+    type Team = typeof isTeam._TYPE;
+    assertType<Equals<Team, { members: string[] }>>();
   });
-});
 
-// === Compile-time type inference tests ===
-// These tests verify that createTypeGuard with shapes produces correct types.
-// They have no runtime assertions — they pass if the file type-checks.
+  await t.step("type inference with nested shapes", () => {
+    // Nested TypeGuard shape
+    const isAddress = createTypeGuard({ street: isString, city: isString });
+    const isPerson = createTypeGuard({ name: isString, address: isAddress });
+    type Person = typeof isPerson._TYPE;
+    assertType<Equals<Person, { name: string; address: { street: string; city: string } }>>();
 
-Deno.test("createTypeGuard shape - type inference", () => {
-  // Basic shape infers correct property types
-  const isUser = createTypeGuard({ name: isString, age: isNumber });
-  type User = typeof isUser._TYPE;
-  assertType<Equals<User, { name: string; age: number }>>();
+    // Inline nested shape
+    const isInline = createTypeGuard({
+      name: isString,
+      address: { street: isString, zip: isNumber },
+    });
+    type Inline = typeof isInline._TYPE;
+    assertType<Equals<Inline, { name: string; address: { street: string; zip: number } }>>();
 
-  // GuardedType utility works on shape guards
-  type UserViaGuardedType = GuardedType<typeof isUser>;
-  assertType<Equals<UserViaGuardedType, { name: string; age: number }>>();
-
-  // Shape guard is a proper TypeGuard
-  assertType<Equals<typeof isUser, TypeGuard<{ name: string; age: number }>>>();
-});
-
-Deno.test("createTypeGuard shape - type inference with guard modes", () => {
-  // .optional field infers T | undefined
-  const isForm = createTypeGuard({
-    required: isString,
-    optional: isString.optional,
+    // Deeply nested inline
+    const isDeep = createTypeGuard({
+      a: { b: { c: isBoolean } },
+    });
+    type Deep = typeof isDeep._TYPE;
+    assertType<Equals<Deep, { a: { b: { c: boolean } } }>>();
   });
-  type Form = typeof isForm._TYPE;
-  assertType<Equals<Form, { required: string; optional: string | undefined }>>();
 
-  // .or() field infers union
-  const isRecord = createTypeGuard({
-    id: isString.or(isNumber),
+  await t.step("type inference with .extend()", () => {
+    const isUser = createTypeGuard({ name: isString, age: isNumber });
+
+    // .extend() narrows the type
+    const isAdult = isUser.extend((val) => val.age >= 18 ? val : null);
+    type Adult = typeof isAdult._TYPE;
+    assertType<Equals<Adult, { name: string; age: number }>>();
+
+    // .or() produces a union
+    const isUserOrString = isUser.or(isString);
+    type UserOrString = typeof isUserOrString._TYPE;
+    assertType<Equals<UserOrString, { name: string; age: number } | string>>();
+
+    // .optional return type narrows to T | undefined
+    const _check = isUser.optional;
+    type OptionalReturn = typeof _check extends (v: unknown) => v is infer R ? R : never;
+    assertType<Equals<OptionalReturn, { name: string; age: number } | undefined>>();
   });
-  type Record_ = typeof isRecord._TYPE;
-  assertType<Equals<Record_, { id: string | number }>>();
 
-  // .notEmpty still infers the base type
-  const isProfile = createTypeGuard({
-    name: isString.notEmpty,
+  await t.step("named shape preserves type", () => {
+    const isUser = createTypeGuard("User", { name: isString, age: isNumber });
+    type User = typeof isUser._TYPE;
+    assertType<Equals<User, { name: string; age: number }>>();
+
+    // Named shape is still a proper TypeGuard
+    assertType<Equals<typeof isUser, TypeGuard<{ name: string; age: number }>>>();
   });
-  type Profile = typeof isProfile._TYPE;
-  assertType<Equals<Profile, { name: string }>>();
-
-  // isArray.of infers typed array
-  const isTeam = createTypeGuard({
-    members: isArray.of(isString),
-  });
-  type Team = typeof isTeam._TYPE;
-  assertType<Equals<Team, { members: string[] }>>();
-});
-
-Deno.test("createTypeGuard shape - type inference with nested shapes", () => {
-  // Nested TypeGuard shape
-  const isAddress = createTypeGuard({ street: isString, city: isString });
-  const isPerson = createTypeGuard({ name: isString, address: isAddress });
-  type Person = typeof isPerson._TYPE;
-  assertType<Equals<Person, { name: string; address: { street: string; city: string } }>>();
-
-  // Inline nested shape
-  const isInline = createTypeGuard({
-    name: isString,
-    address: { street: isString, zip: isNumber },
-  });
-  type Inline = typeof isInline._TYPE;
-  assertType<Equals<Inline, { name: string; address: { street: string; zip: number } }>>();
-
-  // Deeply nested inline
-  const isDeep = createTypeGuard({
-    a: { b: { c: isBoolean } },
-  });
-  type Deep = typeof isDeep._TYPE;
-  assertType<Equals<Deep, { a: { b: { c: boolean } } }>>();
-});
-
-Deno.test("createTypeGuard shape - type inference with .extend()", () => {
-  const isUser = createTypeGuard({ name: isString, age: isNumber });
-
-  // .extend() narrows the type
-  const isAdult = isUser.extend((val) => val.age >= 18 ? val : null);
-  type Adult = typeof isAdult._TYPE;
-  assertType<Equals<Adult, { name: string; age: number }>>();
-
-  // .or() produces a union
-  const isUserOrString = isUser.or(isString);
-  type UserOrString = typeof isUserOrString._TYPE;
-  assertType<Equals<UserOrString, { name: string; age: number } | string>>();
-
-  // .optional return type narrows to T | undefined
-  const _check = isUser.optional;
-  type OptionalReturn = typeof _check extends (v: unknown) => v is infer R ? R : never;
-  assertType<Equals<OptionalReturn, { name: string; age: number } | undefined>>();
-});
-
-Deno.test("createTypeGuard shape - named shape preserves type", () => {
-  const isUser = createTypeGuard("User", { name: isString, age: isNumber });
-  type User = typeof isUser._TYPE;
-  assertType<Equals<User, { name: string; age: number }>>();
-
-  // Named shape is still a proper TypeGuard
-  assertType<Equals<typeof isUser, TypeGuard<{ name: string; age: number }>>>();
 });
