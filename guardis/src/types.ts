@@ -142,10 +142,18 @@ export interface TypeGuard<T1> extends StandardSchemaV1<T1> {
    * @param {Function} parse An additional parser to further validate the type.
    * @returns {Function} A new type guard that combines the original and additional parsers.
    */
-  extend: IsExtensible<T1> extends false ? never : {
-    <T2 extends T1>(parse: ExtendedParser<T1, T2>): TypeGuard<T2>;
-    <T2 extends T1>(name: string, parse: ExtendedParser<T1, T2>): TypeGuard<T2>;
-  };
+  extend: IsExtensible<T1> extends false ? never
+    : T1 extends Record<string, unknown>
+      ? {
+          <S extends TypeGuardShape>(shape: S): TypeGuard<T1 & InferShape<S>>;
+          <S extends TypeGuardShape>(name: string, shape: S): TypeGuard<T1 & InferShape<S>>;
+          <T2 extends T1>(parse: ExtendedParser<T1, T2>): TypeGuard<T2>;
+          <T2 extends T1>(name: string, parse: ExtendedParser<T1, T2>): TypeGuard<T2>;
+        }
+      : {
+          <T2 extends T1>(parse: ExtendedParser<T1, T2>): TypeGuard<T2>;
+          <T2 extends T1>(name: string, parse: ExtendedParser<T1, T2>): TypeGuard<T2>;
+        };
   optional: {
     /**
      * A type guard that checks if the value is either undefined or of type T.

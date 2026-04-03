@@ -418,24 +418,33 @@ export function createTypeGuard<T1>(
    * @param parser An additional parser to further validate the type.
    * @returns A new type guard that combines the original and additional parsers.
    */
+  function extend<S extends TypeGuardShape>(shape: S): TypeGuard<T1 & InferShape<S>>;
+  function extend<S extends TypeGuardShape>(name: string, shape: S): TypeGuard<T1 & InferShape<S>>;
   function extend<T2 extends T1>(parser: ExtendedParser<T1, T2>): TypeGuard<T2>;
-  /**
-   * Creates a new type guard by extending the current one with an additional parser.
-   * The new type guard will first check if the value passes the original type guard,
-   * and if it does, it will then apply the additional parser.
-   * @param name The type name to use for error messages.
-   * @param parser An additional parser to further validate the type.
-   * @returns A new type guard that combines the original and additional parsers.
-   */
   function extend<T2 extends T1>(name: string, parser: ExtendedParser<T1, T2>): TypeGuard<T2>;
   function extend<T2 extends T1>(
-    ...args: [ExtendedParser<T1, T2>] | [string, ExtendedParser<T1, T2>]
+    ...args:
+      | [ExtendedParser<T1, T2> | TypeGuardShape]
+      | [string, ExtendedParser<T1, T2> | TypeGuardShape]
   ): TypeGuard<T2> {
-    const parseTwo = args.length === 1 ? args[0] : args[1];
+    const parserOrShape = args.length === 1 ? args[0] : args[1];
     const extendName = args.length === 2 ? args[0] : undefined;
-    return extendName
-      ? createTypeGuard<T2>(extendName, (v, h) => !callback(v) ? null : parseTwo(v, h))
-      : createTypeGuard<T2>((v, h) => !callback(v) ? null : parseTwo(v, h));
+
+    // Build a combined parser that first checks the base guard, then the extension
+    let combinedParser: Parser<T2>;
+
+    if (isTypeGuardShape(parserOrShape)) {
+      const shapeGuard = createTypeGuard(parserOrShape);
+      combinedParser = (v) => callback(v) && shapeGuard(v) ? v as T2 : null;
+    } else {
+      combinedParser = (v, h) => callback(v) ? parserOrShape(v, h) : null;
+    }
+
+    if (extendName) {
+      return createTypeGuard<T2>(extendName, combinedParser);
+    }
+
+    return createTypeGuard<T2>(combinedParser);
   }
   callback.extend = extend as IsExtensible<T1> extends false ? never : typeof extend;
 

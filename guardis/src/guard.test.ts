@@ -3725,6 +3725,67 @@ Deno.test("createTypeGuard shape", async (t) => {
     });
   });
 
+  await t.step("extend with shape", async (t) => {
+    const isPersonShape = createTypeGuard({ name: isString, age: isNumber });
+
+    await t.step("extends shape guard with additional shape properties", () => {
+      const isEmployee = isPersonShape.extend({ role: isString });
+
+      assert(isEmployee({ name: "Alice", age: 30, role: "engineer" }));
+      assertFalse(isEmployee({ name: "Alice", age: 30 })); // missing role
+      assertFalse(isEmployee({ name: "Alice", age: 30, role: 42 })); // wrong type
+      assertFalse(isEmployee({ name: 123, age: 30, role: "engineer" })); // base fails
+      assertFalse(isEmployee("not an object"));
+    });
+
+    await t.step("named shape extend", () => {
+      const isEmployee = isPersonShape.extend("Employee", { role: isString });
+
+      assert(isEmployee({ name: "Alice", age: 30, role: "engineer" }));
+      assertThrows(
+        () => isEmployee.strict({ name: "Alice", age: 30 }),
+        TypeError,
+        "Expected Employee",
+      );
+    });
+
+    await t.step("all modes work on shape-extended guards", () => {
+      const isEmployee = isPersonShape.extend({ role: isString });
+
+      // Strict
+      isEmployee.strict({ name: "Alice", age: 30, role: "engineer" });
+      assertThrows(() => isEmployee.strict({ name: "Alice", age: 30 }), TypeError);
+
+      // Optional
+      assert(isEmployee.optional({ name: "Alice", age: 30, role: "engineer" }));
+      assert(isEmployee.optional(undefined));
+      assertFalse(isEmployee.optional({ name: "Alice", age: 30 }));
+
+      // Validate
+      const validResult = isEmployee.validate({ name: "Alice", age: 30, role: "engineer" });
+      assert("value" in validResult);
+      const invalidResult = isEmployee.validate({ name: "Alice", age: 30 });
+      assert("issues" in invalidResult);
+    });
+
+    await t.step("type inference produces T1 & InferShape<S>", () => {
+      const isEmployee = isPersonShape.extend({ role: isString, dept: isNumber });
+      type Employee = typeof isEmployee._TYPE;
+      assertType<
+        Equals<Employee, { name: string; age: number } & { role: string; dept: number }>
+      >();
+    });
+
+    await t.step("chained shape extensions", () => {
+      const isEmployee = isPersonShape.extend({ role: isString });
+      const isSenior = isEmployee.extend({ level: isNumber });
+
+      assert(isSenior({ name: "Alice", age: 30, role: "engineer", level: 5 }));
+      assertFalse(isSenior({ name: "Alice", age: 30, role: "engineer" })); // missing level
+      assertFalse(isSenior({ name: "Alice", age: 30, level: 5 })); // missing role
+    });
+  });
+
   await t.step("StandardSchemaV1 compatibility", async (t) => {
     const isPersonShape = createTypeGuard({ name: isString, age: isNumber });
 
