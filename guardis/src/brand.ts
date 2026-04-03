@@ -45,6 +45,9 @@ export type RemoveBrand<T> = T extends string ? string
  * const isUserId = createBrandedTypeGuard<string, "UserId">(parseUserId);
  * const isProductId = createBrandedTypeGuard<ProductId>(isString._parser);
  *
+ * // Create a named branded type guard (name appears in error messages)
+ * const isNamedUserId = createBrandedTypeGuard<string, "UserId">("UserId", parseUserId);
+ *
  * // Use the type guards
  * const id: unknown = "user_123";
  * if (isUserId(id)) {
@@ -59,9 +62,21 @@ export function createBrandedTypeGuard<T1, B extends string>(
 export function createBrandedTypeGuard<T1 extends Brand<unknown, string>>(
   parse: Parser<RemoveBrand<T1>>,
 ): TypeGuard<T1>;
+export function createBrandedTypeGuard<T1, B extends string>(
+  name: string,
+  parse: Parser<T1>,
+): TypeGuard<Brand<T1, B>>;
 export function createBrandedTypeGuard<T1 extends Brand<unknown, string>>(
+  name: string,
   parse: Parser<RemoveBrand<T1>>,
+): TypeGuard<T1>;
+export function createBrandedTypeGuard<T1 extends Brand<unknown, string>>(
+  ...args: [Parser<RemoveBrand<T1>>] | [string, Parser<RemoveBrand<T1>>]
 ): TypeGuard<T1> {
-  // Create a type guard using the branded parser
+  const parse = args.length === 2 ? args[1] : args[0];
+  const name = args.length === 2 ? args[0] as string : undefined;
+  if (name !== undefined) {
+    return createTypeGuard<T1>(name, parse as unknown as Parser<T1>);
+  }
   return createTypeGuard<T1>(parse as unknown as Parser<T1>);
 }

@@ -1,6 +1,7 @@
 import { assert, assertEquals, assertFalse, assertThrows } from "@std/assert";
 import { type Brand, createBrandedTypeGuard, type RemoveBrand } from "./brand.ts";
 import { createTypeGuard, isNumber, isObject, isString } from "./guard.ts";
+import { hasMeta, hasName } from "./introspect.ts";
 import type { TypeGuard } from "./types.ts";
 import { type Equals, assertType } from "./test-utils.ts";
 
@@ -163,6 +164,63 @@ Deno.test("createBrandedTypeGuard - StandardSchemaV1 compatibility", () => {
   assertEquals(isUserId["~standard"].version, 1);
   assertEquals(isUserId["~standard"].vendor, "guardis");
   assert(typeof isUserId["~standard"].validate === "function");
+});
+
+// === Named branded type guards ===
+
+Deno.test("createBrandedTypeGuard - with name parameter", async (t) => {
+  const isUserId = createBrandedTypeGuard<string, "UserId">("UserId", parseUserId);
+
+  await t.step("valid inputs pass", () => {
+    assert(isUserId("user_123"));
+  });
+
+  await t.step("invalid inputs fail", () => {
+    assertFalse(isUserId("bad"));
+    assertFalse(isUserId(42));
+  });
+
+  await t.step("name is stored in metadata", () => {
+    assert(hasName(isUserId));
+    assertEquals(isUserId._.name, "UserId");
+  });
+
+  await t.step("name appears in validation error messages", () => {
+    const result = isUserId.validate("bad");
+    assert("issues" in result && result.issues);
+    assert(result.issues[0].message.includes("UserId"));
+  });
+
+  await t.step("correct branded type inferred", () => {
+    assertType<Equals<typeof isUserId, TypeGuard<UserId>>>();
+  });
+});
+
+Deno.test("createBrandedTypeGuard - with name parameter (Brand type param overload)", async (t) => {
+  const isScore = createBrandedTypeGuard<Score>("Score", parseScore);
+
+  await t.step("valid inputs pass", () => {
+    assert(isScore(50));
+  });
+
+  await t.step("invalid inputs fail", () => {
+    assertFalse(isScore(-1));
+  });
+
+  await t.step("name is stored in metadata", () => {
+    assert(hasName(isScore));
+    assertEquals(isScore._.name, "Score");
+  });
+
+  await t.step("correct branded type inferred", () => {
+    assertType<Equals<typeof isScore, TypeGuard<Score>>>();
+  });
+});
+
+Deno.test("createBrandedTypeGuard - without name has undefined name", () => {
+  const isUserId = createBrandedTypeGuard<string, "UserId">(parseUserId);
+  assert(hasMeta(isUserId));
+  assertEquals(isUserId._.name, undefined);
 });
 
 // === Branded object types ===
