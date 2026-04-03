@@ -224,6 +224,57 @@ Deno.test("createBrandedTypeGuard - without name has undefined name", () => {
   assertEquals(isUserId._.name, undefined);
 });
 
+// === Shape-based branded type guards ===
+
+Deno.test("createBrandedTypeGuard - shape with name infers brand", async (t) => {
+  const isUser = createBrandedTypeGuard("User", { name: isString, age: isNumber });
+
+  await t.step("valid objects pass", () => {
+    assert(isUser({ name: "Alice", age: 30 }));
+  });
+
+  await t.step("invalid objects fail", () => {
+    assertFalse(isUser({ name: 123, age: 30 }));
+    assertFalse(isUser({ name: "Alice" }));
+    assertFalse(isUser("not an object"));
+    assertFalse(isUser(null));
+  });
+
+  await t.step("name is stored in metadata", () => {
+    assert(hasName(isUser));
+    assertEquals(isUser._.name, "User");
+  });
+
+  await t.step("infers Brand<{name: string, age: number}, 'User'> from name", () => {
+    assertType<Equals<typeof isUser, TypeGuard<Brand<{ name: string; age: number }, "User">>>>();
+  });
+});
+
+Deno.test("createBrandedTypeGuard - shape without name", async (t) => {
+  const isUser = createBrandedTypeGuard<
+    { name: typeof isString; age: typeof isNumber },
+    "User"
+  >({ name: isString, age: isNumber });
+
+  await t.step("valid objects pass", () => {
+    assert(isUser({ name: "Alice", age: 30 }));
+  });
+
+  await t.step("invalid objects fail", () => {
+    assertFalse(isUser({ name: 123, age: 30 }));
+    assertFalse(isUser("not an object"));
+  });
+
+  await t.step("no name in metadata", () => {
+    assert(hasMeta(isUser));
+    assertEquals(isUser._.name, undefined);
+  });
+
+  await t.step("correct branded type inferred", () => {
+    assertType<Equals<typeof isUser, TypeGuard<Brand<{ name: string; age: number }, "User">>>>();
+  });
+});
+
 // === Branded object types ===
 
 type User = Brand<{ name: string; age: number }, "User">;

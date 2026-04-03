@@ -1,5 +1,5 @@
 import { createTypeGuard } from "./guard.ts";
-import type { Parser, TypeGuard } from "./types.ts";
+import type { InferShape, Parser, TypeGuard, TypeGuardShape } from "./types.ts";
 
 /**
  * Creates a nominal type by intersecting a base type `T` with a unique brand `B`.
@@ -47,7 +47,9 @@ export type RemoveBrand<T> = T extends string ? string
  *
  * // Create a named branded type guard (name infers the brand and appears in error messages)
  * const isNamedUserId = createBrandedTypeGuard("UserId", parseUserId);
- * // Equivalent to: createBrandedTypeGuard<string, "UserId">(parseUserId) but with error message name
+ *
+ * // Create a branded type guard from a shape
+ * const isBrandedUser = createBrandedTypeGuard("User", { name: isString, age: isNumber });
  *
  * // Use the type guards
  * const id: unknown = "user_123";
@@ -57,23 +59,34 @@ export type RemoveBrand<T> = T extends string ? string
  * }
  * ```
  */
+export function createBrandedTypeGuard<S extends TypeGuardShape, B extends string>(
+  name: B,
+  shape: S,
+): TypeGuard<Brand<InferShape<S>, B>>;
+export function createBrandedTypeGuard<S extends TypeGuardShape, B extends string>(
+  shape: S,
+): TypeGuard<Brand<InferShape<S>, B>>;
+export function createBrandedTypeGuard<T1, B extends string>(
+  name: B,
+  parse: Parser<T1>,
+): TypeGuard<Brand<T1, B>>;
 export function createBrandedTypeGuard<T1, B extends string>(
   parse: Parser<T1>,
 ): TypeGuard<Brand<T1, B>>;
 export function createBrandedTypeGuard<T1 extends Brand<unknown, string>>(
   parse: Parser<RemoveBrand<T1>>,
 ): TypeGuard<T1>;
-export function createBrandedTypeGuard<T1, B extends string>(
-  name: B,
-  parse: Parser<T1>,
-): TypeGuard<Brand<T1, B>>;
 export function createBrandedTypeGuard<T1 extends Brand<unknown, string>>(
-  ...args: [Parser<RemoveBrand<T1>>] | [string, Parser<RemoveBrand<T1>>]
+  ...args:
+    | [Parser<RemoveBrand<T1>>]
+    | [string, Parser<RemoveBrand<T1>>]
+    | [TypeGuardShape]
+    | [string, TypeGuardShape]
 ): TypeGuard<T1> {
-  const parse = args.length === 2 ? args[1] : args[0];
+  const parserOrShape = args.length === 2 ? args[1] : args[0];
   const name = args.length === 2 ? args[0] as string : undefined;
   if (name !== undefined) {
-    return createTypeGuard<T1>(name, parse as unknown as Parser<T1>);
+    return createTypeGuard<T1>(name, parserOrShape as unknown as Parser<T1>);
   }
-  return createTypeGuard<T1>(parse as unknown as Parser<T1>);
+  return createTypeGuard<T1>(parserOrShape as unknown as Parser<T1>);
 }
