@@ -261,10 +261,7 @@ const createNotEmptyTypeGuard = <T>(guard: Predicate<T>) => {
   const notEmptyParser: Parser<T> = (value: unknown) =>
     notEmpty(value) && guard(value) ? value : null;
 
-  const context = (
-    value: unknown,
-    ctx?: Context,
-  ): StandardSchemaV1.Result<T> => {
+  const context = (value: unknown, ctx?: Context): StandardSchemaV1.Result<T> => {
     if (notEmpty(value)) return { value };
 
     const message = formatErrorMessage(value, name);
