@@ -2445,6 +2445,185 @@ Deno.test("createTypeGuard", async (t) => {
   });
 });
 
+// === Chaining Coverage ===
+
+Deno.test("Chaining coverage", async (t) => {
+  await t.step("optional.validate", async (t) => {
+    await t.step("returns success for undefined", () => {
+      const result = isString.optional.validate(undefined);
+      assert("value" in result);
+      assertEquals(result.value, undefined);
+    });
+
+    await t.step("returns success for valid value", () => {
+      const result = isString.optional.validate("hello");
+      assert("value" in result);
+      assertEquals(result.value, "hello");
+    });
+
+    await t.step("returns issues for invalid value", () => {
+      const result = isString.optional.validate(42);
+      assert("issues" in result && result.issues);
+      assert(result.issues.length > 0);
+    });
+  });
+
+  await t.step("optional.or", async (t) => {
+    const isStringOrUndefinedOrNumber = isString.optional.or(isNumber);
+
+    await t.step("accepts base type", () => {
+      assert(isStringOrUndefinedOrNumber("hello"));
+    });
+
+    await t.step("accepts undefined", () => {
+      assert(isStringOrUndefinedOrNumber(undefined));
+    });
+
+    await t.step("accepts union type", () => {
+      assert(isStringOrUndefinedOrNumber(42));
+    });
+
+    await t.step("rejects non-matching types", () => {
+      assertFalse(isStringOrUndefinedOrNumber(null));
+      assertFalse(isStringOrUndefinedOrNumber(true));
+    });
+  });
+
+  await t.step("notEmpty.optional.strict", async (t) => {
+    await t.step("passes for valid non-empty value", () => {
+      isString.notEmpty.optional.strict("hello");
+    });
+
+    await t.step("passes for undefined", () => {
+      isString.notEmpty.optional.strict(undefined);
+    });
+
+    await t.step("throws for invalid value", () => {
+      assertThrows(() => isString.notEmpty.optional.strict(42), TypeError);
+    });
+
+    await t.step("throws for empty value", () => {
+      assertThrows(() => isString.notEmpty.optional.strict(""), TypeError);
+    });
+  });
+
+  await t.step("notEmpty.optional.assert", () => {
+    const assertFn: typeof isString.notEmpty.optional.assert =
+      isString.notEmpty.optional.assert;
+    assertFn("hello");
+    assertFn(undefined);
+    assertThrows(() => assertFn(42), TypeError);
+  });
+
+  await t.step("notEmpty.optional.validate", async (t) => {
+    await t.step("returns success for undefined", () => {
+      const result = isString.notEmpty.optional.validate(undefined);
+      assert("value" in result);
+      assertEquals(result.value, undefined);
+    });
+
+    await t.step("returns success for valid non-empty value", () => {
+      const result = isString.notEmpty.optional.validate("hello");
+      assert("value" in result);
+      assertEquals(result.value, "hello");
+    });
+
+    await t.step("returns issues for empty value", () => {
+      const result = isString.notEmpty.optional.validate("");
+      assert("issues" in result && result.issues);
+    });
+  });
+
+  await t.step("notEmpty.optional.or", () => {
+    const guard = isString.notEmpty.optional.or(isNumber);
+    assert(guard("hello"));
+    assert(guard(undefined));
+    assert(guard(42));
+    assertFalse(guard(""));
+    assertFalse(guard(null));
+    assertFalse(guard(true));
+  });
+
+  await t.step("optional.notEmpty.strict", async (t) => {
+    await t.step("passes for valid non-empty value", () => {
+      isString.optional.notEmpty.strict("hello");
+    });
+
+    await t.step("passes for undefined", () => {
+      isString.optional.notEmpty.strict(undefined);
+    });
+
+    await t.step("throws for empty value", () => {
+      assertThrows(() => isString.optional.notEmpty.strict(""), TypeError);
+    });
+  });
+
+  await t.step("optional.notEmpty.validate", async (t) => {
+    await t.step("returns success for undefined", () => {
+      const result = isString.optional.notEmpty.validate(undefined);
+      assert("value" in result);
+      assertEquals(result.value, undefined);
+    });
+
+    await t.step("returns success for valid non-empty value", () => {
+      const result = isString.optional.notEmpty.validate("hello");
+      assert("value" in result);
+    });
+
+    await t.step("returns issues for empty value", () => {
+      const result = isString.optional.notEmpty.validate("");
+      assert("issues" in result && result.issues);
+    });
+  });
+
+  await t.step("optional.notEmpty.or", () => {
+    const guard = isString.optional.notEmpty.or(isNumber);
+    assert(guard("hello"));
+    assert(guard(undefined));
+    assert(guard(42));
+    assertFalse(guard(""));
+    assertFalse(guard(null));
+  });
+
+  await t.step("type inference", async (t) => {
+    await t.step("optional.or produces T | undefined | T2", () => {
+      const guard = isString.optional.or(isNumber);
+      assertType<Equals<typeof guard._TYPE, string | undefined | number>>();
+    });
+
+    await t.step("optional.validate returns Result<T | undefined>", () => {
+      const result = isString.optional.validate("hello");
+      if ("value" in result) {
+        assertType<Equals<typeof result.value, string | undefined>>();
+      }
+    });
+
+    await t.step("notEmpty.optional.or produces T | undefined | T2", () => {
+      const guard = isString.notEmpty.optional.or(isNumber);
+      assertType<Equals<typeof guard._TYPE, string | undefined | number>>();
+    });
+
+    await t.step("notEmpty.optional.validate returns Result<T | undefined>", () => {
+      const result = isString.notEmpty.optional.validate("hello");
+      if ("value" in result) {
+        assertType<Equals<typeof result.value, string | undefined>>();
+      }
+    });
+
+    await t.step("optional.notEmpty.or produces T | undefined | T2", () => {
+      const guard = isString.optional.notEmpty.or(isNumber);
+      assertType<Equals<typeof guard._TYPE, string | undefined | number>>();
+    });
+
+    await t.step("optional.notEmpty.validate returns Result<T | undefined>", () => {
+      const result = isString.optional.notEmpty.validate("hello");
+      if ("value" in result) {
+        assertType<Equals<typeof result.value, string | undefined>>();
+      }
+    });
+  });
+});
+
 // === Guard Name Edge Cases ===
 
 Deno.test("Guard name edge cases", async (t) => {

@@ -282,8 +282,21 @@ const createNotEmptyTypeGuard = <T>(guard: Predicate<T>) => {
   notEmpty.assert = notEmpty.strict;
   notEmpty.validate = (value: unknown) => context(value, createContext());
 
-  notEmpty.optional = (value: unknown): value is T | undefined =>
+  const notEmptyOptional = (value: unknown): value is T | undefined =>
     guard(value) ? notEmpty(value) : isUndefined(value);
+
+  const optionalName = name ? `${name} | undefined` : undefined;
+  const optionalParser: Parser<T | undefined> = (v) => notEmptyOptional(v) ? v : null;
+
+  notEmptyOptional.strict = createStrictTypeGuard(optionalParser, optionalName);
+  notEmptyOptional.assert = notEmptyOptional.strict;
+  notEmptyOptional.validate = (value: unknown): StandardSchemaV1.Result<T | undefined> => {
+    if (isUndefined(value)) return { value: value as T | undefined };
+    return context(value, createContext());
+  };
+  notEmptyOptional.or = createOrTypeGuard(notEmptyOptional);
+
+  notEmpty.optional = notEmptyOptional;
 
   notEmpty.or = createOrTypeGuard(notEmpty);
 
@@ -469,6 +482,9 @@ export function createTypeGuard<T1>(
     name ? `${name} | undefined` : undefined,
   );
   optional.assert = optional.strict;
+  optional.validate = (value: unknown): StandardSchemaV1.Result<T1 | undefined> =>
+    isUndefined(value) ? { value } : context(value, createContext());
+  optional.or = createOrTypeGuard(optional);
   optional.notEmpty = callback.notEmpty.optional;
   callback.optional = optional;
 

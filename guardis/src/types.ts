@@ -190,6 +190,19 @@ export interface TypeGuard<T1> extends StandardSchemaV1<T1> {
      */
     assert: (value: unknown, errorMsg?: string) => asserts value is T1 | undefined;
     /**
+     * Validates the value against the schema, accepting undefined as valid.
+     * @param value The value to validate
+     * @returns A success result with the value (including undefined), or a failure result with issues.
+     */
+    validate: (value: unknown) => StandardSchemaV1.Result<T1 | undefined>;
+    /**
+     * A type guard function that checks if the value is of type T1 | undefined | T2.
+     * This is useful for creating unions of types.
+     * @param guard A type guard for T2
+     * @returns A new type guard that checks if the value is of type T1 | undefined | T2
+     */
+    or: <T2>(guard: Predicate<T2>) => TypeGuard<T1 | undefined | T2>;
+    /**
      * A type guard that checks if the value is not empty and of type T | undefined.
      * An empty value is defined as null, an empty string, an empty array,
      * or an empty object.
