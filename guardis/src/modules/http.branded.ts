@@ -44,6 +44,6 @@ export type IPAddress = IPv4 | IPv6;
 /**
  * Type guard that checks if a value is either a valid IPv4 or IPv6 address.
  */
-export const isIpAddress = isIpv4.or(isIpv6);
+export const isIpAddress: TypeGuard<IPAddress> = isIpv4.or(isIpv6);
 
 export { isNativeURL, isRequest, isResponse } from "./http.ts";
