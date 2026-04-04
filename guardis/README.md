@@ -298,6 +298,17 @@ isStringArray.validate(["a", 123, "c"]);
 const isPeople = Is.Array.of(isPerson);
 isPeople.validate([{ name: "Alice", address: { city: 456, zip: 12345 } }]);
 // { issues: [{ message: "Expected string. Received: 456", path: [0, "address", "city"] }] }
+
+// Tuple validation includes element indices in the path
+const isPair = createTypeGuard("pair", (v, { tupleHas }) => {
+  if (!Is.Array(v) || v.length !== 2) return null;
+  if (!tupleHas(v, 0, Is.String)) return null;
+  if (!tupleHas(v, 1, Is.Number)) return null;
+  return v;
+});
+
+isPair.validate(["hi", "nope"]);
+// { issues: [{ message: 'Expected number. Received: "nope"', path: [1] }] }
 ```
 
 **Collecting errors:**
@@ -483,7 +494,7 @@ const isExample = createTypeGuard((val, helpers) => {
   // Check that a property does NOT exist
   hasNot(obj, "deleted"); // ensures "deleted" property is absent
 
-  // Check tuple element at specific index
+  // Check tuple element at specific index (includes index in validation path)
   tupleHas(tuple, 0, Is.String); // [string, ...unknown[]]
 
   // Check if value is in array (for union types)
