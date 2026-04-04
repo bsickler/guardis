@@ -1,6 +1,10 @@
 {
   "workspace": ["guardis/", "hono/"],
-  "tasks": {},
+  "tasks": {
+    "build:guardis": "cd guardis && deno run -A scripts/build_npm.ts",
+    "build:hono": "cd hono && deno run -A scripts/build_npm.ts",
+    "build:npm": "deno task build:guardis && deno task build:hono"
+  },
   "importMap": "./import_map.json",
   "compilerOptions": {},
   "lock": false,

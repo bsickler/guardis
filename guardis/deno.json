@@ -23,6 +23,10 @@
     "bench:guards": {
       "description": "Run library benchmarks on the typeguards to detect slow parsing logic.",
       "command": "deno bench benchmarks/guard.bench.ts"
+    },
+    "build:npm": {
+      "description": "Build npm package using dnt.",
+      "command": "deno run -A scripts/build_npm.ts"
     }
   },
   "publish": {
