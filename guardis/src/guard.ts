@@ -236,8 +236,10 @@ const createStrictTypeGuard = <T>(
  * ```
  */
 const createOrTypeGuard =
-  <T1>(guard: Predicate<T1>) => (...others: TypeGuard<unknown>[]): TypeGuard<unknown> => {
-    if (others.length === 0) return guard as TypeGuard<unknown>;
+  <T1>(guard: Predicate<T1>) => <T2 extends Predicate<unknown>[]>(...others: T2) => {
+    type R = T1 | (T2[number] extends Predicate<infer U> ? U : never);
+
+    if (others.length === 0) return guard as TypeGuard<R>;
 
     const allGuards: Predicate<unknown>[] = [guard, ...others];
 
@@ -255,7 +257,7 @@ const createOrTypeGuard =
       return null;
     };
 
-    return name ? createTypeGuard(name, parser) : createTypeGuard(parser);
+    return (name ? createTypeGuard(name, parser) : createTypeGuard(parser)) as TypeGuard<R>;
   };
 
 /**
