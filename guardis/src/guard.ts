@@ -394,23 +394,26 @@ export function createTypeGuard<T1>(
     value: unknown,
     ctx?: Context,
   ): StandardSchemaV1.Result<T1> => {
-    const issuesBefore = ctx?.issues.length ?? 0;
+    const issuesBefore = ctx?.issues.length;
     const helpers = createHelpers(ctx);
     const result = parser(value, helpers);
 
     // If parser returned null and no child issues were added, add this guard's error
-    if (result === null && ctx?.issues.length === issuesBefore) {
+    if (result === null && ctx && ctx.issues.length === issuesBefore) {
       ctx.addIssue(formatErrorMessage(value, name));
     }
 
-    // Return accumulated issues if any
-    if (ctx && ctx.issues.length > 0) {
-      return { issues: ctx.issues };
-    }
+    // Check if THIS guard added any issues (not sibling issues from shared context)
+    const hasNewIssues = ctx !== undefined && ctx.issues.length > issuesBefore!;
 
-    if (result !== null) {
+    if (result !== null && !hasNewIssues) {
       // Special case: isNull parser returns `true` when value is null
       return { value: result === true && value === null ? value as T1 : result };
+    }
+
+    // Return accumulated issues if this guard contributed any
+    if (hasNewIssues) {
+      return { issues: ctx!.issues };
     }
 
     return { issues: [{ message: formatErrorMessage(value, name) }] };

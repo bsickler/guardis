@@ -4767,6 +4767,60 @@ Deno.test("createTypeGuard shape", async (t) => {
     });
   });
 
+  await t.step("validate does not false-positive on valid sibling fields", async (t) => {
+    await t.step("valid array sibling not reported when string field fails", () => {
+      const isTeam = createTypeGuard({
+        lead: isString,
+        members: isArray.of(isString),
+      });
+      const isCompany = createTypeGuard({ name: isString, team: isTeam });
+
+      const result = isCompany.validate({
+        name: "Acme",
+        team: { lead: 123, members: ["Alice", "Bob"] },
+      });
+
+      assert("issues" in result && result.issues);
+      // Only team.lead should fail — members is valid
+      assertEquals(result.issues.length, 1);
+      assertEquals(result.issues[0].path, ["team", "lead"]);
+    });
+
+    await t.step("valid string sibling not reported when array field fails", () => {
+      const isTeam = createTypeGuard({
+        lead: isString,
+        members: isArray.of(isString),
+      });
+      const isCompany = createTypeGuard({ name: isString, team: isTeam });
+
+      const result = isCompany.validate({
+        name: "Acme",
+        team: { lead: "Bob", members: ["Alice", 42] },
+      });
+
+      assert("issues" in result && result.issues);
+      // Only team.members.1 should fail — lead is valid
+      assertEquals(result.issues.length, 1);
+      assertEquals(result.issues[0].path, ["team", "members", 1]);
+    });
+
+    await t.step("both siblings fail — both reported, no extras", () => {
+      const isTeam = createTypeGuard({
+        lead: isString,
+        members: isArray.of(isString),
+      });
+      const isCompany = createTypeGuard({ name: isString, team: isTeam });
+
+      const result = isCompany.validate({
+        name: "Acme",
+        team: { lead: 123, members: ["Alice", 42] },
+      });
+
+      assert("issues" in result && result.issues);
+      assertEquals(result.issues.length, 2);
+    });
+  });
+
   // === Compile-time type inference tests ===
   // These tests verify that createTypeGuard with shapes produces correct types.
   // They have no runtime assertions — they pass if the file type-checks.
