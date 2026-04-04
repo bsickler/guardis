@@ -24,7 +24,7 @@ import {
   isUndefined,
 } from "./guard.ts";
 import type { GuardedType, TypeGuard } from "./types.ts";
-import { type Equals, assertType } from "./test-utils.ts";
+import { assertType, type Equals } from "./test-utils.ts";
 
 // Standard test values for consistency across all type guard tests
 const TEST_VALUES = {
@@ -2308,7 +2308,17 @@ Deno.test("createTypeGuard", async (t) => {
     const chained = isString.or(isNumber).or(isBoolean);
 
     const values = [
-      "hello", "", 42, 0, true, false, null, undefined, {}, [], Symbol(),
+      "hello",
+      "",
+      42,
+      0,
+      true,
+      false,
+      null,
+      undefined,
+      {},
+      [],
+      Symbol(),
     ];
 
     for (const v of values) {
@@ -2747,8 +2757,7 @@ Deno.test("Chaining coverage", async (t) => {
   });
 
   await t.step("notEmpty.optional.assert", () => {
-    const assertFn: typeof isString.notEmpty.optional.assert =
-      isString.notEmpty.optional.assert;
+    const assertFn: typeof isString.notEmpty.optional.assert = isString.notEmpty.optional.assert;
     assertFn("hello");
     assertFn(undefined);
     assertThrows(() => assertFn(42), TypeError);
@@ -2927,9 +2936,7 @@ Deno.test("Guard name edge cases", async (t) => {
     // "non-empty undefined" in error messages
 
     // Create an unnamed guard
-    const unnamedGuard = createTypeGuard((v): string | null =>
-      typeof v === "string" ? v : null
-    );
+    const unnamedGuard = createTypeGuard((v): string | null => typeof v === "string" ? v : null);
 
     // Use notEmpty on it
     const notEmptyGuard = unnamedGuard.notEmpty;
@@ -2946,9 +2953,7 @@ Deno.test("Guard name edge cases", async (t) => {
     // When only one guard has a name, the union name should be undefined
     // (not "string | undefined" or similar partial names)
 
-    const unnamedGuard = createTypeGuard((v): number | null =>
-      typeof v === "number" ? v : null
-    );
+    const unnamedGuard = createTypeGuard((v): number | null => typeof v === "number" ? v : null);
 
     // isString has a name, unnamedGuard does not
     const mixedUnion = isString.or(unnamedGuard);
@@ -3235,6 +3240,52 @@ Deno.test("Validation path tracking", async (t) => {
     assertEquals(invalidResult.issues.length, 1);
     assertEquals(invalidResult.issues[0].message, "Expected number. Received: 'four'");
     assertEquals(invalidResult.issues[0].path, [1, 1]);
+  });
+
+  await t.step("tuple validation - includes index in path", async (t) => {
+    const isTupleGuard = createTypeGuard(
+      "tuple [string, number]",
+      (v, h) => {
+        if (!isArray(v) || v.length !== 2) return null;
+        if (!h.tupleHas(v, 0, isString)) return null;
+        if (!h.tupleHas(v, 1, isNumber)) return null;
+        return v;
+      },
+    );
+
+    await t.step("valid tuple passes", () => {
+      const result = isTupleGuard.validate(["hi", 42]);
+      assert("value" in result);
+      assertEquals(result.value, ["hi", 42]);
+    });
+
+    await t.step("invalid element reports index path", () => {
+      const result = isTupleGuard.validate(["hi", "nope"]);
+      assert("issues" in result && result.issues);
+      assertEquals(result.issues.length, 1);
+      assertEquals(result.issues[0].path, [1]);
+      assert(result.issues[0].message.includes("number"));
+    });
+
+    await t.step("first element invalid reports index 0", () => {
+      const result = isTupleGuard.validate([123, 42]);
+      assert("issues" in result && result.issues);
+      assertEquals(result.issues.length, 1);
+      assertEquals(result.issues[0].path, [0]);
+      assert(result.issues[0].message.includes("string"));
+    });
+
+    await t.step("tuple nested in shape reports full path", () => {
+      const isRecord = createTypeGuard({
+        label: isString,
+        pair: isTupleGuard,
+      });
+
+      const result = isRecord.validate({ label: "test", pair: ["hi", "bad"] });
+      assert("issues" in result && result.issues);
+      assertEquals(result.issues.length, 1);
+      assertEquals(result.issues[0].path, ["pair", 1]);
+    });
   });
 
   await t.step("validation still works with boolean guards (no context)", () => {
@@ -4325,7 +4376,10 @@ Deno.test("createTypeGuard shape", async (t) => {
     });
 
     await t.step("all modes work on nested shapes", () => {
-      const valid = { name: "Alice", address: { street: "123 Main", city: "Springfield", zip: 62701 } };
+      const valid = {
+        name: "Alice",
+        address: { street: "123 Main", city: "Springfield", zip: 62701 },
+      };
       const invalid = { name: "Alice", address: { street: 123, city: "Springfield", zip: 62701 } };
 
       // Strict
@@ -4344,9 +4398,7 @@ Deno.test("createTypeGuard shape", async (t) => {
       assertFalse(isPersonOrString(invalid));
 
       // Extend
-      const isNamedPerson = isPersonWithAddress.extend((val) =>
-        val.name.length > 0 ? val : null
-      );
+      const isNamedPerson = isPersonWithAddress.extend((val) => val.name.length > 0 ? val : null);
       assert(isNamedPerson(valid));
       assertFalse(isNamedPerson({ ...valid, name: "" }));
     });
@@ -4363,7 +4415,9 @@ Deno.test("createTypeGuard shape", async (t) => {
     });
 
     await t.step("valid nested object passes", () => {
-      assert(isPersonInline({ name: "Alice", address: { street: "123 Main", city: "Springfield" } }));
+      assert(
+        isPersonInline({ name: "Alice", address: { street: "123 Main", city: "Springfield" } }),
+      );
     });
 
     await t.step("invalid nested property fails", () => {
@@ -4513,9 +4567,7 @@ Deno.test("createTypeGuard shape", async (t) => {
       const result = isRecord.validate({ id: true, label: "test" });
       assert("issues" in result && result.issues);
       assert(result.issues.length > 0);
-      const idIssue = result.issues.find((i) =>
-        i.path && (i.path as PropertyKey[]).includes("id")
-      );
+      const idIssue = result.issues.find((i) => i.path && (i.path as PropertyKey[]).includes("id"));
       assert(idIssue, "Expected an issue with path containing 'id'");
     });
 

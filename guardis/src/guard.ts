@@ -50,7 +50,7 @@ function createHelpers(ctx?: Context): HelpersWithContext {
       doesNotHaveProperty(t, k, ctx?.pushPath(k), ctx ? errorMessage : undefined),
     hasOptional: (t, k, guard?, errorMessage?) =>
       hasOptionalProperty(t, k, guard, ctx?.pushPath(k), ctx ? errorMessage : undefined),
-    tupleHas,
+    tupleHas: (t, i, guard) => tupleHas(t, i, guard, ctx?.pushPath(i)),
     includes,
     keyOf: <T extends object>(k: unknown, t: T, errorMessage?: string) =>
       keyOf(k, t, ctx, ctx ? errorMessage : undefined),
