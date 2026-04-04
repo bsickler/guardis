@@ -1,5 +1,9 @@
 import { build, emptyDir } from "jsr:@deno/dnt";
 
+const denoConfig = JSON.parse(await Deno.readTextFile("./deno.json"));
+const guardisConfig = JSON.parse(await Deno.readTextFile("../guardis/deno.json"));
+const { name, version, description, license } = denoConfig;
+
 await emptyDir("./npm");
 
 await build({
@@ -16,15 +20,15 @@ await build({
   },
   importMap: "../import_map.json",
   package: {
-    name: "@spudlabs/guardis-hono",
-    version: Deno.args[0] || "0.0.9",
-    description: "Guardis utilities for use with the Hono API framework.",
-    license: "MIT",
+    name,
+    version: Deno.args[0] || version,
+    description,
+    license,
     peerDependencies: {
       hono: "^4.10.0",
     },
     dependencies: {
-      "@spudlabs/guardis": "^0.4.0",
+      [guardisConfig.name]: `^${guardisConfig.version}`,
     },
     keywords: [
       "guardis",

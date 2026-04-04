@@ -1,16 +1,17 @@
 import { build, emptyDir } from "jsr:@deno/dnt";
 
+const denoConfig = JSON.parse(await Deno.readTextFile("./deno.json"));
+const { name, version, description, license, exports } = denoConfig;
+
+// Derive dnt entryPoints from deno.json exports
+const entryPoints = Object.entries(exports).map(([key, path]) =>
+  key === "." ? (path as string) : { name: key, path: path as string }
+);
+
 await emptyDir("./npm");
 
 await build({
-  entryPoints: [
-    "./mod.ts",
-    { name: "./async", path: "./src/modules/async.ts" },
-    { name: "./http", path: "./src/modules/http.ts" },
-    { name: "./http-branded", path: "./src/modules/http.branded.ts" },
-    { name: "./strings", path: "./src/modules/strings.ts" },
-    { name: "./strings-branded", path: "./src/modules/strings.branded.ts" },
-  ],
+  entryPoints,
   outDir: "./npm",
   shims: {
     deno: false,
@@ -20,10 +21,10 @@ await build({
     lib: ["ES2022", "DOM"],
   },
   package: {
-    name: "@spudlabs/guardis",
-    version: Deno.args[0] || "0.4.0",
-    description: "Guardis is a modular library of type guards, built to be easy to use and extend.",
-    license: "MIT",
+    name,
+    version: Deno.args[0] || version,
+    description,
+    license,
     keywords: [
       "typescript",
       "type-guard",
