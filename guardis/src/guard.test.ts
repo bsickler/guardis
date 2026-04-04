@@ -2198,6 +2198,13 @@ Deno.test("createTypeGuard", async (t) => {
     assertFalse(isNonEmptyValue(TEST_VALUES.undefinedValue));
   });
 
+  await t.step("or method - zero arguments returns original guard", () => {
+    // Cast to bypass TypeScript's compile-time check (simulates JS caller)
+    const orWithNoArgs = isString.or as (...args: unknown[]) => unknown;
+    const result = orWithNoArgs();
+    assertEquals(result, isString);
+  });
+
   await t.step("or method - variadic arguments", () => {
     // Create a union type guard with multiple arguments in a single call
     const isStringOrNumberOrBoolean = isString.or(isNumber, isBoolean);
@@ -4999,6 +5006,10 @@ Deno.test("createTypeGuard shape", async (t) => {
     const isUserOrString = isUser.or(isString);
     type UserOrString = typeof isUserOrString._TYPE;
     assertType<Equals<UserOrString, { name: string; age: number } | string>>();
+
+    // .or() with zero arguments is a compile error
+    // @ts-expect-error — .or() requires at least one guard
+    isUser.or();
 
     // .optional return type narrows to T | undefined
     const _check = isUser.optional;

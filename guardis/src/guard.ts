@@ -237,6 +237,8 @@ const createStrictTypeGuard = <T>(
  */
 const createOrTypeGuard =
   <T1>(guard: Predicate<T1>) => (...others: TypeGuard<unknown>[]): TypeGuard<unknown> => {
+    if (others.length === 0) return guard as TypeGuard<unknown>;
+
     const allGuards: Predicate<unknown>[] = [guard, ...others];
 
     // Build a union name from all named guards
