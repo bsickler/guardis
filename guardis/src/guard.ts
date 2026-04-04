@@ -236,15 +236,21 @@ const createStrictTypeGuard = <T>(
  * ```
  */
 const createOrTypeGuard =
-  <T1>(guard: Predicate<T1>) => <T2>(guardTwo: TypeGuard<T2>): TypeGuard<T1 | T2> => {
-    // Create a union of the names of the two guards for better error messages, if available.
-    const name = hasName(guard) && hasName(guardTwo)
-      ? `${guard._.name} | ${guardTwo._.name}`
-      : undefined;
+  <T1>(guard: Predicate<T1>) =>
+  (...others: TypeGuard<unknown>[]): TypeGuard<unknown> => {
+    const allGuards: Predicate<unknown>[] = [guard, ...others];
+
+    // Build a union name from all named guards
+    const names: string[] = [];
+    for (const g of allGuards) {
+      if (hasName(g)) names.push(g._.name!);
+    }
+    const name = names.length === allGuards.length ? names.join(" | ") : undefined;
 
     const parser = (v: unknown) => {
-      if (guard(v) || guardTwo(v)) return v === null ? (true as T1 | T2) : v;
-
+      for (const g of allGuards) {
+        if (g(v)) return v === null ? true : v;
+      }
       return null;
     };
 

@@ -2198,6 +2198,245 @@ Deno.test("createTypeGuard", async (t) => {
     assertFalse(isNonEmptyValue(TEST_VALUES.undefinedValue));
   });
 
+  await t.step("or method - variadic arguments", () => {
+    // Create a union type guard with multiple arguments in a single call
+    const isStringOrNumberOrBoolean = isString.or(isNumber, isBoolean);
+
+    // Valid inputs
+    assert(isStringOrNumberOrBoolean(TEST_VALUES.string));
+    assert(isStringOrNumberOrBoolean(TEST_VALUES.number));
+    assert(isStringOrNumberOrBoolean(TEST_VALUES.boolean));
+    assert(isStringOrNumberOrBoolean(TEST_VALUES.booleanFalse));
+    assert(isStringOrNumberOrBoolean(TEST_VALUES.zero));
+    assert(isStringOrNumberOrBoolean(TEST_VALUES.emptyString));
+
+    // Invalid inputs
+    assertFalse(isStringOrNumberOrBoolean(TEST_VALUES.nullValue));
+    assertFalse(isStringOrNumberOrBoolean(TEST_VALUES.undefinedValue));
+    assertFalse(isStringOrNumberOrBoolean(TEST_VALUES.object));
+    assertFalse(isStringOrNumberOrBoolean(TEST_VALUES.array));
+  });
+
+  await t.step("or method - variadic with many guards", () => {
+    // Union of 5 guards in a single .or() call
+    const isAny = isString.or(isNumber, isBoolean, isNull, isUndefined);
+
+    assert(isAny("hello"));
+    assert(isAny(42));
+    assert(isAny(true));
+    assert(isAny(null));
+    assert(isAny(undefined));
+
+    // Invalid
+    assertFalse(isAny({}));
+    assertFalse(isAny([]));
+    assertFalse(isAny(Symbol()));
+  });
+
+  await t.step("or method - variadic produces correct union name", () => {
+    const guard = isString.or(isNumber, isBoolean);
+    const result = guard.validate([]);
+    assert(result.issues !== undefined);
+    assertEquals(result.issues[0].message, "Expected string | number | boolean. Received: []");
+  });
+
+  await t.step("or method - variadic all modes work", () => {
+    const guard = isString.or(isNumber, isBoolean);
+
+    // Strict mode
+    guard.strict("hello");
+    guard.strict(42);
+    guard.strict(true);
+    assertThrows(() => guard.strict(null));
+
+    // Optional mode
+    assert(guard.optional("hello"));
+    assert(guard.optional(42));
+    assert(guard.optional(true));
+    assert(guard.optional(undefined));
+    assertFalse(guard.optional(null));
+    assertFalse(guard.optional([]));
+
+    // NotEmpty mode
+    assert(guard.notEmpty("hello"));
+    assert(guard.notEmpty(42));
+    assert(guard.notEmpty(true));
+    assertFalse(guard.notEmpty(""));
+    assertFalse(guard.notEmpty(null));
+    assertFalse(guard.notEmpty(undefined));
+  });
+
+  await t.step("or method - variadic on notEmpty", () => {
+    const guard = isString.notEmpty.or(isNumber, isBoolean);
+
+    assert(guard("hello"));
+    assert(guard(42));
+    assert(guard(true));
+
+    // Empty string should still fail because of notEmpty on isString
+    assertFalse(guard(""));
+    assertFalse(guard(null));
+    assertFalse(guard(undefined));
+  });
+
+  await t.step("or method - variadic on optional", () => {
+    const guard = isString.optional.or(isNumber, isBoolean);
+
+    assert(guard("hello"));
+    assert(guard(42));
+    assert(guard(true));
+    assert(guard(undefined));
+
+    assertFalse(guard(null));
+    assertFalse(guard([]));
+  });
+
+  await t.step("or method - variadic with unnamed guards falls back to generic", () => {
+    const unnamed = createTypeGuard((v): symbol | null => typeof v === "symbol" ? v : null);
+    const guard = isString.or(isNumber, unnamed);
+
+    // One guard is unnamed, so error message should be generic
+    const result = guard.validate([]);
+    assert(result.issues !== undefined);
+    assertFalse(result.issues[0].message.includes("undefined"));
+    assertEquals(result.issues[0].message, "Invalid value. Received: []");
+  });
+
+  await t.step("or method - variadic equivalence to chaining", () => {
+    // Variadic and chained should produce the same results
+    const variadic = isString.or(isNumber, isBoolean);
+    const chained = isString.or(isNumber).or(isBoolean);
+
+    const values = [
+      "hello", "", 42, 0, true, false, null, undefined, {}, [], Symbol(),
+    ];
+
+    for (const v of values) {
+      assertEquals(variadic(v), chained(v), `Mismatch for value: ${String(v)}`);
+    }
+  });
+
+  await t.step("or method - variadic with extended guards", () => {
+    const isPositive = isNumber.extend("positive", (v) => v > 0 ? v : null);
+    const isNonEmptyString = isString.extend("non-empty string", (v) => v.length > 0 ? v : null);
+
+    // Use extended guards as variadic .or() arguments
+    const guard = isBoolean.or(isPositive, isNonEmptyString);
+
+    // Valid inputs
+    assert(guard(true));
+    assert(guard(false));
+    assert(guard(42));
+    assert(guard(1));
+    assert(guard("hello"));
+
+    // Invalid — fails extension constraints
+    assertFalse(guard(0));
+    assertFalse(guard(-5));
+    assertFalse(guard(""));
+
+    // Invalid — wrong types entirely
+    assertFalse(guard(null));
+    assertFalse(guard(undefined));
+    assertFalse(guard([]));
+    assertFalse(guard({}));
+  });
+
+  await t.step("or method - variadic with extended guard as base", () => {
+    // Extended guard calls .or() with variadic args
+    const isPositive = isNumber.extend("positive", (v) => v > 0 ? v : null);
+    const guard = isPositive.or(isString, isBoolean);
+
+    assert(guard(1));
+    assert(guard(100));
+    assert(guard("hello"));
+    assert(guard(""));
+    assert(guard(true));
+
+    // Fails positive constraint
+    assertFalse(guard(0));
+    assertFalse(guard(-1));
+
+    // Wrong types
+    assertFalse(guard(null));
+    assertFalse(guard(undefined));
+    assertFalse(guard([]));
+  });
+
+  await t.step("or method - variadic with extended guard all modes", () => {
+    const isPositive = isNumber.extend("positive", (v) => v > 0 ? v : null);
+    const guard = isPositive.or(isString, isNull);
+
+    // Strict
+    guard.strict(1);
+    guard.strict("hello");
+    guard.strict(null);
+    assertThrows(() => guard.strict(0));
+    assertThrows(() => guard.strict(undefined));
+
+    // Optional
+    assert(guard.optional(1));
+    assert(guard.optional("hello"));
+    assert(guard.optional(null));
+    assert(guard.optional(undefined));
+    assertFalse(guard.optional(0));
+    assertFalse(guard.optional(false));
+
+    // Validate
+    const success = guard.validate(42);
+    assert("value" in success);
+
+    const failure = guard.validate(0);
+    assert(failure.issues !== undefined);
+  });
+
+  await t.step("or method - variadic with multiple extended guards", () => {
+    // All arguments are extended guards
+    const isPositive = isNumber.extend("positive", (v) => v > 0 ? v : null);
+    const isNonEmptyString = isString.extend("non-empty string", (v) => v.length > 0 ? v : null);
+    const isNonEmptyArray = isArray.extend("non-empty array", (v) => v.length > 0 ? v : null);
+
+    const guard = isPositive.or(isNonEmptyString, isNonEmptyArray);
+
+    // Valid
+    assert(guard(1));
+    assert(guard("hello"));
+    assert(guard([1, 2]));
+
+    // Fails extension constraints
+    assertFalse(guard(0));
+    assertFalse(guard(-1));
+    assertFalse(guard(""));
+    assertFalse(guard([]));
+
+    // Wrong types
+    assertFalse(guard(null));
+    assertFalse(guard(true));
+    assertFalse(guard({}));
+  });
+
+  await t.step("or method - variadic with extended guard produces correct union name", () => {
+    const isPositive = isNumber.extend("positive", (v) => v > 0 ? v : null);
+    const guard = isPositive.or(isString, isBoolean);
+
+    const result = guard.validate(null);
+    assert(result.issues !== undefined);
+    assertEquals(result.issues[0].message, "Expected positive | string | boolean. Received: null");
+  });
+
+  await t.step("or method - variadic extend then chain", () => {
+    // Mix variadic with chaining after extend
+    const isPositive = isNumber.extend("positive", (v) => v > 0 ? v : null);
+    const guard = isPositive.or(isString, isBoolean).or(isNull);
+
+    assert(guard(1));
+    assert(guard("hello"));
+    assert(guard(true));
+    assert(guard(null));
+    assertFalse(guard(0));
+    assertFalse(guard(undefined));
+  });
+
   await t.step("extend method - basic functionality", () => {
     // Extend isString to only accept non-empty strings
     const isNonEmptyString = isString.extend((val) => {
@@ -2620,6 +2859,39 @@ Deno.test("Chaining coverage", async (t) => {
       if ("value" in result) {
         assertType<Equals<typeof result.value, string | undefined>>();
       }
+    });
+
+    await t.step("variadic or produces union of all types", () => {
+      const guard = isString.or(isNumber, isBoolean);
+      assertType<Equals<typeof guard._TYPE, string | number | boolean>>();
+    });
+
+    await t.step("variadic or with many guards produces full union", () => {
+      const guard = isString.or(isNumber, isBoolean, isNull, isUndefined);
+      assertType<Equals<typeof guard._TYPE, string | number | boolean | null | undefined>>();
+    });
+
+    await t.step("variadic optional.or produces T | undefined | union", () => {
+      const guard = isString.optional.or(isNumber, isBoolean);
+      assertType<Equals<typeof guard._TYPE, string | undefined | number | boolean>>();
+    });
+
+    await t.step("variadic notEmpty.or produces T | union", () => {
+      const guard = isString.notEmpty.or(isNumber, isBoolean);
+      assertType<Equals<typeof guard._TYPE, string | number | boolean>>();
+    });
+
+    await t.step("variadic or with extended guard as base", () => {
+      const isPositive = isNumber.extend("positive", (v) => v > 0 ? v : null);
+      const guard = isPositive.or(isString, isBoolean);
+      assertType<Equals<typeof guard._TYPE, number | string | boolean>>();
+    });
+
+    await t.step("variadic or with extended guards as arguments", () => {
+      const isPositive = isNumber.extend("positive", (v) => v > 0 ? v : null);
+      const isNonEmptyString = isString.extend("non-empty string", (v) => v.length > 0 ? v : null);
+      const guard = isBoolean.or(isPositive, isNonEmptyString);
+      assertType<Equals<typeof guard._TYPE, boolean | number | string>>();
     });
   });
 });

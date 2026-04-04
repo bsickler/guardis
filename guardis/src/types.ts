@@ -58,6 +58,11 @@ export type ExtendedParser<T1, T2 extends T1 = T1> = (val: T1, helper: Helpers) 
 
 export type Predicate<T> = (val: unknown) => val is T;
 
+/** Extracts a union of guarded types from a tuple of predicates */
+type PredicateUnion<Guards extends Predicate<unknown>[]> = {
+  [K in keyof Guards]: Guards[K] extends Predicate<infer U> ? U : never;
+}[number];
+
 export type StrictTypeGuard<T> = (value: unknown, errorMsg?: string) => value is T;
 
 /**
@@ -95,7 +100,7 @@ export interface TypeGuard<T1> extends StandardSchemaV1<T1> {
    * @param guard A type guard for T2
    * @returns A new type guard that checks if the value is of type T or T2
    */
-  or: <T2>(guard: Predicate<T2>) => TypeGuard<T1 | T2>;
+  or: <Guards extends Predicate<unknown>[]>(...guards: Guards) => TypeGuard<T1 | PredicateUnion<Guards>>;
   /**
    * A strict type guard that throws an error if the value is not of type T.
    * @param value The value to check
@@ -201,7 +206,7 @@ export interface TypeGuard<T1> extends StandardSchemaV1<T1> {
      * @param guard A type guard for T2
      * @returns A new type guard that checks if the value is of type T1 | undefined | T2
      */
-    or: <T2>(guard: Predicate<T2>) => TypeGuard<T1 | undefined | T2>;
+    or: <Guards extends Predicate<unknown>[]>(...guards: Guards) => TypeGuard<T1 | undefined | PredicateUnion<Guards>>;
     /**
      * A type guard that checks if the value is not empty and of type T | undefined.
      * An empty value is defined as null, an empty string, an empty array,
@@ -270,7 +275,7 @@ export interface TypeGuard<T1> extends StandardSchemaV1<T1> {
      * @param guard A type guard for T2
      * @returns A new type guard that checks if the value is of type T1 or T2
      */
-    or: <T2>(guard: Predicate<T2>) => TypeGuard<T1 | T2>;
+    or: <Guards extends Predicate<unknown>[]>(...guards: Guards) => TypeGuard<T1 | PredicateUnion<Guards>>;
     /**
      * A type guard that checks if the value is not empty and of type T | undefined.
      * An empty value is defined as null, an empty string, an empty array,
