@@ -1,5 +1,5 @@
 import { assert, assertEquals, assertFalse, assertThrows } from "@std/assert";
-import { isBoolean, isNull, isNumber, isString } from "./guard.ts";
+import { createTypeGuard, isArray, isBoolean, isNull, isNumber, isString } from "./guard.ts";
 import {
   doesNotHaveProperty,
   formatErrorMessage,
@@ -133,6 +133,62 @@ Deno.test("tupleHas", async (t) => {
     assertFalse(tupleHas(tuple, 0, isString));
     assertFalse(tupleHas(tuple, 1, isNumber));
     assertFalse(tupleHas(tuple, 3, isString)); // Index out of bounds
+  });
+
+  await t.step("validate reports element-level path on failure", () => {
+    const isTupleGuard = createTypeGuard(
+      "tuple [string, number]",
+      (v, h) => {
+        if (!isArray(v) || v.length !== 2) return null;
+        if (!h.tupleHas(v, 0, isString)) return null;
+        if (!h.tupleHas(v, 1, isNumber)) return null;
+        return v;
+      },
+    );
+
+    const result = isTupleGuard.validate(["hi", "nope"]);
+    assert("issues" in result && result.issues);
+    assertEquals(result.issues.length, 1);
+    assertEquals(result.issues[0].path, [1]);
+    assert(
+      result.issues[0].message.includes("number"),
+      `Expected type-specific error, got: ${result.issues[0].message}`,
+    );
+  });
+
+  await t.step("validate passes for valid tuple", () => {
+    const isTupleGuard = createTypeGuard(
+      "tuple [string, number]",
+      (v, h) => {
+        if (!isArray(v) || v.length !== 2) return null;
+        if (!h.tupleHas(v, 0, isString)) return null;
+        if (!h.tupleHas(v, 1, isNumber)) return null;
+        return v;
+      },
+    );
+
+    const result = isTupleGuard.validate(["hi", 42]);
+    assert("value" in result);
+  });
+
+  await t.step("validate reports full path for tuple nested in shape", () => {
+    const isPair = createTypeGuard(
+      "pair",
+      (v, h) => {
+        if (!isArray(v) || v.length !== 2) return null;
+        if (!h.tupleHas(v, 0, isString)) return null;
+        if (!h.tupleHas(v, 1, isNumber)) return null;
+        return v;
+      },
+    );
+    const isRecord = createTypeGuard({
+      label: isString,
+      pair: isPair,
+    });
+
+    const result = isRecord.validate({ label: "test", pair: ["hi", "bad"] });
+    assert("issues" in result && result.issues);
+    assertEquals(result.issues[0].path, ["pair", 1]);
   });
 });
 

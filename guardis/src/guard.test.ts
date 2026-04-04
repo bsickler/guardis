@@ -24,7 +24,7 @@ import {
   isUndefined,
 } from "./guard.ts";
 import type { GuardedType, TypeGuard } from "./types.ts";
-import { type Equals, assertType } from "./test-utils.ts";
+import { assertType, type Equals } from "./test-utils.ts";
 
 // Standard test values for consistency across all type guard tests
 const TEST_VALUES = {
@@ -2198,6 +2198,262 @@ Deno.test("createTypeGuard", async (t) => {
     assertFalse(isNonEmptyValue(TEST_VALUES.undefinedValue));
   });
 
+  await t.step("or method - zero arguments returns original guard", () => {
+    // Cast to bypass TypeScript's compile-time check (simulates JS caller)
+    const orWithNoArgs = isString.or as (...args: unknown[]) => unknown;
+    const result = orWithNoArgs();
+    assertEquals(result, isString);
+  });
+
+  await t.step("or method - variadic arguments", () => {
+    // Create a union type guard with multiple arguments in a single call
+    const isStringOrNumberOrBoolean = isString.or(isNumber, isBoolean);
+
+    // Valid inputs
+    assert(isStringOrNumberOrBoolean(TEST_VALUES.string));
+    assert(isStringOrNumberOrBoolean(TEST_VALUES.number));
+    assert(isStringOrNumberOrBoolean(TEST_VALUES.boolean));
+    assert(isStringOrNumberOrBoolean(TEST_VALUES.booleanFalse));
+    assert(isStringOrNumberOrBoolean(TEST_VALUES.zero));
+    assert(isStringOrNumberOrBoolean(TEST_VALUES.emptyString));
+
+    // Invalid inputs
+    assertFalse(isStringOrNumberOrBoolean(TEST_VALUES.nullValue));
+    assertFalse(isStringOrNumberOrBoolean(TEST_VALUES.undefinedValue));
+    assertFalse(isStringOrNumberOrBoolean(TEST_VALUES.object));
+    assertFalse(isStringOrNumberOrBoolean(TEST_VALUES.array));
+  });
+
+  await t.step("or method - variadic with many guards", () => {
+    // Union of 5 guards in a single .or() call
+    const isAny = isString.or(isNumber, isBoolean, isNull, isUndefined);
+
+    assert(isAny("hello"));
+    assert(isAny(42));
+    assert(isAny(true));
+    assert(isAny(null));
+    assert(isAny(undefined));
+
+    // Invalid
+    assertFalse(isAny({}));
+    assertFalse(isAny([]));
+    assertFalse(isAny(Symbol()));
+  });
+
+  await t.step("or method - variadic produces correct union name", () => {
+    const guard = isString.or(isNumber, isBoolean);
+    const result = guard.validate([]);
+    assert(result.issues !== undefined);
+    assertEquals(result.issues[0].message, "Expected string | number | boolean. Received: []");
+  });
+
+  await t.step("or method - variadic all modes work", () => {
+    const guard = isString.or(isNumber, isBoolean);
+
+    // Strict mode
+    guard.strict("hello");
+    guard.strict(42);
+    guard.strict(true);
+    assertThrows(() => guard.strict(null));
+
+    // Optional mode
+    assert(guard.optional("hello"));
+    assert(guard.optional(42));
+    assert(guard.optional(true));
+    assert(guard.optional(undefined));
+    assertFalse(guard.optional(null));
+    assertFalse(guard.optional([]));
+
+    // NotEmpty mode
+    assert(guard.notEmpty("hello"));
+    assert(guard.notEmpty(42));
+    assert(guard.notEmpty(true));
+    assertFalse(guard.notEmpty(""));
+    assertFalse(guard.notEmpty(null));
+    assertFalse(guard.notEmpty(undefined));
+  });
+
+  await t.step("or method - variadic on notEmpty", () => {
+    const guard = isString.notEmpty.or(isNumber, isBoolean);
+
+    assert(guard("hello"));
+    assert(guard(42));
+    assert(guard(true));
+
+    // Empty string should still fail because of notEmpty on isString
+    assertFalse(guard(""));
+    assertFalse(guard(null));
+    assertFalse(guard(undefined));
+  });
+
+  await t.step("or method - variadic on optional", () => {
+    const guard = isString.optional.or(isNumber, isBoolean);
+
+    assert(guard("hello"));
+    assert(guard(42));
+    assert(guard(true));
+    assert(guard(undefined));
+
+    assertFalse(guard(null));
+    assertFalse(guard([]));
+  });
+
+  await t.step("or method - variadic with unnamed guards falls back to generic", () => {
+    const unnamed = createTypeGuard((v): symbol | null => typeof v === "symbol" ? v : null);
+    const guard = isString.or(isNumber, unnamed);
+
+    // One guard is unnamed, so error message should be generic
+    const result = guard.validate([]);
+    assert(result.issues !== undefined);
+    assertFalse(result.issues[0].message.includes("undefined"));
+    assertEquals(result.issues[0].message, "Invalid value. Received: []");
+  });
+
+  await t.step("or method - variadic equivalence to chaining", () => {
+    // Variadic and chained should produce the same results
+    const variadic = isString.or(isNumber, isBoolean);
+    const chained = isString.or(isNumber).or(isBoolean);
+
+    const values = [
+      "hello",
+      "",
+      42,
+      0,
+      true,
+      false,
+      null,
+      undefined,
+      {},
+      [],
+      Symbol(),
+    ];
+
+    for (const v of values) {
+      assertEquals(variadic(v), chained(v), `Mismatch for value: ${String(v)}`);
+    }
+  });
+
+  await t.step("or method - variadic with extended guards", () => {
+    const isPositive = isNumber.extend("positive", (v) => v > 0 ? v : null);
+    const isNonEmptyString = isString.extend("non-empty string", (v) => v.length > 0 ? v : null);
+
+    // Use extended guards as variadic .or() arguments
+    const guard = isBoolean.or(isPositive, isNonEmptyString);
+
+    // Valid inputs
+    assert(guard(true));
+    assert(guard(false));
+    assert(guard(42));
+    assert(guard(1));
+    assert(guard("hello"));
+
+    // Invalid — fails extension constraints
+    assertFalse(guard(0));
+    assertFalse(guard(-5));
+    assertFalse(guard(""));
+
+    // Invalid — wrong types entirely
+    assertFalse(guard(null));
+    assertFalse(guard(undefined));
+    assertFalse(guard([]));
+    assertFalse(guard({}));
+  });
+
+  await t.step("or method - variadic with extended guard as base", () => {
+    // Extended guard calls .or() with variadic args
+    const isPositive = isNumber.extend("positive", (v) => v > 0 ? v : null);
+    const guard = isPositive.or(isString, isBoolean);
+
+    assert(guard(1));
+    assert(guard(100));
+    assert(guard("hello"));
+    assert(guard(""));
+    assert(guard(true));
+
+    // Fails positive constraint
+    assertFalse(guard(0));
+    assertFalse(guard(-1));
+
+    // Wrong types
+    assertFalse(guard(null));
+    assertFalse(guard(undefined));
+    assertFalse(guard([]));
+  });
+
+  await t.step("or method - variadic with extended guard all modes", () => {
+    const isPositive = isNumber.extend("positive", (v) => v > 0 ? v : null);
+    const guard = isPositive.or(isString, isNull);
+
+    // Strict
+    guard.strict(1);
+    guard.strict("hello");
+    guard.strict(null);
+    assertThrows(() => guard.strict(0));
+    assertThrows(() => guard.strict(undefined));
+
+    // Optional
+    assert(guard.optional(1));
+    assert(guard.optional("hello"));
+    assert(guard.optional(null));
+    assert(guard.optional(undefined));
+    assertFalse(guard.optional(0));
+    assertFalse(guard.optional(false));
+
+    // Validate
+    const success = guard.validate(42);
+    assert("value" in success);
+
+    const failure = guard.validate(0);
+    assert(failure.issues !== undefined);
+  });
+
+  await t.step("or method - variadic with multiple extended guards", () => {
+    // All arguments are extended guards
+    const isPositive = isNumber.extend("positive", (v) => v > 0 ? v : null);
+    const isNonEmptyString = isString.extend("non-empty string", (v) => v.length > 0 ? v : null);
+    const isNonEmptyArray = isArray.extend("non-empty array", (v) => v.length > 0 ? v : null);
+
+    const guard = isPositive.or(isNonEmptyString, isNonEmptyArray);
+
+    // Valid
+    assert(guard(1));
+    assert(guard("hello"));
+    assert(guard([1, 2]));
+
+    // Fails extension constraints
+    assertFalse(guard(0));
+    assertFalse(guard(-1));
+    assertFalse(guard(""));
+    assertFalse(guard([]));
+
+    // Wrong types
+    assertFalse(guard(null));
+    assertFalse(guard(true));
+    assertFalse(guard({}));
+  });
+
+  await t.step("or method - variadic with extended guard produces correct union name", () => {
+    const isPositive = isNumber.extend("positive", (v) => v > 0 ? v : null);
+    const guard = isPositive.or(isString, isBoolean);
+
+    const result = guard.validate(null);
+    assert(result.issues !== undefined);
+    assertEquals(result.issues[0].message, "Expected positive | string | boolean. Received: null");
+  });
+
+  await t.step("or method - variadic extend then chain", () => {
+    // Mix variadic with chaining after extend
+    const isPositive = isNumber.extend("positive", (v) => v > 0 ? v : null);
+    const guard = isPositive.or(isString, isBoolean).or(isNull);
+
+    assert(guard(1));
+    assert(guard("hello"));
+    assert(guard(true));
+    assert(guard(null));
+    assertFalse(guard(0));
+    assertFalse(guard(undefined));
+  });
+
   await t.step("extend method - basic functionality", () => {
     // Extend isString to only accept non-empty strings
     const isNonEmptyString = isString.extend((val) => {
@@ -2508,8 +2764,7 @@ Deno.test("Chaining coverage", async (t) => {
   });
 
   await t.step("notEmpty.optional.assert", () => {
-    const assertFn: typeof isString.notEmpty.optional.assert =
-      isString.notEmpty.optional.assert;
+    const assertFn: typeof isString.notEmpty.optional.assert = isString.notEmpty.optional.assert;
     assertFn("hello");
     assertFn(undefined);
     assertThrows(() => assertFn(42), TypeError);
@@ -2621,6 +2876,39 @@ Deno.test("Chaining coverage", async (t) => {
         assertType<Equals<typeof result.value, string | undefined>>();
       }
     });
+
+    await t.step("variadic or produces union of all types", () => {
+      const guard = isString.or(isNumber, isBoolean);
+      assertType<Equals<typeof guard._TYPE, string | number | boolean>>();
+    });
+
+    await t.step("variadic or with many guards produces full union", () => {
+      const guard = isString.or(isNumber, isBoolean, isNull, isUndefined);
+      assertType<Equals<typeof guard._TYPE, string | number | boolean | null | undefined>>();
+    });
+
+    await t.step("variadic optional.or produces T | undefined | union", () => {
+      const guard = isString.optional.or(isNumber, isBoolean);
+      assertType<Equals<typeof guard._TYPE, string | undefined | number | boolean>>();
+    });
+
+    await t.step("variadic notEmpty.or produces T | union", () => {
+      const guard = isString.notEmpty.or(isNumber, isBoolean);
+      assertType<Equals<typeof guard._TYPE, string | number | boolean>>();
+    });
+
+    await t.step("variadic or with extended guard as base", () => {
+      const isPositive = isNumber.extend("positive", (v) => v > 0 ? v : null);
+      const guard = isPositive.or(isString, isBoolean);
+      assertType<Equals<typeof guard._TYPE, number | string | boolean>>();
+    });
+
+    await t.step("variadic or with extended guards as arguments", () => {
+      const isPositive = isNumber.extend("positive", (v) => v > 0 ? v : null);
+      const isNonEmptyString = isString.extend("non-empty string", (v) => v.length > 0 ? v : null);
+      const guard = isBoolean.or(isPositive, isNonEmptyString);
+      assertType<Equals<typeof guard._TYPE, boolean | number | string>>();
+    });
   });
 });
 
@@ -2655,9 +2943,7 @@ Deno.test("Guard name edge cases", async (t) => {
     // "non-empty undefined" in error messages
 
     // Create an unnamed guard
-    const unnamedGuard = createTypeGuard((v): string | null =>
-      typeof v === "string" ? v : null
-    );
+    const unnamedGuard = createTypeGuard((v): string | null => typeof v === "string" ? v : null);
 
     // Use notEmpty on it
     const notEmptyGuard = unnamedGuard.notEmpty;
@@ -2674,9 +2960,7 @@ Deno.test("Guard name edge cases", async (t) => {
     // When only one guard has a name, the union name should be undefined
     // (not "string | undefined" or similar partial names)
 
-    const unnamedGuard = createTypeGuard((v): number | null =>
-      typeof v === "number" ? v : null
-    );
+    const unnamedGuard = createTypeGuard((v): number | null => typeof v === "number" ? v : null);
 
     // isString has a name, unnamedGuard does not
     const mixedUnion = isString.or(unnamedGuard);
@@ -2963,6 +3247,52 @@ Deno.test("Validation path tracking", async (t) => {
     assertEquals(invalidResult.issues.length, 1);
     assertEquals(invalidResult.issues[0].message, "Expected number. Received: 'four'");
     assertEquals(invalidResult.issues[0].path, [1, 1]);
+  });
+
+  await t.step("tuple validation - includes index in path", async (t) => {
+    const isTupleGuard = createTypeGuard(
+      "tuple [string, number]",
+      (v, h) => {
+        if (!isArray(v) || v.length !== 2) return null;
+        if (!h.tupleHas(v, 0, isString)) return null;
+        if (!h.tupleHas(v, 1, isNumber)) return null;
+        return v;
+      },
+    );
+
+    await t.step("valid tuple passes", () => {
+      const result = isTupleGuard.validate(["hi", 42]);
+      assert("value" in result);
+      assertEquals(result.value, ["hi", 42]);
+    });
+
+    await t.step("invalid element reports index path", () => {
+      const result = isTupleGuard.validate(["hi", "nope"]);
+      assert("issues" in result && result.issues);
+      assertEquals(result.issues.length, 1);
+      assertEquals(result.issues[0].path, [1]);
+      assert(result.issues[0].message.includes("number"));
+    });
+
+    await t.step("first element invalid reports index 0", () => {
+      const result = isTupleGuard.validate([123, 42]);
+      assert("issues" in result && result.issues);
+      assertEquals(result.issues.length, 1);
+      assertEquals(result.issues[0].path, [0]);
+      assert(result.issues[0].message.includes("string"));
+    });
+
+    await t.step("tuple nested in shape reports full path", () => {
+      const isRecord = createTypeGuard({
+        label: isString,
+        pair: isTupleGuard,
+      });
+
+      const result = isRecord.validate({ label: "test", pair: ["hi", "bad"] });
+      assert("issues" in result && result.issues);
+      assertEquals(result.issues.length, 1);
+      assertEquals(result.issues[0].path, ["pair", 1]);
+    });
   });
 
   await t.step("validation still works with boolean guards (no context)", () => {
@@ -4053,7 +4383,10 @@ Deno.test("createTypeGuard shape", async (t) => {
     });
 
     await t.step("all modes work on nested shapes", () => {
-      const valid = { name: "Alice", address: { street: "123 Main", city: "Springfield", zip: 62701 } };
+      const valid = {
+        name: "Alice",
+        address: { street: "123 Main", city: "Springfield", zip: 62701 },
+      };
       const invalid = { name: "Alice", address: { street: 123, city: "Springfield", zip: 62701 } };
 
       // Strict
@@ -4072,9 +4405,7 @@ Deno.test("createTypeGuard shape", async (t) => {
       assertFalse(isPersonOrString(invalid));
 
       // Extend
-      const isNamedPerson = isPersonWithAddress.extend((val) =>
-        val.name.length > 0 ? val : null
-      );
+      const isNamedPerson = isPersonWithAddress.extend((val) => val.name.length > 0 ? val : null);
       assert(isNamedPerson(valid));
       assertFalse(isNamedPerson({ ...valid, name: "" }));
     });
@@ -4091,7 +4422,9 @@ Deno.test("createTypeGuard shape", async (t) => {
     });
 
     await t.step("valid nested object passes", () => {
-      assert(isPersonInline({ name: "Alice", address: { street: "123 Main", city: "Springfield" } }));
+      assert(
+        isPersonInline({ name: "Alice", address: { street: "123 Main", city: "Springfield" } }),
+      );
     });
 
     await t.step("invalid nested property fails", () => {
@@ -4241,9 +4574,7 @@ Deno.test("createTypeGuard shape", async (t) => {
       const result = isRecord.validate({ id: true, label: "test" });
       assert("issues" in result && result.issues);
       assert(result.issues.length > 0);
-      const idIssue = result.issues.find((i) =>
-        i.path && (i.path as PropertyKey[]).includes("id")
-      );
+      const idIssue = result.issues.find((i) => i.path && (i.path as PropertyKey[]).includes("id"));
       assert(idIssue, "Expected an issue with path containing 'id'");
     });
 
@@ -4495,6 +4826,102 @@ Deno.test("createTypeGuard shape", async (t) => {
     });
   });
 
+  await t.step("validate does not false-positive on valid sibling fields", async (t) => {
+    await t.step("valid array sibling not reported when string field fails", () => {
+      const isTeam = createTypeGuard({
+        lead: isString,
+        members: isArray.of(isString),
+      });
+      const isCompany = createTypeGuard({ name: isString, team: isTeam });
+
+      const result = isCompany.validate({
+        name: "Acme",
+        team: { lead: 123, members: ["Alice", "Bob"] },
+      });
+
+      assert("issues" in result && result.issues);
+      // Only team.lead should fail — members is valid
+      assertEquals(result.issues.length, 1);
+      assertEquals(result.issues[0].path, ["team", "lead"]);
+    });
+
+    await t.step("valid string sibling not reported when array field fails", () => {
+      const isTeam = createTypeGuard({
+        lead: isString,
+        members: isArray.of(isString),
+      });
+      const isCompany = createTypeGuard({ name: isString, team: isTeam });
+
+      const result = isCompany.validate({
+        name: "Acme",
+        team: { lead: "Bob", members: ["Alice", 42] },
+      });
+
+      assert("issues" in result && result.issues);
+      // Only team.members.1 should fail — lead is valid
+      assertEquals(result.issues.length, 1);
+      assertEquals(result.issues[0].path, ["team", "members", 1]);
+    });
+
+    await t.step("both siblings fail — both reported, no extras", () => {
+      const isTeam = createTypeGuard({
+        lead: isString,
+        members: isArray.of(isString),
+      });
+      const isCompany = createTypeGuard({ name: isString, team: isTeam });
+
+      const result = isCompany.validate({
+        name: "Acme",
+        team: { lead: 123, members: ["Alice", 42] },
+      });
+
+      assert("issues" in result && result.issues);
+      assertEquals(result.issues.length, 2);
+    });
+  });
+
+  await t.step("optional guard is context-aware in shapes", async (t) => {
+    await t.step("invalid optional value reports type-specific error", () => {
+      const isPerson = createTypeGuard({ name: isString, age: isNumber.optional });
+
+      const result = isPerson.validate({ name: "Alice", age: "old" });
+      assert("issues" in result && result.issues);
+      assertEquals(result.issues.length, 1);
+      assertEquals(result.issues[0].path, ["age"]);
+      // Should report the actual type mismatch, not generic "Validation failed for property"
+      assert(
+        !result.issues[0].message.includes("Validation failed"),
+        `Expected type-specific error, got: ${result.issues[0].message}`,
+      );
+    });
+
+    await t.step("absent optional property still passes", () => {
+      const isPerson = createTypeGuard({ name: isString, age: isNumber.optional });
+
+      const result = isPerson.validate({ name: "Alice" });
+      assert("value" in result);
+    });
+
+    await t.step("present valid optional property passes", () => {
+      const isPerson = createTypeGuard({ name: isString, age: isNumber.optional });
+
+      const result = isPerson.validate({ name: "Alice", age: 30 });
+      assert("value" in result);
+    });
+
+    await t.step("optional in array of objects reports path", () => {
+      const isPerson = createTypeGuard({ name: isString, age: isNumber.optional });
+      const isPeople = isArray.of(isPerson);
+
+      const result = isPeople.validate([
+        { name: "Alice", age: 30 },
+        { name: "Bob", age: "old" },
+      ]);
+      assert("issues" in result && result.issues);
+      assertEquals(result.issues[0].path, [1, "age"]);
+    });
+  });
+
   // === Compile-time type inference tests ===
   // These tests verify that createTypeGuard with shapes produces correct types.
   // They have no runtime assertions — they pass if the file type-checks.
@@ -4579,6 +5006,10 @@ Deno.test("createTypeGuard shape", async (t) => {
     const isUserOrString = isUser.or(isString);
     type UserOrString = typeof isUserOrString._TYPE;
     assertType<Equals<UserOrString, { name: string; age: number } | string>>();
+
+    // .or() with zero arguments is a compile error
+    // @ts-expect-error — .or() requires at least one guard
+    isUser.or();
 
     // .optional return type narrows to T | undefined
     const _check = isUser.optional;

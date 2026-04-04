@@ -148,6 +148,135 @@ Deno.test("createBrandedTypeGuard", async (t) => {
     assertFalse(isUserIdOrNumber(null));
   });
 
+  await t.step("or method - variadic with branded guard as base", () => {
+    const isUserId = createBrandedTypeGuard("UserId", parseUserId);
+    const guard = isUserId.or(isNumber, isString);
+
+    assert(guard("user_123"));
+    assert(guard(42));
+    assert(guard("any string"));
+    assertFalse(guard(null));
+    assertFalse(guard(undefined));
+    assertFalse(guard(true));
+    assertFalse(guard([]));
+  });
+
+  await t.step("or method - variadic with branded guards as arguments", () => {
+    const isUserId = createBrandedTypeGuard("UserId", parseUserId);
+    const isScore = createBrandedTypeGuard("Score", parseScore);
+    const guard = isString.or(isUserId, isScore);
+
+    // isString accepts any string
+    assert(guard("anything"));
+    // isUserId accepts user_ prefixed strings
+    assert(guard("user_123"));
+    // isScore accepts 0-100 numbers
+    assert(guard(50));
+
+    assertFalse(guard(null));
+    assertFalse(guard(true));
+    assertFalse(guard(101)); // fails isScore
+  });
+
+  await t.step("or method - variadic with multiple branded guards", () => {
+    const isUserId = createBrandedTypeGuard("UserId", parseUserId);
+    const isProductId = createBrandedTypeGuard("ProductId", parseProductId);
+    const isScore = createBrandedTypeGuard("Score", parseScore);
+    const guard = isUserId.or(isProductId, isScore);
+
+    assert(guard("user_123"));
+    assert(guard("prod_456"));
+    assert(guard(50));
+
+    assertFalse(guard("random"));
+    assertFalse(guard(101));
+    assertFalse(guard(null));
+    assertFalse(guard(true));
+  });
+
+  await t.step("or method - variadic branded produces correct union name", () => {
+    const isUserId = createBrandedTypeGuard("UserId", parseUserId);
+    const isScore = createBrandedTypeGuard("Score", parseScore);
+    const guard = isUserId.or(isScore, isString);
+
+    const result = guard.validate(false);
+    assert(result.issues !== undefined);
+    assertEquals(result.issues[0].message, "Expected UserId | Score | string. Received: false");
+  });
+
+  await t.step("or method - variadic branded all modes", () => {
+    const isUserId = createBrandedTypeGuard("UserId", parseUserId);
+    const isScore = createBrandedTypeGuard("Score", parseScore);
+    const guard = isUserId.or(isScore, isNumber);
+
+    // Strict
+    guard.strict("user_123");
+    guard.strict(50);
+    guard.strict(200); // passes isNumber
+    assertThrows(() => guard.strict("bad"));
+    assertThrows(() => guard.strict(null));
+
+    // Optional
+    assert(guard.optional("user_123"));
+    assert(guard.optional(50));
+    assert(guard.optional(undefined));
+    assertFalse(guard.optional("bad"));
+    assertFalse(guard.optional(null));
+
+    // Validate
+    const success = guard.validate("user_123");
+    assert("value" in success);
+    assert(success.value === "user_123");
+
+    const failure = guard.validate(null);
+    assert(failure.issues !== undefined);
+  });
+
+  await t.step("or method - variadic branded with extended branded", () => {
+    const isUserId = createBrandedTypeGuard("UserId", parseUserId);
+    const isLongUserId = isUserId.extend("LongUserId", (v) => v.length > 10 ? v : null);
+    const isScore = createBrandedTypeGuard("Score", parseScore);
+
+    const guard = isLongUserId.or(isScore, isString);
+
+    // Long user IDs pass
+    assert(guard("user_123456"));
+    // Scores pass
+    assert(guard(50));
+    // Any string passes via isString
+    assert(guard("short"));
+
+    // Short user IDs still pass via isString fallback
+    assert(guard("user_1"));
+
+    assertFalse(guard(null));
+    assertFalse(guard(true));
+  });
+
+  await t.step("or method - variadic branded type inference", () => {
+    const isUserId = createBrandedTypeGuard("UserId", parseUserId);
+    const isScore = createBrandedTypeGuard("Score", parseScore);
+
+    const guard = isUserId.or(isScore, isString);
+    assertType<
+      Equals<typeof guard._TYPE, Brand<string, "UserId"> | Brand<number, "Score"> | string>
+    >();
+  });
+
+  await t.step("or method - variadic branded type inference with multiple brands", () => {
+    const isUserId = createBrandedTypeGuard("UserId", parseUserId);
+    const isProductId = createBrandedTypeGuard("ProductId", parseProductId);
+    const isScore = createBrandedTypeGuard("Score", parseScore);
+
+    const guard = isUserId.or(isProductId, isScore);
+    assertType<
+      Equals<
+        typeof guard._TYPE,
+        Brand<string, "UserId"> | Brand<string, "ProductId"> | Brand<number, "Score">
+      >
+    >();
+  });
+
   await t.step("extend method", () => {
     const isUserId = createBrandedTypeGuard<string, "UserId">(parseUserId);
     const isLongUserId = isUserId.extend((val) => val.length > 10 ? val : null);

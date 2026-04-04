@@ -1,5 +1,5 @@
 import { isUndefined } from "./guard.ts";
-import { hasContext } from "./introspect.ts";
+import { hasContext, hasName } from "./introspect.ts";
 import type { Context, GuardedType, TypeGuard } from "./types.ts";
 
 /**
@@ -111,18 +111,53 @@ export function hasOptionalProperty<K extends PropertyKey, G = unknown>(
 }
 
 /**
- * Utility to verify if a value is included in a tuple.
- * @param {array} t The tuple to check for the presence of index i.
- * @param {unknown} i The index to check.
- * @param {Function} guard The type guard to validate t[i].
- * @returns {boolean}
+ * Validates that a tuple element at a given index satisfies a type guard.
+ * Narrows the tuple type to include the guarded type at the specified index.
+ *
+ * @typeParam T - The tuple type.
+ * @typeParam I - The numeric index type.
+ * @typeParam G - The type that the guard checks for.
+ *
+ * @param t - The tuple to validate.
+ * @param i - The index of the element to check.
+ * @param guard - The type guard to validate `t[i]` against.
+ * @param ctx - Optional validation context for path tracking.
+ *        Note: ctx is expected to already include the index in its path when passed.
+ * @returns `true` if the element at index `i` satisfies the guard, `false` otherwise.
+ *
+ * @example
+ * ```typescript
+ * const tuple = [1, "test", true] as const;
+ *
+ * tupleHas(tuple, 0, isNumber);  // true — narrows tuple[0] to number
+ * tupleHas(tuple, 1, isNumber);  // false
+ * tupleHas(tuple, 5, isString);  // false — index out of bounds
+ * ```
  */
 export function tupleHas<T extends readonly unknown[], I extends number, G = unknown>(
   t: T,
   i: I,
   guard: (v: unknown) => v is G,
+  ctx?: Context,
 ): t is T & { [K in I]: G } {
-  return (i in t) && guard(t[i]);
+  if (!(i in t)) return false;
+
+  // If context is provided, use context-aware validation if available on the guard
+  if (ctx && hasContext(guard)) {
+    guard._.context(t[i], ctx);
+    // Returns true despite potential failure to avoid short-circuiting && chains,
+    // enabling multi-element error collection. Safe because validate() checks ctx.issues.
+    return true;
+  }
+
+  if (guard(t[i])) return true;
+
+  if (ctx) {
+    ctx.addIssue(formatErrorMessage(t[i], hasName(guard) ? guard._.name : undefined));
+    return true;
+  }
+
+  return false;
 }
 
 /**
@@ -189,7 +224,10 @@ function safeStringify(value: unknown): string {
 
   // Objects and arrays - wrap in try/catch for circular references
   try {
-    return JSON.stringify(value, (_key, val) => (typeof val === "bigint" ? `${String(val)}n` : val));
+    return JSON.stringify(
+      value,
+      (_key, val) => (typeof val === "bigint" ? `${String(val)}n` : val),
+    );
   } catch {
     return Object.prototype.toString.call(value);
   }
