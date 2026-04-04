@@ -4821,6 +4821,48 @@ Deno.test("createTypeGuard shape", async (t) => {
     });
   });
 
+  await t.step("optional guard is context-aware in shapes", async (t) => {
+    await t.step("invalid optional value reports type-specific error", () => {
+      const isPerson = createTypeGuard({ name: isString, age: isNumber.optional });
+
+      const result = isPerson.validate({ name: "Alice", age: "old" });
+      assert("issues" in result && result.issues);
+      assertEquals(result.issues.length, 1);
+      assertEquals(result.issues[0].path, ["age"]);
+      // Should report the actual type mismatch, not generic "Validation failed for property"
+      assert(
+        !result.issues[0].message.includes("Validation failed"),
+        `Expected type-specific error, got: ${result.issues[0].message}`,
+      );
+    });
+
+    await t.step("absent optional property still passes", () => {
+      const isPerson = createTypeGuard({ name: isString, age: isNumber.optional });
+
+      const result = isPerson.validate({ name: "Alice" });
+      assert("value" in result);
+    });
+
+    await t.step("present valid optional property passes", () => {
+      const isPerson = createTypeGuard({ name: isString, age: isNumber.optional });
+
+      const result = isPerson.validate({ name: "Alice", age: 30 });
+      assert("value" in result);
+    });
+
+    await t.step("optional in array of objects reports path", () => {
+      const isPerson = createTypeGuard({ name: isString, age: isNumber.optional });
+      const isPeople = isArray.of(isPerson);
+
+      const result = isPeople.validate([
+        { name: "Alice", age: 30 },
+        { name: "Bob", age: "old" },
+      ]);
+      assert("issues" in result && result.issues);
+      assertEquals(result.issues[0].path, [1, "age"]);
+    });
+  });
+
   // === Compile-time type inference tests ===
   // These tests verify that createTypeGuard with shapes produces correct types.
   // They have no runtime assertions — they pass if the file type-checks.

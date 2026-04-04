@@ -236,8 +236,7 @@ const createStrictTypeGuard = <T>(
  * ```
  */
 const createOrTypeGuard =
-  <T1>(guard: Predicate<T1>) =>
-  (...others: TypeGuard<unknown>[]): TypeGuard<unknown> => {
+  <T1>(guard: Predicate<T1>) => (...others: TypeGuard<unknown>[]): TypeGuard<unknown> => {
     const allGuards: Predicate<unknown>[] = [guard, ...others];
 
     // Build a union name from all named guards
@@ -256,6 +255,47 @@ const createOrTypeGuard =
 
     return name ? createTypeGuard(name, parser) : createTypeGuard(parser);
   };
+
+/**
+ * Creates an optional variant of a type guard that accepts undefined.
+ * The returned guard is context-aware for path tracking in shapes.
+ *
+ * @template T - The type checked by the base type guard.
+ *
+ * @param guard - The base type guard predicate to wrap.
+ * @param parser - The parser function from the base type guard.
+ * @param context - The context-aware validation function from the base type guard.
+ * @returns A new type guard that checks if a value is of type `T | undefined`.
+ *
+ * @example
+ * ```typescript
+ * const optionalString = createOptionalTypeGuard(isString, stringParser, stringContext);
+ *
+ * console.log(optionalString("hello")); // true
+ * console.log(optionalString(undefined)); // true
+ * console.log(optionalString(42)); // false
+ * ```
+ */
+const createOptionalTypeGuard = <T>(
+  guard: Predicate<T>,
+  parser: Parser<T>,
+  context: (value: unknown, ctx?: Context) => StandardSchemaV1.Result<T>,
+) => {
+  const optional = (value: unknown): value is T | undefined => isUndefined(value) || guard(value);
+
+  const name = hasName(guard) ? `${guard._.name} | undefined` : undefined;
+  const optionalParser: Parser<T | undefined> = (v, h) => isUndefined(v) ? v : parser(v, h);
+  const optionalContext = (value: unknown, ctx?: Context) =>
+    isUndefined(value) ? { value } : context(value, ctx ?? createContext());
+
+  optional._ = { name, parser: optionalParser, context: optionalContext };
+  optional.strict = createStrictTypeGuard(optionalParser, name);
+  optional.assert = optional.strict;
+  optional.validate = (value: unknown) => optionalContext(value, createContext());
+  optional.or = createOrTypeGuard(optional);
+
+  return optional;
+};
 
 /**
  * Creates a notEmpty variant of a type guard that rejects empty values
@@ -285,21 +325,7 @@ const createNotEmptyTypeGuard = <T>(guard: Predicate<T>) => {
   notEmpty.assert = notEmpty.strict;
   notEmpty.validate = (value: unknown) => context(value, createContext());
 
-  const notEmptyOptional = (value: unknown): value is T | undefined =>
-    guard(value) ? notEmpty(value) : isUndefined(value);
-
-  const optionalName = name ? `${name} | undefined` : undefined;
-  const optionalParser: Parser<T | undefined> = (v) => notEmptyOptional(v) ? v : null;
-
-  notEmptyOptional.strict = createStrictTypeGuard(optionalParser, optionalName);
-  notEmptyOptional.assert = notEmptyOptional.strict;
-  notEmptyOptional.validate = (value: unknown): StandardSchemaV1.Result<T | undefined> => {
-    if (isUndefined(value)) return { value: value as T | undefined };
-    return context(value, createContext());
-  };
-  notEmptyOptional.or = createOrTypeGuard(notEmptyOptional);
-
-  notEmpty.optional = notEmptyOptional;
+  notEmpty.optional = createOptionalTypeGuard(notEmpty, notEmptyParser, context);
 
   notEmpty.or = createOrTypeGuard(notEmpty);
 
@@ -475,22 +501,11 @@ export function createTypeGuard<T1>(
    */
   callback.notEmpty = createNotEmptyTypeGuard(callback);
 
-  /**
-   * Returns true if the value is undefined or passes the parser.
-   * @param {unknown} value
-   * @returns
-   */
-  const optional = (value: unknown): value is T1 | undefined =>
-    isUndefined(value) || callback(value);
+  type OptionalTypeGuard = ReturnType<typeof createOptionalTypeGuard<T1>> & {
+    notEmpty: typeof callback.notEmpty.optional;
+  };
 
-  optional.strict = createStrictTypeGuard(
-    (v, h) => isUndefined(v) ? v : parser(v, h),
-    name ? `${name} | undefined` : undefined,
-  );
-  optional.assert = optional.strict;
-  optional.validate = (value: unknown): StandardSchemaV1.Result<T1 | undefined> =>
-    isUndefined(value) ? { value } : context(value, createContext());
-  optional.or = createOrTypeGuard(optional);
+  const optional = createOptionalTypeGuard(callback, parser, context) as OptionalTypeGuard;
   optional.notEmpty = callback.notEmpty.optional;
   callback.optional = optional;
 
