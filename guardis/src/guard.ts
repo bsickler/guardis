@@ -115,6 +115,22 @@ function validateField(
 ): void {
   const childCtx = ctx?.pushPath(key);
 
+  // Primitive constant — use exact equality check
+  if (guard === null || (typeof guard !== "object" && typeof guard !== "function")) {
+    const exactGuard = isExactly(guard) as unknown as GuardWithContext<unknown>;
+    const guardCtx = childCtx ?? createContext([key]);
+    const r = exactGuard._.context(obj[key], guardCtx);
+
+    if ("value" in r) {
+      result[key] = r.value;
+    } else if (childCtx) {
+      propagateIssues(r.issues, key, ctx!);
+    } else {
+      localIssues.push(...r.issues);
+    }
+    return;
+  }
+
   // Nested shape — recurse
   if (isTypeGuardShape(guard)) {
     const r = validateShape(obj[key], guard, childCtx);
@@ -392,7 +408,7 @@ export function createTypeGuard<T1>(name: string, parser: Parser<T1>): TypeGuard
  * const isUser = createTypeGuard({ name: isString, age: isNumber });
  * ```
  */
-export function createTypeGuard<S extends TypeGuardShape>(shape: S): TypeGuard<InferShape<S>>;
+export function createTypeGuard<const S extends TypeGuardShape>(shape: S): TypeGuard<InferShape<S>>;
 /**
  * Creates a type guard from a shape object with a custom type name.
  *
@@ -400,7 +416,7 @@ export function createTypeGuard<S extends TypeGuardShape>(shape: S): TypeGuard<I
  * @param shape A shape object mapping keys to guards or nested shapes.
  * @returns A type guard function with utility methods.
  */
-export function createTypeGuard<S extends TypeGuardShape>(
+export function createTypeGuard<const S extends TypeGuardShape>(
   name: string,
   shape: S,
 ): TypeGuard<InferShape<S>>;

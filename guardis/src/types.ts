@@ -1,9 +1,5 @@
 import type { StandardSchemaV1 } from "../specs/standard-schema-spec.v1.ts";
-import type {
-  exact,
-  includes,
-  tupleHas,
-} from "./utilities.ts";
+import type { exact, includes, tupleHas } from "./utilities.ts";
 
 /**
  * Context for tracking validation paths and collecting issues during validation.
@@ -102,7 +98,9 @@ export interface TypeGuard<T1> extends StandardSchemaV1<T1> {
    * @param guard A type guard for T2
    * @returns A new type guard that checks if the value is of type T or T2
    */
-  or: <Guards extends [Predicate<unknown>, ...Predicate<unknown>[]]>(...guards: Guards) => TypeGuard<T1 | PredicateUnion<Guards>>;
+  or: <Guards extends [Predicate<unknown>, ...Predicate<unknown>[]]>(
+    ...guards: Guards
+  ) => TypeGuard<T1 | PredicateUnion<Guards>>;
   /**
    * A strict type guard that throws an error if the value is not of type T.
    * @param value The value to check
@@ -150,17 +148,16 @@ export interface TypeGuard<T1> extends StandardSchemaV1<T1> {
    * @returns {Function} A new type guard that combines the original and additional parsers.
    */
   extend: IsExtensible<T1> extends false ? never
-    : T1 extends Record<string, unknown>
-      ? {
-          <S extends TypeGuardShape>(shape: S): TypeGuard<T1 & InferShape<S>>;
-          <S extends TypeGuardShape>(name: string, shape: S): TypeGuard<T1 & InferShape<S>>;
-          <T2 extends T1>(parse: ExtendedParser<T1, T2>): TypeGuard<T2>;
-          <T2 extends T1>(name: string, parse: ExtendedParser<T1, T2>): TypeGuard<T2>;
-        }
-      : {
-          <T2 extends T1>(parse: ExtendedParser<T1, T2>): TypeGuard<T2>;
-          <T2 extends T1>(name: string, parse: ExtendedParser<T1, T2>): TypeGuard<T2>;
-        };
+    : T1 extends Record<string, unknown> ? {
+        <S extends TypeGuardShape>(shape: S): TypeGuard<T1 & InferShape<S>>;
+        <S extends TypeGuardShape>(name: string, shape: S): TypeGuard<T1 & InferShape<S>>;
+        <T2 extends T1>(parse: ExtendedParser<T1, T2>): TypeGuard<T2>;
+        <T2 extends T1>(name: string, parse: ExtendedParser<T1, T2>): TypeGuard<T2>;
+      }
+    : {
+      <T2 extends T1>(parse: ExtendedParser<T1, T2>): TypeGuard<T2>;
+      <T2 extends T1>(name: string, parse: ExtendedParser<T1, T2>): TypeGuard<T2>;
+    };
   optional: {
     /**
      * A type guard that checks if the value is either undefined or of type T.
@@ -208,7 +205,9 @@ export interface TypeGuard<T1> extends StandardSchemaV1<T1> {
      * @param guard A type guard for T2
      * @returns A new type guard that checks if the value is of type T1 | undefined | T2
      */
-    or: <Guards extends [Predicate<unknown>, ...Predicate<unknown>[]]>(...guards: Guards) => TypeGuard<T1 | undefined | PredicateUnion<Guards>>;
+    or: <Guards extends [Predicate<unknown>, ...Predicate<unknown>[]]>(
+      ...guards: Guards
+    ) => TypeGuard<T1 | undefined | PredicateUnion<Guards>>;
     /**
      * A type guard that checks if the value is not empty and of type T | undefined.
      * An empty value is defined as null, an empty string, an empty array,
@@ -277,7 +276,9 @@ export interface TypeGuard<T1> extends StandardSchemaV1<T1> {
      * @param guard A type guard for T2
      * @returns A new type guard that checks if the value is of type T1 or T2
      */
-    or: <Guards extends [Predicate<unknown>, ...Predicate<unknown>[]]>(...guards: Guards) => TypeGuard<T1 | PredicateUnion<Guards>>;
+    or: <Guards extends [Predicate<unknown>, ...Predicate<unknown>[]]>(
+      ...guards: Guards
+    ) => TypeGuard<T1 | PredicateUnion<Guards>>;
     /**
      * A type guard that checks if the value is not empty and of type T | undefined.
      * An empty value is defined as null, an empty string, an empty array,
@@ -357,19 +358,29 @@ export type CanBeEmpty<T> = T extends
 export type IsExtensible<T> = T extends null | undefined ? false : true;
 
 /** A guard predicate function — broad enough for TypeGuard, .optional, .notEmpty, and custom guards */
-// deno-lint-ignore no-explicit-any
-export type TypeGuardPredicate = ((value: unknown) => boolean) & { validate?: (value: unknown) => any };
+export type TypeGuardPredicate = ((value: unknown) => boolean) & {
+  // deno-lint-ignore no-explicit-any
+  validate?: (value: unknown) => any;
+};
 
-/** A shape object mapping property names to guard predicates or nested shapes */
-export type TypeGuardShape = { [key: string]: TypeGuardPredicate | TypeGuardShape };
+/** Primitive constant values allowed as shape field values */
+export type ShapePrimitive = string | number | boolean | bigint | symbol | null | undefined;
+
+/** A shape object mapping property names to guard predicates, nested shapes, or primitive constants */
+export type TypeGuardShape = {
+  [key: string]: TypeGuardPredicate | TypeGuardShape | ShapePrimitive;
+};
 
 /** Cosmetic type flattener for IDE tooltips */
 // deno-lint-ignore ban-types
 export type Simplify<T> = { [K in keyof T]: T[K] } & {};
 
 /** Recursively infers the TypeScript type from a TypeGuardShape */
-export type InferShape<S extends TypeGuardShape> = Simplify<{
-  [K in keyof S]: S[K] extends (value: unknown) => value is infer T ? T
-    : S[K] extends TypeGuardShape ? InferShape<S[K]>
-    : never;
-}>;
+export type InferShape<S extends TypeGuardShape> = Simplify<
+  {
+    -readonly [K in keyof S]: S[K] extends (value: unknown) => value is infer T ? T
+      : S[K] extends TypeGuardShape ? InferShape<S[K]>
+      : S[K] extends ShapePrimitive ? S[K]
+      : never;
+  }
+>;

@@ -402,6 +402,20 @@ isUser({ name: "Alice", age: "thirty" }); // false
 type User = typeof isUser._TYPE;
 ```
 
+String literals can be used directly as shape field values as shorthand for exact equality — useful for discriminated unions:
+
+```ts
+// String literal is equivalent to isExactly('user')
+const isUser = createTypeGuard({ type: "user", name: isString });
+const isAdmin = createTypeGuard({ type: "admin", level: isNumber });
+
+isUser({ type: "user", name: "Alice" }); // true — type narrowed to 'user'
+isUser({ type: "admin", name: "Alice" }); // false
+
+// Type is inferred correctly as { type: "user"; name: string }
+type User = typeof isUser._TYPE;
+```
+
 Shapes support all guard modes as field values:
 
 ```ts

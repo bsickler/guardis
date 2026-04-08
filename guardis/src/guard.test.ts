@@ -5104,3 +5104,115 @@ Deno.test("isExactly", async (t) => {
     assertType<Equals<typeof numGuard, TypeGuard<42>>>();
   });
 });
+
+Deno.test("createTypeGuard shape with string literal constants", async (t) => {
+  await t.step("basic functionality", () => {
+    const isUser = createTypeGuard({ type: "user", name: isString });
+
+    assert(isUser({ type: "user", name: "Alice" }));
+    assertFalse(isUser({ type: "admin", name: "Alice" }));
+    assertFalse(isUser({ type: "user" })); // missing name
+    assertFalse(isUser({ name: "Alice" })); // missing type
+  });
+
+  await t.step("discriminated union shapes", () => {
+    const isUserShape = createTypeGuard({ type: "user", name: isString });
+    const isAdminShape = createTypeGuard({ type: "admin", level: isNumber });
+
+    assert(isUserShape({ type: "user", name: "Alice" }));
+    assertFalse(isUserShape({ type: "admin", name: "Alice" }));
+
+    assert(isAdminShape({ type: "admin", level: 1 }));
+    assertFalse(isAdminShape({ type: "user", level: 1 }));
+  });
+
+  await t.step("validate method", () => {
+    const isUser = createTypeGuard({ type: "user", name: isString });
+
+    assertEquals(isUser.validate({ type: "user", name: "Alice" }), {
+      value: { type: "user", name: "Alice" },
+    });
+    const result = isUser.validate({ type: "admin", name: "Alice" });
+    assert(!("value" in result));
+  });
+
+  await t.step("strict method", () => {
+    const isUser = createTypeGuard({ type: "user", name: isString });
+
+    isUser.strict({ type: "user", name: "Alice" }); // should not throw
+    assertThrows(() => isUser.strict({ type: "admin", name: "Alice" }));
+  });
+
+  await t.step("type inference", () => {
+    const isUser = createTypeGuard({ type: "user", name: isString });
+    type User = typeof isUser._TYPE;
+    assertType<Equals<User, { type: "user"; name: string }>>();
+  });
+
+  await t.step("nested shape with string literal", () => {
+    const isEvent = createTypeGuard({ kind: "click", target: { id: isString } });
+
+    assert(isEvent({ kind: "click", target: { id: "btn-1" } }));
+    assertFalse(isEvent({ kind: "hover", target: { id: "btn-1" } }));
+  });
+
+  await t.step("number literal constant", () => {
+    const isV2 = createTypeGuard({ version: 2, name: isString });
+
+    assert(isV2({ version: 2, name: "app" }));
+    assertFalse(isV2({ version: 1, name: "app" }));
+    assertFalse(isV2({ version: "2", name: "app" }));
+
+    type V2 = typeof isV2._TYPE;
+    assertType<Equals<V2, { version: 2; name: string }>>();
+  });
+
+  await t.step("boolean literal constant", () => {
+    const isActive = createTypeGuard({ active: true, name: isString });
+
+    assert(isActive({ active: true, name: "item" }));
+    assertFalse(isActive({ active: false, name: "item" }));
+
+    type Active = typeof isActive._TYPE;
+    assertType<Equals<Active, { active: true; name: string }>>();
+  });
+
+  await t.step("null constant", () => {
+    const isDeleted = createTypeGuard({ deletedAt: null, name: isString });
+
+    assert(isDeleted({ deletedAt: null, name: "item" }));
+    assertFalse(isDeleted({ deletedAt: "2024-01-01", name: "item" }));
+    assertFalse(isDeleted({ deletedAt: undefined, name: "item" }));
+
+    type Deleted = typeof isDeleted._TYPE;
+    assertType<Equals<Deleted, { deletedAt: null; name: string }>>();
+  });
+
+  await t.step("undefined constant", () => {
+    const isUnset = createTypeGuard({ value: undefined, name: isString });
+
+    assert(isUnset({ value: undefined, name: "item" }));
+    assertFalse(isUnset({ value: null, name: "item" }));
+    assertFalse(isUnset({ value: 0, name: "item" }));
+
+    type Unset = typeof isUnset._TYPE;
+    assertType<Equals<Unset, { value: undefined; name: string }>>();
+  });
+
+  await t.step("validate method with primitive constants", () => {
+    const isV2 = createTypeGuard({ version: 2, name: isString });
+
+    assertEquals(isV2.validate({ version: 2, name: "app" }), {
+      value: { version: 2, name: "app" },
+    });
+    const result = isV2.validate({ version: 1, name: "app" });
+    assert(!("value" in result));
+  });
+
+  await t.step("strict method with primitive constants", () => {
+    const isDeleted = createTypeGuard({ deletedAt: null, name: isString });
+
+    isDeleted.strict({ deletedAt: null, name: "item" });
+    assertThrows(() => isDeleted.strict({ deletedAt: "2024-01-01", name: "item" }));
+  });
+});
