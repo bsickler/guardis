@@ -2,6 +2,7 @@ import { assert, assertEquals, assertFalse, assertThrows } from "@std/assert";
 import { createTypeGuard, isArray, isBoolean, isNull, isNumber, isString } from "./guard.ts";
 import {
   doesNotHaveProperty,
+  exact,
   formatErrorMessage,
   hasOptionalProperty,
   hasProperty,
@@ -214,6 +215,46 @@ Deno.test("includes", async (t) => {
 
     assertFalse(includes(colors, "yellow"));
     assertFalse(includes(colors, "Red")); // Case sensitive
+  });
+});
+
+Deno.test("exact", async (t) => {
+  await t.step("string literals", () => {
+    assert(exact("admin", "admin"));
+    assertFalse(exact("admin", "user"));
+    assertFalse(exact("admin", "Admin"));
+  });
+
+  await t.step("number literals", () => {
+    assert(exact(42, 42));
+    assertFalse(exact(42, 43));
+    assertFalse(exact(42, "42"));
+  });
+
+  await t.step("boolean literals", () => {
+    assert(exact(true, true));
+    assertFalse(exact(true, false));
+    assertFalse(exact(true, 1));
+  });
+
+  await t.step("null and undefined", () => {
+    assert(exact(null, null));
+    assertFalse(exact(null, undefined));
+
+    assert(exact(undefined, undefined));
+    assertFalse(exact(undefined, null));
+  });
+
+  await t.step("reference equality for objects", () => {
+    const obj = { a: 1 };
+    assert(exact(obj, obj));
+    assertFalse(exact(obj, { a: 1 })); // different reference
+  });
+
+  await t.step("reference equality for arrays", () => {
+    const arr = [1, 2, 3];
+    assert(exact(arr, arr));
+    assertFalse(exact(arr, [1, 2, 3])); // different reference
   });
 });
 

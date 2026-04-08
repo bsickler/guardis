@@ -1,5 +1,6 @@
 import type { StandardSchemaV1 } from "../specs/standard-schema-spec.v1.ts";
 import type {
+  exact,
   includes,
   tupleHas,
 } from "./utilities.ts";
@@ -44,6 +45,7 @@ type Helpers = {
   includes: typeof includes;
   /** Check if a key exists in an object with optional custom error message */
   keyOf: <T extends object>(k: unknown, t: T, errorMessage?: string) => k is keyof T;
+  exact: typeof exact;
   /** Returns null and adds custom error message to context if during validation */
   fail: (message: string) => null;
 };

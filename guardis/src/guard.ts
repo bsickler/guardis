@@ -28,11 +28,13 @@ import { createContext, createStrictContext } from "./context.ts";
 import { type GuardMeta, type GuardWithContext, hasContext, hasName } from "./introspect.ts";
 import {
   doesNotHaveProperty,
+  exact,
   formatErrorMessage,
   hasOptionalProperty,
   hasProperty,
   includes,
   keyOf,
+  safeStringify,
   tupleHas,
   unionOf,
 } from "./utilities.ts";
@@ -54,6 +56,7 @@ function createHelpers(ctx?: Context): HelpersWithContext {
     includes,
     keyOf: <T extends object>(k: unknown, t: T, errorMessage?: string) =>
       keyOf(k, t, ctx, ctx ? errorMessage : undefined),
+    exact,
     fail: (message) => {
       if (ctx) ctx.addIssue(message);
       return null;
@@ -607,6 +610,31 @@ export const isBinary: TypeGuard<0 | 1> = createTypeGuard(
   "binary",
   (t): 0 | 1 | null => t === 1 || t === 0 ? t : null,
 );
+
+/**
+ * Returns a guard that checks if a value strictly equals the given constant.
+ * Narrows the TypeScript type to the exact literal type of the argument.
+ *
+ * @example
+ * isExactly('admin')('admin') // true — narrows to 'admin'
+ * isExactly(42)(43)           // false
+ * isExactly(null)(null)       // true — narrows to null
+ */
+export function isExactly<const T>(expected: T): TypeGuard<T> {
+  switch (expected) {
+    case null:
+      return isNull as TypeGuard<T>;
+
+    case undefined:
+      return isUndefined as TypeGuard<T>;
+
+    default:
+      return createTypeGuard(
+        safeStringify(expected),
+        (t): T | null => exact(expected, t) ? expected : null,
+      );
+  }
+}
 
 /**
  * Returns true if input satisfies type numeric.

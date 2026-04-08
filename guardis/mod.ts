@@ -43,4 +43,5 @@ export const Is = {
   Iterable: g.isIterable,
   Tuple: g.isTuple,
   Date: g.isDate,
+  Exactly: g.isExactly,
 } as const;

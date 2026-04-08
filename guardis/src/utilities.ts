@@ -173,6 +173,17 @@ export function includes<T extends readonly unknown[]>(t: T, v: unknown): v is T
 }
 
 /**
+ * Checks if a value strictly equals the given constant, narrowing to the exact literal type.
+ *
+ * @param expected - The constant to compare against.
+ * @param v - The value to check.
+ * @returns `true` if `v === expected`, otherwise `false`.
+ */
+export function exact<const T>(expected: T, v: unknown): v is T {
+  return v === expected;
+}
+
+/**
  * Determines if a given property key exists as a key in the specified object.
  *
  * @template T - The type of the object to check against.
@@ -202,7 +213,7 @@ export function keyOf<T extends object>(
 /**
  * Safely stringifies a value for error messages, handling edge cases that JSON.stringify cannot.
  */
-function safeStringify(value: unknown): string {
+export function safeStringify(value: unknown): string {
   if (value === null) return "null";
   if (value === undefined) return "undefined";
 

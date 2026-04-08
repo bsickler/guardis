@@ -6,6 +6,7 @@ import {
   isBoolean,
   isDate,
   isEmpty,
+  isExactly,
   isFunction,
   isIterable,
   isJsonArray,
@@ -1970,6 +1971,19 @@ Deno.test("createTypeGuard", async (t) => {
     assertFalse(colorGuard("yellow"));
     assertFalse(colorGuard(123));
     assertFalse(colorGuard(null));
+  });
+
+  await t.step("exact helper injection", () => {
+    const isAdminAction = createTypeGuard((v, { exact }) => {
+      if (!isObject(v)) return null;
+      if (!("role" in v) || !exact("admin", v.role)) return null;
+      if (!("action" in v) || !isString(v.action)) return null;
+      return v;
+    });
+
+    assert(isAdminAction({ role: "admin", action: "delete" }));
+    assertFalse(isAdminAction({ role: "user", action: "delete" }));
+    assertFalse(isAdminAction({ role: 123, action: "delete" }));
   });
 
   await t.step("custom complex parser", () => {
@@ -5024,5 +5038,69 @@ Deno.test("createTypeGuard shape", async (t) => {
 
     // Named shape is still a proper TypeGuard
     assertType<Equals<typeof isUser, TypeGuard<{ name: string; age: number }>>>();
+  });
+});
+
+Deno.test("isExactly", async (t) => {
+  await t.step("basic functionality", () => {
+    // String literal
+    assert(isExactly("admin")("admin"));
+    assertFalse(isExactly("admin")("user"));
+
+    // Number literal
+    assert(isExactly(42)(42));
+    assertFalse(isExactly(42)(43));
+
+    // Boolean literal
+    assert(isExactly(true)(true));
+    assertFalse(isExactly(true)(false));
+
+    // null
+    assert(isExactly(null)(null));
+    assertFalse(isExactly(null)(undefined));
+
+    // undefined
+    assert(isExactly(undefined)(undefined));
+    assertFalse(isExactly(undefined)(null));
+  });
+
+  await t.step("validate method", () => {
+    assertEquals(isExactly("admin").validate("admin"), { value: "admin" });
+    assertEquals(isExactly("admin").validate("user"), {
+      issues: [{ message: "Expected 'admin'. Received: 'user'" }],
+    });
+    assertEquals(isExactly(42).validate(42), { value: 42 });
+    assertEquals(isExactly(42).validate(43), {
+      issues: [{ message: "Expected 42. Received: 43" }],
+    });
+
+    // null
+    assertEquals(isExactly(null).validate(null), { value: null });
+    assertEquals(isExactly(null).validate("test"), {
+      issues: [{ message: "Expected null. Received: 'test'" }],
+    });
+
+    // undefined
+    assertEquals(isExactly(undefined).validate(undefined), { value: undefined });
+    assertEquals(isExactly(undefined).validate("test"), {
+      issues: [{ message: "Expected undefined. Received: 'test'" }],
+    });
+  });
+
+  await t.step("strict method", () => {
+    isExactly("admin").strict("admin");
+    assertThrows(() => isExactly("admin").strict("user"));
+    isExactly(null).strict(null);
+    assertThrows(() => isExactly(null).strict("test"));
+    isExactly(undefined).strict(undefined);
+    assertThrows(() => isExactly(undefined).strict("test"));
+  });
+
+  await t.step("type narrowing", () => {
+    const guard = isExactly("admin");
+    assertType<Equals<typeof guard, TypeGuard<"admin">>>();
+
+    const numGuard = isExactly(42);
+    assertType<Equals<typeof numGuard, TypeGuard<42>>>();
   });
 });
