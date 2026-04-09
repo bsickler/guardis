@@ -5216,3 +5216,90 @@ Deno.test("createTypeGuard shape with string literal constants", async (t) => {
     assertThrows(() => isDeleted.strict({ deletedAt: "2024-01-01", name: "item" }));
   });
 });
+
+Deno.test("numeric comparison methods", async (t) => {
+  await t.step("gt", () => {
+    assert(isNumber.gt(0)(5));
+    assert(isNumber.gt(0)(0.1));
+    assertFalse(isNumber.gt(0)(0));
+    assertFalse(isNumber.gt(0)(-1));
+    assertFalse(isNumber.gt(0)("5"));
+  });
+
+  await t.step("gte", () => {
+    assert(isNumber.gte(0)(0));
+    assert(isNumber.gte(0)(1));
+    assertFalse(isNumber.gte(0)(-1));
+    assertFalse(isNumber.gte(0)("0"));
+  });
+
+  await t.step("lt", () => {
+    assert(isNumber.lt(10)(5));
+    assert(isNumber.lt(10)(9.9));
+    assertFalse(isNumber.lt(10)(10));
+    assertFalse(isNumber.lt(10)(11));
+    assertFalse(isNumber.lt(10)("5"));
+  });
+
+  await t.step("lte", () => {
+    assert(isNumber.lte(10)(10));
+    assert(isNumber.lte(10)(5));
+    assertFalse(isNumber.lte(10)(11));
+    assertFalse(isNumber.lte(10)("10"));
+  });
+
+  await t.step("eq", () => {
+    assert(isNumber.eq(42)(42));
+    assertFalse(isNumber.eq(42)(43));
+    assertFalse(isNumber.eq(42)("42"));
+  });
+
+  await t.step("chaining gt and lt", () => {
+    const between = isNumber.gt(-1).lt(1);
+    assert(between(0));
+    assert(between(0.5));
+    assert(between(-0.5));
+    assertFalse(between(-1));
+    assertFalse(between(1));
+    assertFalse(between(100));
+  });
+
+  await t.step("chaining gte and lte for range", () => {
+    const isPercentage = isNumber.gte(0).lte(100);
+    assert(isPercentage(0));
+    assert(isPercentage(50));
+    assert(isPercentage(100));
+    assertFalse(isPercentage(-1));
+    assertFalse(isPercentage(101));
+  });
+
+  await t.step("validate method", () => {
+    assertEquals(isNumber.gt(0).validate(5), { value: 5 });
+    assertEquals(isNumber.gt(0).validate(-1), {
+      issues: [{ message: "Expected > 0. Received: -1" }],
+    });
+    assertEquals(isNumber.gt(0).validate("5"), {
+      issues: [{ message: "Expected > 0. Received: '5'" }],
+    });
+  });
+
+  await t.step("strict method", () => {
+    isNumber.gt(0).strict(5);
+    assertThrows(() => isNumber.gt(0).strict(-1));
+  });
+
+  await t.step("or after comparison", () => {
+    const guard = isNumber.gt(0).or(isNull);
+    assert(guard(5));
+    assert(guard(null));
+    assertFalse(guard(0));
+    assertFalse(guard(-1));
+  });
+
+  await t.step("isNumeric has comparison methods", () => {
+    assert(isNumeric.gt(0)(5));
+    assert(isNumeric.gt(0)("5"));
+    assertFalse(isNumeric.gt(0)(-1));
+    assertFalse(isNumeric.gt(0)("abc"));
+  });
+});

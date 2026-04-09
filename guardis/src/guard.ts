@@ -16,6 +16,7 @@ import type {
   JsonPrimitive,
   JsonValue,
   NamedParser,
+  NumberTypeGuard,
   Parser,
   ParserEntry,
   Predicate,
@@ -594,6 +595,20 @@ export const isString: TypeGuard<string> = createTypeGuard(
 );
 
 /**
+ * Wraps a TypeGuard<number> with chainable comparison methods (gt, gte, lt, lte, eq).
+ * Each method delegates to .extend() and wraps the result for further chaining.
+ */
+function withComparisons(guard: TypeGuard<number>): NumberTypeGuard {
+  const numeric = guard as NumberTypeGuard;
+  numeric.gt = (n) => withComparisons(guard.extend(`> ${n}`, (v) => v > n ? v : null));
+  numeric.gte = (n) => withComparisons(guard.extend(`>= ${n}`, (v) => v >= n ? v : null));
+  numeric.lt = (n) => withComparisons(guard.extend(`< ${n}`, (v) => v < n ? v : null));
+  numeric.lte = (n) => withComparisons(guard.extend(`<= ${n}`, (v) => v <= n ? v : null));
+  numeric.eq = (n) => withComparisons(guard.extend(`== ${n}`, (v) => v === n ? v : null));
+  return numeric;
+}
+
+/**
  * Returns true if input satisfies type number. Returns false if `NaN` is passed.
  *
  * While `NaN` is technically a number in JavaScript, it is not a valid value for many applications
@@ -602,10 +617,10 @@ export const isString: TypeGuard<string> = createTypeGuard(
  * @param {unknown} t
  * @return {boolean}
  */
-export const isNumber: TypeGuard<number> = createTypeGuard(
+export const isNumber: NumberTypeGuard = withComparisons(createTypeGuard(
   "number",
   (t): number | null => typeof t === "number" && !Number.isNaN(t) ? t : null,
-);
+));
 
 /**
  * Returns true if input satisfies type symbol.
@@ -657,7 +672,7 @@ export function isExactly<const T>(expected: T): TypeGuard<T> {
  * @param {unknown} t
  * @return {boolean}
  */
-export const isNumeric: TypeGuard<number> = createTypeGuard(
+export const isNumeric: NumberTypeGuard = withComparisons(createTypeGuard(
   "numeric",
   (t): number | null => {
     if (isNumber(t)) return t as number;
@@ -668,7 +683,7 @@ export const isNumeric: TypeGuard<number> = createTypeGuard(
 
     return (!isNaN(_t) && isNumber(_t)) ? t as number : null;
   },
-);
+));
 
 /**
  * Returns true if input satisfies type Function.

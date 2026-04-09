@@ -58,6 +58,7 @@ npx jsr add @spudlabs/guardis
   - [NotEmpty Mode](#notempty-mode)
   - [Validate Mode (StandardSchemaV1)](#validate-mode-standardschemav1)
 - [Literal Type Guards](#literal-type-guards)
+- [Numeric Comparisons](#numeric-comparisons)
 - [Creating Custom Type Guards](#creating-custom-type-guards)
 - [Extending Type Guards](#extending-type-guards)
 - [Specialized Modules](#specialized-modules)
@@ -379,6 +380,33 @@ isExactly(null)(null); // true — narrows to null
 isExactly("admin").strict("user");       // throws TypeError: Expected 'admin'. Received: 'user'
 isExactly(42).validate(43);              // { issues: [{ message: "Expected 42. Received: 43" }] }
 isExactly("admin").optional(undefined);  // true
+```
+
+## Numeric Comparisons
+
+`isNumber` and `isNumeric` include chainable comparison methods for range validation:
+
+```ts
+import { isNumber } from "jsr:@spudlabs/guardis";
+
+// Single comparisons
+isNumber.gt(0)(5);     // true — value > 0
+isNumber.gte(18)(18);  // true — value >= 18
+isNumber.lt(100)(50);  // true — value < 100
+isNumber.lte(10)(10);  // true — value <= 10
+isNumber.eq(42)(42);   // true — value === 42
+
+// Chain comparisons for ranges
+const isPercentage = isNumber.gte(0).lte(100);
+isPercentage(50);  // true
+isPercentage(101); // false
+
+// All modes work
+isNumber.gt(0).strict(-1);      // throws TypeError: Expected > 0. Received: -1
+isNumber.lt(100).validate(200); // { issues: [{ message: "Expected < 100. Received: 200" }] }
+
+// Composable with or
+const isPositiveOrNull = isNumber.gt(0).or(isNull);
 ```
 
 ## Creating Custom Type Guards
