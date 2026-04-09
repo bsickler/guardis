@@ -6,6 +6,7 @@ import {
   isBoolean,
   isDate,
   isEmpty,
+  isExactly,
   isFunction,
   isIterable,
   isJsonArray,
@@ -1970,6 +1971,19 @@ Deno.test("createTypeGuard", async (t) => {
     assertFalse(colorGuard("yellow"));
     assertFalse(colorGuard(123));
     assertFalse(colorGuard(null));
+  });
+
+  await t.step("exact helper injection", () => {
+    const isAdminAction = createTypeGuard((v, { exact }) => {
+      if (!isObject(v)) return null;
+      if (!("role" in v) || !exact("admin", v.role)) return null;
+      if (!("action" in v) || !isString(v.action)) return null;
+      return v;
+    });
+
+    assert(isAdminAction({ role: "admin", action: "delete" }));
+    assertFalse(isAdminAction({ role: "user", action: "delete" }));
+    assertFalse(isAdminAction({ role: 123, action: "delete" }));
   });
 
   await t.step("custom complex parser", () => {
@@ -5024,5 +5038,268 @@ Deno.test("createTypeGuard shape", async (t) => {
 
     // Named shape is still a proper TypeGuard
     assertType<Equals<typeof isUser, TypeGuard<{ name: string; age: number }>>>();
+  });
+});
+
+Deno.test("isExactly", async (t) => {
+  await t.step("basic functionality", () => {
+    // String literal
+    assert(isExactly("admin")("admin"));
+    assertFalse(isExactly("admin")("user"));
+
+    // Number literal
+    assert(isExactly(42)(42));
+    assertFalse(isExactly(42)(43));
+
+    // Boolean literal
+    assert(isExactly(true)(true));
+    assertFalse(isExactly(true)(false));
+
+    // null
+    assert(isExactly(null)(null));
+    assertFalse(isExactly(null)(undefined));
+
+    // undefined
+    assert(isExactly(undefined)(undefined));
+    assertFalse(isExactly(undefined)(null));
+  });
+
+  await t.step("validate method", () => {
+    assertEquals(isExactly("admin").validate("admin"), { value: "admin" });
+    assertEquals(isExactly("admin").validate("user"), {
+      issues: [{ message: "Expected 'admin'. Received: 'user'" }],
+    });
+    assertEquals(isExactly(42).validate(42), { value: 42 });
+    assertEquals(isExactly(42).validate(43), {
+      issues: [{ message: "Expected 42. Received: 43" }],
+    });
+
+    // null
+    assertEquals(isExactly(null).validate(null), { value: null });
+    assertEquals(isExactly(null).validate("test"), {
+      issues: [{ message: "Expected null. Received: 'test'" }],
+    });
+
+    // undefined
+    assertEquals(isExactly(undefined).validate(undefined), { value: undefined });
+    assertEquals(isExactly(undefined).validate("test"), {
+      issues: [{ message: "Expected undefined. Received: 'test'" }],
+    });
+  });
+
+  await t.step("strict method", () => {
+    isExactly("admin").strict("admin");
+    assertThrows(() => isExactly("admin").strict("user"));
+    isExactly(null).strict(null);
+    assertThrows(() => isExactly(null).strict("test"));
+    isExactly(undefined).strict(undefined);
+    assertThrows(() => isExactly(undefined).strict("test"));
+  });
+
+  await t.step("type narrowing", () => {
+    const guard = isExactly("admin");
+    assertType<Equals<typeof guard, TypeGuard<"admin">>>();
+
+    const numGuard = isExactly(42);
+    assertType<Equals<typeof numGuard, TypeGuard<42>>>();
+  });
+});
+
+Deno.test("createTypeGuard shape with string literal constants", async (t) => {
+  await t.step("basic functionality", () => {
+    const isUser = createTypeGuard({ type: "user", name: isString });
+
+    assert(isUser({ type: "user", name: "Alice" }));
+    assertFalse(isUser({ type: "admin", name: "Alice" }));
+    assertFalse(isUser({ type: "user" })); // missing name
+    assertFalse(isUser({ name: "Alice" })); // missing type
+  });
+
+  await t.step("discriminated union shapes", () => {
+    const isUserShape = createTypeGuard({ type: "user", name: isString });
+    const isAdminShape = createTypeGuard({ type: "admin", level: isNumber });
+
+    assert(isUserShape({ type: "user", name: "Alice" }));
+    assertFalse(isUserShape({ type: "admin", name: "Alice" }));
+
+    assert(isAdminShape({ type: "admin", level: 1 }));
+    assertFalse(isAdminShape({ type: "user", level: 1 }));
+  });
+
+  await t.step("validate method", () => {
+    const isUser = createTypeGuard({ type: "user", name: isString });
+
+    assertEquals(isUser.validate({ type: "user", name: "Alice" }), {
+      value: { type: "user", name: "Alice" },
+    });
+    const result = isUser.validate({ type: "admin", name: "Alice" });
+    assert(!("value" in result));
+  });
+
+  await t.step("strict method", () => {
+    const isUser = createTypeGuard({ type: "user", name: isString });
+
+    isUser.strict({ type: "user", name: "Alice" }); // should not throw
+    assertThrows(() => isUser.strict({ type: "admin", name: "Alice" }));
+  });
+
+  await t.step("type inference", () => {
+    const isUser = createTypeGuard({ type: "user", name: isString });
+    type User = typeof isUser._TYPE;
+    assertType<Equals<User, { type: "user"; name: string }>>();
+  });
+
+  await t.step("nested shape with string literal", () => {
+    const isEvent = createTypeGuard({ kind: "click", target: { id: isString } });
+
+    assert(isEvent({ kind: "click", target: { id: "btn-1" } }));
+    assertFalse(isEvent({ kind: "hover", target: { id: "btn-1" } }));
+  });
+
+  await t.step("number literal constant", () => {
+    const isV2 = createTypeGuard({ version: 2, name: isString });
+
+    assert(isV2({ version: 2, name: "app" }));
+    assertFalse(isV2({ version: 1, name: "app" }));
+    assertFalse(isV2({ version: "2", name: "app" }));
+
+    type V2 = typeof isV2._TYPE;
+    assertType<Equals<V2, { version: 2; name: string }>>();
+  });
+
+  await t.step("boolean literal constant", () => {
+    const isActive = createTypeGuard({ active: true, name: isString });
+
+    assert(isActive({ active: true, name: "item" }));
+    assertFalse(isActive({ active: false, name: "item" }));
+
+    type Active = typeof isActive._TYPE;
+    assertType<Equals<Active, { active: true; name: string }>>();
+  });
+
+  await t.step("null constant", () => {
+    const isDeleted = createTypeGuard({ deletedAt: null, name: isString });
+
+    assert(isDeleted({ deletedAt: null, name: "item" }));
+    assertFalse(isDeleted({ deletedAt: "2024-01-01", name: "item" }));
+    assertFalse(isDeleted({ deletedAt: undefined, name: "item" }));
+
+    type Deleted = typeof isDeleted._TYPE;
+    assertType<Equals<Deleted, { deletedAt: null; name: string }>>();
+  });
+
+  await t.step("undefined constant", () => {
+    const isUnset = createTypeGuard({ value: undefined, name: isString });
+
+    assert(isUnset({ value: undefined, name: "item" }));
+    assertFalse(isUnset({ value: null, name: "item" }));
+    assertFalse(isUnset({ value: 0, name: "item" }));
+
+    type Unset = typeof isUnset._TYPE;
+    assertType<Equals<Unset, { value: undefined; name: string }>>();
+  });
+
+  await t.step("validate method with primitive constants", () => {
+    const isV2 = createTypeGuard({ version: 2, name: isString });
+
+    assertEquals(isV2.validate({ version: 2, name: "app" }), {
+      value: { version: 2, name: "app" },
+    });
+    const result = isV2.validate({ version: 1, name: "app" });
+    assert(!("value" in result));
+  });
+
+  await t.step("strict method with primitive constants", () => {
+    const isDeleted = createTypeGuard({ deletedAt: null, name: isString });
+
+    isDeleted.strict({ deletedAt: null, name: "item" });
+    assertThrows(() => isDeleted.strict({ deletedAt: "2024-01-01", name: "item" }));
+  });
+});
+
+Deno.test("numeric comparison methods", async (t) => {
+  await t.step("gt", () => {
+    assert(isNumber.gt(0)(5));
+    assert(isNumber.gt(0)(0.1));
+    assertFalse(isNumber.gt(0)(0));
+    assertFalse(isNumber.gt(0)(-1));
+    assertFalse(isNumber.gt(0)("5"));
+  });
+
+  await t.step("gte", () => {
+    assert(isNumber.gte(0)(0));
+    assert(isNumber.gte(0)(1));
+    assertFalse(isNumber.gte(0)(-1));
+    assertFalse(isNumber.gte(0)("0"));
+  });
+
+  await t.step("lt", () => {
+    assert(isNumber.lt(10)(5));
+    assert(isNumber.lt(10)(9.9));
+    assertFalse(isNumber.lt(10)(10));
+    assertFalse(isNumber.lt(10)(11));
+    assertFalse(isNumber.lt(10)("5"));
+  });
+
+  await t.step("lte", () => {
+    assert(isNumber.lte(10)(10));
+    assert(isNumber.lte(10)(5));
+    assertFalse(isNumber.lte(10)(11));
+    assertFalse(isNumber.lte(10)("10"));
+  });
+
+  await t.step("eq", () => {
+    assert(isNumber.eq(42)(42));
+    assertFalse(isNumber.eq(42)(43));
+    assertFalse(isNumber.eq(42)("42"));
+  });
+
+  await t.step("chaining gt and lt", () => {
+    const between = isNumber.gt(-1).lt(1);
+    assert(between(0));
+    assert(between(0.5));
+    assert(between(-0.5));
+    assertFalse(between(-1));
+    assertFalse(between(1));
+    assertFalse(between(100));
+  });
+
+  await t.step("chaining gte and lte for range", () => {
+    const isPercentage = isNumber.gte(0).lte(100);
+    assert(isPercentage(0));
+    assert(isPercentage(50));
+    assert(isPercentage(100));
+    assertFalse(isPercentage(-1));
+    assertFalse(isPercentage(101));
+  });
+
+  await t.step("validate method", () => {
+    assertEquals(isNumber.gt(0).validate(5), { value: 5 });
+    assertEquals(isNumber.gt(0).validate(-1), {
+      issues: [{ message: "Expected > 0. Received: -1" }],
+    });
+    assertEquals(isNumber.gt(0).validate("5"), {
+      issues: [{ message: "Expected > 0. Received: '5'" }],
+    });
+  });
+
+  await t.step("strict method", () => {
+    isNumber.gt(0).strict(5);
+    assertThrows(() => isNumber.gt(0).strict(-1));
+  });
+
+  await t.step("or after comparison", () => {
+    const guard = isNumber.gt(0).or(isNull);
+    assert(guard(5));
+    assert(guard(null));
+    assertFalse(guard(0));
+    assertFalse(guard(-1));
+  });
+
+  await t.step("isNumeric has comparison methods", () => {
+    assert(isNumeric.gt(0)(5));
+    assert(isNumeric.gt(0)("5"));
+    assertFalse(isNumeric.gt(0)(-1));
+    assertFalse(isNumeric.gt(0)("abc"));
   });
 });

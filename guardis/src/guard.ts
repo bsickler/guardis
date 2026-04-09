@@ -16,6 +16,7 @@ import type {
   JsonPrimitive,
   JsonValue,
   NamedParser,
+  NumberTypeGuard,
   Parser,
   ParserEntry,
   Predicate,
@@ -28,11 +29,13 @@ import { createContext, createStrictContext } from "./context.ts";
 import { type GuardMeta, type GuardWithContext, hasContext, hasName } from "./introspect.ts";
 import {
   doesNotHaveProperty,
+  exact,
   formatErrorMessage,
   hasOptionalProperty,
   hasProperty,
   includes,
   keyOf,
+  safeStringify,
   tupleHas,
   unionOf,
 } from "./utilities.ts";
@@ -54,6 +57,7 @@ function createHelpers(ctx?: Context): HelpersWithContext {
     includes,
     keyOf: <T extends object>(k: unknown, t: T, errorMessage?: string) =>
       keyOf(k, t, ctx, ctx ? errorMessage : undefined),
+    exact,
     fail: (message) => {
       if (ctx) ctx.addIssue(message);
       return null;
@@ -111,6 +115,22 @@ function validateField(
   result: Record<string, unknown>,
 ): void {
   const childCtx = ctx?.pushPath(key);
+
+  // Primitive constant — use exact equality check
+  if (guard === null || (typeof guard !== "object" && typeof guard !== "function")) {
+    const exactGuard = isExactly(guard) as unknown as GuardWithContext<unknown>;
+    const guardCtx = childCtx ?? createContext([key]);
+    const r = exactGuard._.context(obj[key], guardCtx);
+
+    if ("value" in r) {
+      result[key] = r.value;
+    } else if (childCtx) {
+      propagateIssues(r.issues, key, ctx!);
+    } else {
+      localIssues.push(...r.issues);
+    }
+    return;
+  }
 
   // Nested shape — recurse
   if (isTypeGuardShape(guard)) {
@@ -389,7 +409,7 @@ export function createTypeGuard<T1>(name: string, parser: Parser<T1>): TypeGuard
  * const isUser = createTypeGuard({ name: isString, age: isNumber });
  * ```
  */
-export function createTypeGuard<S extends TypeGuardShape>(shape: S): TypeGuard<InferShape<S>>;
+export function createTypeGuard<const S extends TypeGuardShape>(shape: S): TypeGuard<InferShape<S>>;
 /**
  * Creates a type guard from a shape object with a custom type name.
  *
@@ -397,7 +417,7 @@ export function createTypeGuard<S extends TypeGuardShape>(shape: S): TypeGuard<I
  * @param shape A shape object mapping keys to guards or nested shapes.
  * @returns A type guard function with utility methods.
  */
-export function createTypeGuard<S extends TypeGuardShape>(
+export function createTypeGuard<const S extends TypeGuardShape>(
   name: string,
   shape: S,
 ): TypeGuard<InferShape<S>>;
@@ -575,6 +595,20 @@ export const isString: TypeGuard<string> = createTypeGuard(
 );
 
 /**
+ * Wraps a TypeGuard<number> with chainable comparison methods (gt, gte, lt, lte, eq).
+ * Each method delegates to .extend() and wraps the result for further chaining.
+ */
+function withComparisons(guard: TypeGuard<number>): NumberTypeGuard {
+  const numeric = guard as NumberTypeGuard;
+  numeric.gt = (n) => withComparisons(guard.extend(`> ${n}`, (v) => v > n ? v : null));
+  numeric.gte = (n) => withComparisons(guard.extend(`>= ${n}`, (v) => v >= n ? v : null));
+  numeric.lt = (n) => withComparisons(guard.extend(`< ${n}`, (v) => v < n ? v : null));
+  numeric.lte = (n) => withComparisons(guard.extend(`<= ${n}`, (v) => v <= n ? v : null));
+  numeric.eq = (n) => withComparisons(guard.extend(`== ${n}`, (v) => v === n ? v : null));
+  return numeric;
+}
+
+/**
  * Returns true if input satisfies type number. Returns false if `NaN` is passed.
  *
  * While `NaN` is technically a number in JavaScript, it is not a valid value for many applications
@@ -583,10 +617,10 @@ export const isString: TypeGuard<string> = createTypeGuard(
  * @param {unknown} t
  * @return {boolean}
  */
-export const isNumber: TypeGuard<number> = createTypeGuard(
+export const isNumber: NumberTypeGuard = withComparisons(createTypeGuard(
   "number",
   (t): number | null => typeof t === "number" && !Number.isNaN(t) ? t : null,
-);
+));
 
 /**
  * Returns true if input satisfies type symbol.
@@ -609,11 +643,36 @@ export const isBinary: TypeGuard<0 | 1> = createTypeGuard(
 );
 
 /**
+ * Returns a guard that checks if a value strictly equals the given constant.
+ * Narrows the TypeScript type to the exact literal type of the argument.
+ *
+ * @example
+ * isExactly('admin')('admin') // true — narrows to 'admin'
+ * isExactly(42)(43)           // false
+ * isExactly(null)(null)       // true — narrows to null
+ */
+export function isExactly<const T>(expected: T): TypeGuard<T> {
+  switch (expected) {
+    case null:
+      return isNull as TypeGuard<T>;
+
+    case undefined:
+      return isUndefined as TypeGuard<T>;
+
+    default:
+      return createTypeGuard(
+        safeStringify(expected),
+        (t): T | null => exact(expected, t) ? expected : null,
+      );
+  }
+}
+
+/**
  * Returns true if input satisfies type numeric.
  * @param {unknown} t
  * @return {boolean}
  */
-export const isNumeric: TypeGuard<number> = createTypeGuard(
+export const isNumeric: NumberTypeGuard = withComparisons(createTypeGuard(
   "numeric",
   (t): number | null => {
     if (isNumber(t)) return t as number;
@@ -624,7 +683,7 @@ export const isNumeric: TypeGuard<number> = createTypeGuard(
 
     return (!isNaN(_t) && isNumber(_t)) ? t as number : null;
   },
-);
+));
 
 /**
  * Returns true if input satisfies type Function.

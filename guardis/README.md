@@ -57,6 +57,8 @@ npx jsr add @spudlabs/guardis
   - [Optional Mode](#optional-mode)
   - [NotEmpty Mode](#notempty-mode)
   - [Validate Mode (StandardSchemaV1)](#validate-mode-standardschemav1)
+- [Literal Type Guards](#literal-type-guards)
+- [Numeric Comparisons](#numeric-comparisons)
 - [Creating Custom Type Guards](#creating-custom-type-guards)
 - [Extending Type Guards](#extending-type-guards)
 - [Specialized Modules](#specialized-modules)
@@ -97,6 +99,11 @@ Is.Tuple([1, 2], 2); // true (array with exact length)
 Is.JsonValue({ a: 1, b: "text" }); // true
 Is.JsonObject({ key: "value" }); // true
 Is.JsonArray([1, "two", true]); // true
+
+// Literal equality
+Is.Exactly("admin")("admin"); // true — narrows to 'admin'
+Is.Exactly(42)(42); // true — narrows to 42
+Is.Exactly(null)(null); // true — narrows to null
 ```
 
 ### Individual Imports
@@ -104,7 +111,7 @@ Is.JsonArray([1, "two", true]); // true
 Import specific guards to keep bundles small:
 
 ```ts
-import { isArray, isNumber, isString } from "jsr:@spudlabs/guardis";
+import { isArray, isExactly, isNumber, isString } from "jsr:@spudlabs/guardis";
 
 if (isString(userInput)) {
   console.log(userInput.trim());
@@ -116,6 +123,10 @@ if (isNumber(userInput)) {
 
 if (isArray(userValues)) {
   return userValues.at(-1);
+}
+
+if (isExactly("admin")(role)) {
+  // role is narrowed to 'admin'
 }
 ```
 
@@ -350,6 +361,54 @@ isPositive.validate(-5);
 // { issues: [{ message: 'Expected positive number. Received: -5' }] }
 ```
 
+## Literal Type Guards
+
+Use `isExactly` to create a guard that checks strict equality against a specific constant. TypeScript narrows the type to the exact literal — `'admin'` not `string`, `42` not `number`.
+
+```ts
+import { isExactly } from "jsr:@spudlabs/guardis";
+
+const isAdmin = isExactly("admin");
+isAdmin("admin"); // true — type narrowed to 'admin'
+isAdmin("user");  // false
+
+isExactly(42)(42);     // true — narrows to 42
+isExactly(true)(true); // true — narrows to true
+isExactly(null)(null); // true — narrows to null
+
+// All modes available
+isExactly("admin").strict("user");       // throws TypeError: Expected 'admin'. Received: 'user'
+isExactly(42).validate(43);              // { issues: [{ message: "Expected 42. Received: 43" }] }
+isExactly("admin").optional(undefined);  // true
+```
+
+## Numeric Comparisons
+
+`isNumber` and `isNumeric` include chainable comparison methods for range validation:
+
+```ts
+import { isNumber } from "jsr:@spudlabs/guardis";
+
+// Single comparisons
+isNumber.gt(0)(5);     // true — value > 0
+isNumber.gte(18)(18);  // true — value >= 18
+isNumber.lt(100)(50);  // true — value < 100
+isNumber.lte(10)(10);  // true — value <= 10
+isNumber.eq(42)(42);   // true — value === 42
+
+// Chain comparisons for ranges
+const isPercentage = isNumber.gte(0).lte(100);
+isPercentage(50);  // true
+isPercentage(101); // false
+
+// All modes work
+isNumber.gt(0).strict(-1);      // throws TypeError: Expected > 0. Received: -1
+isNumber.lt(100).validate(200); // { issues: [{ message: "Expected < 100. Received: 200" }] }
+
+// Composable with or
+const isPositiveOrNull = isNumber.gt(0).or(isNull);
+```
+
 ## Creating Custom Type Guards
 
 Use `createTypeGuard` to build validators for your own types. You can pass either a **shape object** for declarative validation or a **parser function** for full control.
@@ -368,6 +427,20 @@ isUser({ name: "Alice", age: 30 }); // true
 isUser({ name: "Alice", age: "thirty" }); // false
 
 // Type is inferred as { name: string; age: number }
+type User = typeof isUser._TYPE;
+```
+
+String literals can be used directly as shape field values as shorthand for exact equality — useful for discriminated unions:
+
+```ts
+// String literal is equivalent to isExactly('user')
+const isUser = createTypeGuard({ type: "user", name: isString });
+const isAdmin = createTypeGuard({ type: "admin", level: isNumber });
+
+isUser({ type: "user", name: "Alice" }); // true — type narrowed to 'user'
+isUser({ type: "admin", name: "Alice" }); // false
+
+// Type is inferred correctly as { type: "user"; name: string }
 type User = typeof isUser._TYPE;
 ```
 
@@ -480,7 +553,7 @@ const isUser = createTypeGuard<User>((val, { has, hasOptional }) => {
 
 ```ts
 const isExample = createTypeGuard((val, helpers) => {
-  const { has, hasOptional, hasNot, tupleHas, includes, keyOf, fail } = helpers;
+  const { has, hasOptional, hasNot, tupleHas, includes, exact, keyOf, fail } = helpers;
 
   // Check required object property
   has(obj, "key", Is.String);
@@ -500,6 +573,9 @@ const isExample = createTypeGuard((val, helpers) => {
   // Check if value is in array (for union types)
   const colors = ["red", "blue", "green"] as const;
   includes(colors, val); // "red" | "blue" | "green"
+
+  // Check strict equality against a constant (literal type narrowing)
+  exact("admin", val); // true if val === "admin"
 
   // Check if a key exists in an object
   keyOf(key, someObject); // key is keyof typeof someObject
