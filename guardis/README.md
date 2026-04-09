@@ -41,7 +41,7 @@ const isPositive = createTypeGuard<number>((val) =>
 deno install jsr:@spudlabs/guardis
 
 # Node.js/npm
-npx jsr add @spudlabs/guardis
+npm install @spudlabs/guardis
 ```
 
 
