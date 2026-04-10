@@ -59,6 +59,7 @@ npm install @spudlabs/guardis
   - [Validate Mode (StandardSchemaV1)](#validate-mode-standardschemav1)
 - [Literal Type Guards](#literal-type-guards)
 - [Numeric Comparisons](#numeric-comparisons)
+- [Array Length Validation](#array-length-validation)
 - [Creating Custom Type Guards](#creating-custom-type-guards)
 - [Extending Type Guards](#extending-type-guards)
 - [Specialized Modules](#specialized-modules)
@@ -407,6 +408,33 @@ isNumber.lt(100).validate(200); // { issues: [{ message: "Expected < 100. Receiv
 
 // Composable with or
 const isPositiveOrNull = isNumber.gt(0).or(isNull);
+```
+
+## Array Length Validation
+
+`isArray` includes chainable length validation methods:
+
+```ts
+import { isArray, isString } from "jsr:@spudlabs/guardis";
+
+// Length checks
+isArray.ofLength(3)([1, 2, 3]);  // true — exactly 3 elements
+isArray.min(1)([1]);              // true — at least 1 element
+isArray.max(5)([1, 2, 3]);       // true — at most 5 elements
+isArray.range(1, 5)([1, 2, 3]);  // true — between 1 and 5 elements
+
+// Chain for ranges
+const isSmallArray = isArray.min(1).max(5);
+
+// Compose with .of() — element type is preserved
+const isNameList = isArray.of(isString).min(1).max(10);
+isNameList(["Alice", "Bob"]); // true
+isNameList([]);                // false — too short
+isNameList([1, 2]);            // false — not strings
+
+// All modes work
+isArray.min(1).strict([]);            // throws TypeError
+isArray.max(3).validate([1, 2, 3, 4]); // { issues: [...] }
 ```
 
 ## Creating Custom Type Guards
