@@ -74,7 +74,19 @@ export type StrictTypeGuard<T> = (value: unknown, errorMsg?: string) => value is
  *
  * @template T1 The type being guarded
  */
+
+/** Internal metadata attached to type guards */
+export type GuardMeta<T> = {
+  name: string | undefined;
+  parser: Parser<T>;
+  context: (value: unknown, ctx?: Context) => StandardSchemaV1.Result<T>;
+  /** Indicates this guard is an optional variant, used by InferShape to mark properties as optional */
+  optional?: true;
+};
+
 export interface TypeGuard<T1> extends StandardSchemaV1<T1> {
+  /** Internal metadata for guard introspection */
+  _: GuardMeta<T1>;
   /**
    * A utility to gain access to the type being guarded. Can be used
    * to infer the type in other parts of the code.
@@ -158,68 +170,7 @@ export interface TypeGuard<T1> extends StandardSchemaV1<T1> {
       <T2 extends T1>(parse: ExtendedParser<T1, T2>): TypeGuard<T2>;
       <T2 extends T1>(name: string, parse: ExtendedParser<T1, T2>): TypeGuard<T2>;
     };
-  optional: {
-    /**
-     * A type guard that checks if the value is either undefined or of type T.
-     * @param value The value to check
-     * @returns true if the value is of type T or undefined, otherwise false
-     */
-    (value: unknown): value is T1 | undefined;
-    /**
-     * A strict type guard that throws an error if the value is defined but not of type T.
-     * @param value The value to check
-     * @param errorMsg Optional error message to include in the thrown error
-     * @returns true if the value is of type T, otherwise throws an error
-     */
-    strict: (value: unknown, errorMsg?: string) => value is T1 | undefined;
-    /**
-     * An assertion function that throws an error if the value is defined but not of type T.
-     * This is useful for ensuring that a value meets the type requirements at runtime.
-     *
-     * Unfortunately, TypeScript does not support the inference of assertion functions
-     * so the function must be invoked by declaring an intermediate variable and specifying
-     * the type.
-     *
-     * Example:
-     * ```typescript
-     * const value: unknown = someValue();
-     *
-     * const assertIsOptionalString: typeof isString.optional.assert = isString.optional.assert;
-     * assertIsOptionalString(value, "Expected a string or undefined");
-     * // After this line, TypeScript knows that value is a string
-     * ```
-     * @param value The value to check
-     * @param errorMsg Optional error message to include in the thrown error
-     * @returns Asserts that the value is of type T
-     */
-    assert: (value: unknown, errorMsg?: string) => asserts value is T1 | undefined;
-    /**
-     * Validates the value against the schema, accepting undefined as valid.
-     * @param value The value to validate
-     * @returns A success result with the value (including undefined), or a failure result with issues.
-     */
-    validate: (value: unknown) => StandardSchemaV1.Result<T1 | undefined>;
-    /**
-     * A type guard function that checks if the value is of type T1 | undefined | T2.
-     * This is useful for creating unions of types.
-     * @param guard A type guard for T2
-     * @returns A new type guard that checks if the value is of type T1 | undefined | T2
-     */
-    or: <Guards extends [Predicate<unknown>, ...Predicate<unknown>[]]>(
-      ...guards: Guards
-    ) => TypeGuard<T1 | undefined | PredicateUnion<Guards>>;
-    /**
-     * A type guard that checks if the value is not empty and of type T | undefined.
-     * An empty value is defined as null, an empty string, an empty array,
-     * or an empty object.
-     * @param value The value to check
-     * @returns true if the value is of type T and not empty, otherwise false
-     *
-     * @note This method is equivalent to calling `isString.notEmpty.optional`
-     * on a type guard named `isString`.
-     */
-    notEmpty: CanBeEmpty<T1> extends false ? never : TypeGuard<T1 | undefined>["notEmpty"];
-  };
+  optional: OptionalTypeGuard<T1>;
   notEmpty: CanBeEmpty<T1> extends false ? never : {
     /**
      * A type guard that checks if the value is not empty and of type T.
@@ -383,6 +334,34 @@ export interface NumberTypeGuard extends TypeGuard<number> {
   eq(target: number): NumberTypeGuard;
 }
 
+/** An array type guard with chainable length validation methods */
+export interface ArrayTypeGuard<T = unknown> extends TypeGuard<T[]> {
+  /** Returns a typed array guard preserving length methods */
+  of<U>(guard: TypeGuard<U>): ArrayTypeGuard<U>;
+  /** Checks array has exactly this length */
+  ofLength(length: number): ArrayTypeGuard<T>;
+  /** Checks array length >= min */
+  min(length: number): ArrayTypeGuard<T>;
+  /** Checks array length <= max */
+  max(length: number): ArrayTypeGuard<T>;
+  /** Checks array length is between min and max (inclusive) */
+  range(min: number, max: number): ArrayTypeGuard<T>;
+}
+
+/** An optional type guard that accepts undefined in addition to the base type */
+export interface OptionalTypeGuard<T1> {
+  /** Internal metadata with optional flag for shape type inference */
+  _: Omit<GuardMeta<T1 | undefined>, "optional"> & { optional: true };
+  (value: unknown): value is T1 | undefined;
+  strict: (value: unknown, errorMsg?: string) => value is T1 | undefined;
+  assert: (value: unknown, errorMsg?: string) => asserts value is T1 | undefined;
+  validate: (value: unknown) => StandardSchemaV1.Result<T1 | undefined>;
+  or: <Guards extends [Predicate<unknown>, ...Predicate<unknown>[]]>(
+    ...guards: Guards
+  ) => TypeGuard<T1 | undefined | PredicateUnion<Guards>>;
+  notEmpty: CanBeEmpty<T1> extends false ? never : TypeGuard<T1 | undefined>["notEmpty"];
+}
+
 /** Utility type to determine if a type can be "empty" */
 export type CanBeEmpty<T> = T extends
   | null
@@ -414,12 +393,20 @@ export type TypeGuardShape = {
 // deno-lint-ignore ban-types
 export type Simplify<T> = { [K in keyof T]: T[K] } & {};
 
+/** Infer the raw type for a single shape field */
+type InferShapeField<F> = F extends (value: unknown) => value is infer T ? T
+  : F extends TypeGuardShape ? InferShape<F>
+  : F extends ShapePrimitive ? F
+  : never;
+
+/** Check if a shape field is an OptionalTypeGuard */
+type IsOptionalGuard<F> = F extends { _: { optional: true } } ? true : false;
+
 /** Recursively infers the TypeScript type from a TypeGuardShape */
 export type InferShape<S extends TypeGuardShape> = Simplify<
   {
-    -readonly [K in keyof S]: S[K] extends (value: unknown) => value is infer T ? T
-      : S[K] extends TypeGuardShape ? InferShape<S[K]>
-      : S[K] extends ShapePrimitive ? S[K]
-      : never;
+    -readonly [K in keyof S as IsOptionalGuard<S[K]> extends true ? never : K]: InferShapeField<S[K]>;
+  } & {
+    -readonly [K in keyof S as IsOptionalGuard<S[K]> extends true ? K : never]?: InferShapeField<S[K]>;
   }
 >;

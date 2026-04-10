@@ -5,6 +5,7 @@
 
 import type { StandardSchemaV1 } from "../specs/standard-schema-spec.v1.ts";
 import type {
+  ArrayTypeGuard,
   CanBeEmpty,
   Context,
   ExtendedParser,
@@ -26,7 +27,7 @@ import type {
   TypeGuardShape,
 } from "./types.ts";
 import { createContext, createStrictContext } from "./context.ts";
-import { type GuardMeta, type GuardWithContext, hasContext, hasName } from "./introspect.ts";
+import { hasContext, hasName } from "./introspect.ts";
 import {
   doesNotHaveProperty,
   exact,
@@ -118,7 +119,7 @@ function validateField(
 
   // Primitive constant — use exact equality check
   if (guard === null || (typeof guard !== "object" && typeof guard !== "function")) {
-    const exactGuard = isExactly(guard) as unknown as GuardWithContext<unknown>;
+    const exactGuard = isExactly(guard);
     const guardCtx = childCtx ?? createContext([key]);
     const r = exactGuard._.context(obj[key], guardCtx);
 
@@ -151,7 +152,7 @@ function validateField(
   if (hasContext(guard as Predicate<unknown>)) {
     const guardCtx = childCtx ?? createContext([key]);
 
-    const r = (guard as unknown as GuardWithContext<unknown>)._.context(obj[key], guardCtx);
+    const r = (guard as unknown as TypeGuard<unknown>)._.context(obj[key], guardCtx);
     if ("value" in r) {
       result[key] = r.value;
     } else if (childCtx) {
@@ -312,7 +313,13 @@ const createOptionalTypeGuard = <T>(
   const optionalContext = (value: unknown, ctx?: Context) =>
     isUndefined(value) ? { value } : context(value, ctx ?? createContext());
 
-  optional._ = { name, parser: optionalParser, context: optionalContext };
+  optional._ = {
+    name,
+    parser: optionalParser,
+    context: optionalContext,
+    optional: true as const,
+  };
+
   optional.strict = createStrictTypeGuard(optionalParser, name);
   optional.assert = optional.strict;
   optional.validate = (value: unknown) => optionalContext(value, createContext());
@@ -355,9 +362,6 @@ const createNotEmptyTypeGuard = <T>(guard: Predicate<T>) => {
 
   return notEmpty as CanBeEmpty<T> extends false ? never : typeof notEmpty;
 };
-
-/** Internal type guard with access to metadata */
-type _TypeGuard<T> = TypeGuard<T> & GuardMeta<T>;
 
 /**
  * Creates a type guard from a parser function.
@@ -775,21 +779,33 @@ export const isJsonObject: TypeGuard<JsonObject> = createTypeGuard(
 const _isArray = createTypeGuard("array", (t): unknown[] | null => Array.isArray(t) ? t : null);
 
 /**
+ * Wraps a TypeGuard<T[]> with chainable length validation methods.
+ * Each method delegates to .extend() and wraps the result for further chaining.
+ */
+function withArrayMethods<T>(guard: TypeGuard<T[]>): ArrayTypeGuard<T> {
+  const arr = guard as ArrayTypeGuard<T>;
+  arr.ofLength = (n) =>
+    withArrayMethods(guard.extend(`length == ${n}`, (v) => v.length === n ? v : null));
+  arr.min = (n) =>
+    withArrayMethods(guard.extend(`length >= ${n}`, (v) => v.length >= n ? v : null));
+  arr.max = (n) =>
+    withArrayMethods(guard.extend(`length <= ${n}`, (v) => v.length <= n ? v : null));
+  arr.range = (min, max) =>
+    withArrayMethods(
+      guard.extend(`length ${min}..${max}`, (v) => v.length >= min && v.length <= max ? v : null),
+    );
+  return arr;
+}
+
+/**
  * Returns true if input satisfies type array.
  * @param {unknown} t
  * @return {boolean}
  */
-export const isArray: TypeGuard<unknown[]> & {
-  /**
-   * Returns true if input satisfies type array of T.
-   * @param guard The type guard for the array elements
-   * @returns {boolean}
-   */
-  of: <T>(guard: TypeGuard<T>) => TypeGuard<T[]>;
-} = Object.assign(
+export const isArray: ArrayTypeGuard = withArrayMethods(Object.assign(
   _isArray,
   {
-    of: <T>(guard: TypeGuard<T>): TypeGuard<T[]> => {
+    of: <T>(guard: TypeGuard<T>): ArrayTypeGuard<T> => {
       const guardName = hasName(guard) ? guard._.name : undefined;
 
       let name = "array";
@@ -798,7 +814,7 @@ export const isArray: TypeGuard<unknown[]> & {
         name = guardName?.includes(" | ") ? `(${guardName})[]` : `${guardName}[]`;
       }
 
-      return createTypeGuard(
+      return withArrayMethods(createTypeGuard(
         name,
         (v, helpers) => {
           if (!isArray(v)) return null;
@@ -818,10 +834,10 @@ export const isArray: TypeGuard<unknown[]> & {
           // Otherwise, use simple boolean check
           return v.every((item) => guard(item)) ? v as T[] : null;
         },
-      );
+      ));
     },
   },
-);
+));
 
 /**
  * Returns true if input satisfies type array.
@@ -1020,7 +1036,7 @@ isTuple.or = <N extends number, T2>(
   guard: TypeGuard<T2>,
 ): TypeGuard<TupleOfLength<N> | T2> => {
   return createTypeGuard<TupleOfLength<N> | T2>((v: unknown) =>
-    isTuple(v, length) ? v : (guard as _TypeGuard<T2>)._.parser(v, defaultHelpers)
+    isTuple(v, length) ? v : guard._.parser(v, defaultHelpers)
   );
 };
 

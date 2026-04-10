@@ -4955,13 +4955,13 @@ Deno.test("createTypeGuard shape", async (t) => {
   });
 
   await t.step("type inference with guard modes", () => {
-    // .optional field infers T | undefined
+    // .optional field infers optional property
     const isForm = createTypeGuard({
       required: isString,
       optional: isString.optional,
     });
     type Form = typeof isForm._TYPE;
-    assertType<Equals<Form, { required: string; optional: string | undefined }>>();
+    assertType<Equals<Form, { required: string; optional?: string | undefined }>>();
 
     // .or() field infers union
     const isRecord = createTypeGuard({
@@ -5217,6 +5217,44 @@ Deno.test("createTypeGuard shape with string literal constants", async (t) => {
   });
 });
 
+Deno.test("shape optional property inference", async (t) => {
+  await t.step("optional shape field infers optional property", () => {
+    const isUser = createTypeGuard({ name: isString, email: isString.optional });
+    type User = typeof isUser._TYPE;
+    assertType<Equals<User, { name: string; email?: string | undefined }>>();
+  });
+
+  await t.step("isUndefined shape field infers required property", () => {
+    const isRecord = createTypeGuard({ name: isString, deleted: isUndefined });
+    type Record_ = typeof isRecord._TYPE;
+    assertType<Equals<Record_, { name: string; deleted: undefined }>>();
+  });
+
+  await t.step("mixed required and optional fields", () => {
+    const isProfile = createTypeGuard({
+      name: isString,
+      age: isNumber,
+      bio: isString.optional,
+      avatar: isString.optional,
+    });
+    type Profile = typeof isProfile._TYPE;
+    assertType<Equals<Profile, {
+      name: string;
+      age: number;
+      bio?: string | undefined;
+      avatar?: string | undefined;
+    }>>();
+  });
+
+  await t.step("runtime accepts missing optional properties", () => {
+    const isUser = createTypeGuard({ name: isString, email: isString.optional });
+    assert(isUser({ name: "Alice" }));
+    assert(isUser({ name: "Alice", email: undefined }));
+    assert(isUser({ name: "Alice", email: "alice@test.com" }));
+    assertFalse(isUser({ name: "Alice", email: 123 }));
+  });
+});
+
 Deno.test("numeric comparison methods", async (t) => {
   await t.step("gt", () => {
     assert(isNumber.gt(0)(5));
@@ -5301,5 +5339,145 @@ Deno.test("numeric comparison methods", async (t) => {
     assert(isNumeric.gt(0)("5"));
     assertFalse(isNumeric.gt(0)(-1));
     assertFalse(isNumeric.gt(0)("abc"));
+  });
+});
+
+Deno.test("array length methods", async (t) => {
+  await t.step("ofLength", () => {
+    assert(isArray.ofLength(3)([1, 2, 3]));
+    assertFalse(isArray.ofLength(3)([1, 2]));
+    assertFalse(isArray.ofLength(3)([1, 2, 3, 4]));
+    assertFalse(isArray.ofLength(3)("abc"));
+  });
+
+  await t.step("min", () => {
+    assert(isArray.min(1)([1]));
+    assert(isArray.min(1)([1, 2, 3]));
+    assertFalse(isArray.min(1)([]));
+    assertFalse(isArray.min(1)("a"));
+  });
+
+  await t.step("max", () => {
+    assert(isArray.max(3)([1, 2, 3]));
+    assert(isArray.max(3)([1]));
+    assert(isArray.max(3)([]));
+    assertFalse(isArray.max(3)([1, 2, 3, 4]));
+    assertFalse(isArray.max(3)("abc"));
+  });
+
+  await t.step("range", () => {
+    assert(isArray.range(1, 3)([1]));
+    assert(isArray.range(1, 3)([1, 2]));
+    assert(isArray.range(1, 3)([1, 2, 3]));
+    assertFalse(isArray.range(1, 3)([]));
+    assertFalse(isArray.range(1, 3)([1, 2, 3, 4]));
+  });
+
+  await t.step("chaining min and max", () => {
+    const between = isArray.min(1).max(5);
+    assert(between([1]));
+    assert(between([1, 2, 3, 4, 5]));
+    assertFalse(between([]));
+    assertFalse(between([1, 2, 3, 4, 5, 6]));
+  });
+
+  await t.step("validate method", () => {
+    assertEquals(isArray.min(1).validate([1, 2]), { value: [1, 2] });
+    assertEquals(isArray.min(1).validate([]), {
+      issues: [{ message: "Expected length >= 1. Received: []" }],
+    });
+    assertEquals(isArray.max(2).validate([1, 2, 3]), {
+      issues: [{ message: "Expected length <= 2. Received: [1,2,3]" }],
+    });
+    assertEquals(isArray.ofLength(2).validate([1]), {
+      issues: [{ message: "Expected length == 2. Received: [1]" }],
+    });
+    assertEquals(isArray.range(2, 4).validate([1]), {
+      issues: [{ message: "Expected length 2..4. Received: [1]" }],
+    });
+    assertEquals(isArray.range(2, 4).validate([1, 2, 3, 4, 5]), {
+      issues: [{ message: "Expected length 2..4. Received: [1,2,3,4,5]" }],
+    });
+    // non-array input
+    assertEquals(isArray.min(1).validate("not an array"), {
+      issues: [{ message: "Expected length >= 1. Received: 'not an array'" }],
+    });
+  });
+
+  await t.step("strict method", () => {
+    isArray.min(1).strict([1]);
+    assertThrows(() => isArray.min(1).strict([]));
+  });
+
+  await t.step("of with length methods", () => {
+    const guard = isArray.of(isString).min(1);
+    assert(guard(["a"]));
+    assert(guard(["a", "b"]));
+    assertFalse(guard([]));
+    assertFalse(guard([1]));
+    type Guarded = typeof guard._TYPE;
+    assertType<Equals<Guarded, string[]>>();
+  });
+
+  await t.step("of with chained min and max", () => {
+    const guard = isArray.of(isNumber).min(2).max(4);
+    assert(guard([1, 2]));
+    assert(guard([1, 2, 3, 4]));
+    assertFalse(guard([1]));
+    assertFalse(guard([1, 2, 3, 4, 5]));
+  });
+
+  await t.step("of with range", () => {
+    const guard = isArray.of(isString).range(1, 3);
+    assert(guard(["a"]));
+    assert(guard(["a", "b", "c"]));
+    assertFalse(guard([]));
+    assertFalse(guard(["a", "b", "c", "d"]));
+    type Guarded = typeof guard._TYPE;
+    assertType<Equals<Guarded, string[]>>();
+  });
+
+  await t.step("or after length method", () => {
+    const guard = isArray.min(1).or(isNull);
+    assert(guard([1]));
+    assert(guard(null));
+    assertFalse(guard([]));
+    assertFalse(guard(undefined));
+  });
+
+  await t.step("optional after length method", () => {
+    const guard = isArray.min(1).optional;
+    assert(guard([1]));
+    assert(guard(undefined));
+    assertFalse(guard([]));
+    assertFalse(guard(null));
+  });
+
+  await t.step("extend after length method", () => {
+    const guard = isArray.of(isNumber).min(1).extend((v) =>
+      v.every((n) => n > 0) ? v : null
+    );
+    assert(guard([1, 2, 3]));
+    assertFalse(guard([]));
+    assertFalse(guard([-1, 2]));
+  });
+
+  await t.step("length methods in shape definition", () => {
+    const isForm = createTypeGuard({
+      tags: isArray.of(isString).min(1).max(5),
+      name: isString,
+    });
+    assert(isForm({ tags: ["a"], name: "test" }));
+    assertFalse(isForm({ tags: [], name: "test" }));
+    assertFalse(isForm({ tags: ["a", "b", "c", "d", "e", "f"], name: "test" }));
+  });
+
+  await t.step("validate with shape and length methods", () => {
+    const isForm = createTypeGuard({
+      items: isArray.of(isNumber).min(1),
+    });
+    assertEquals(isForm.validate({ items: [1, 2] }), { value: { items: [1, 2] } });
+    const result = isForm.validate({ items: [] });
+    assert(!("value" in result));
   });
 });
