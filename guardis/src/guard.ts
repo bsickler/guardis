@@ -26,7 +26,7 @@ import type {
   TypeGuardShape,
 } from "./types.ts";
 import { createContext, createStrictContext } from "./context.ts";
-import { type GuardMeta, type GuardWithContext, hasContext, hasName } from "./introspect.ts";
+import { hasContext, hasName } from "./introspect.ts";
 import {
   doesNotHaveProperty,
   exact,
@@ -118,7 +118,7 @@ function validateField(
 
   // Primitive constant — use exact equality check
   if (guard === null || (typeof guard !== "object" && typeof guard !== "function")) {
-    const exactGuard = isExactly(guard) as unknown as GuardWithContext<unknown>;
+    const exactGuard = isExactly(guard);
     const guardCtx = childCtx ?? createContext([key]);
     const r = exactGuard._.context(obj[key], guardCtx);
 
@@ -151,7 +151,7 @@ function validateField(
   if (hasContext(guard as Predicate<unknown>)) {
     const guardCtx = childCtx ?? createContext([key]);
 
-    const r = (guard as unknown as GuardWithContext<unknown>)._.context(obj[key], guardCtx);
+    const r = (guard as unknown as TypeGuard<unknown>)._.context(obj[key], guardCtx);
     if ("value" in r) {
       result[key] = r.value;
     } else if (childCtx) {
@@ -312,7 +312,13 @@ const createOptionalTypeGuard = <T>(
   const optionalContext = (value: unknown, ctx?: Context) =>
     isUndefined(value) ? { value } : context(value, ctx ?? createContext());
 
-  optional._ = { name, parser: optionalParser, context: optionalContext };
+  optional._ = {
+    name,
+    parser: optionalParser,
+    context: optionalContext,
+    optional: true as const,
+  };
+
   optional.strict = createStrictTypeGuard(optionalParser, name);
   optional.assert = optional.strict;
   optional.validate = (value: unknown) => optionalContext(value, createContext());
@@ -355,9 +361,6 @@ const createNotEmptyTypeGuard = <T>(guard: Predicate<T>) => {
 
   return notEmpty as CanBeEmpty<T> extends false ? never : typeof notEmpty;
 };
-
-/** Internal type guard with access to metadata */
-type _TypeGuard<T> = TypeGuard<T> & GuardMeta<T>;
 
 /**
  * Creates a type guard from a parser function.
@@ -1020,7 +1023,7 @@ isTuple.or = <N extends number, T2>(
   guard: TypeGuard<T2>,
 ): TypeGuard<TupleOfLength<N> | T2> => {
   return createTypeGuard<TupleOfLength<N> | T2>((v: unknown) =>
-    isTuple(v, length) ? v : (guard as _TypeGuard<T2>)._.parser(v, defaultHelpers)
+    isTuple(v, length) ? v : guard._.parser(v, defaultHelpers)
   );
 };
 
