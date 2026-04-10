@@ -5383,8 +5383,25 @@ Deno.test("array length methods", async (t) => {
 
   await t.step("validate method", () => {
     assertEquals(isArray.min(1).validate([1, 2]), { value: [1, 2] });
-    const result = isArray.min(1).validate([]);
-    assert(!("value" in result));
+    assertEquals(isArray.min(1).validate([]), {
+      issues: [{ message: "Expected length >= 1. Received: []" }],
+    });
+    assertEquals(isArray.max(2).validate([1, 2, 3]), {
+      issues: [{ message: "Expected length <= 2. Received: [1,2,3]" }],
+    });
+    assertEquals(isArray.ofLength(2).validate([1]), {
+      issues: [{ message: "Expected length == 2. Received: [1]" }],
+    });
+    assertEquals(isArray.range(2, 4).validate([1]), {
+      issues: [{ message: "Expected length 2..4. Received: [1]" }],
+    });
+    assertEquals(isArray.range(2, 4).validate([1, 2, 3, 4, 5]), {
+      issues: [{ message: "Expected length 2..4. Received: [1,2,3,4,5]" }],
+    });
+    // non-array input
+    assertEquals(isArray.min(1).validate("not an array"), {
+      issues: [{ message: "Expected length >= 1. Received: 'not an array'" }],
+    });
   });
 
   await t.step("strict method", () => {
