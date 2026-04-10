@@ -4955,13 +4955,13 @@ Deno.test("createTypeGuard shape", async (t) => {
   });
 
   await t.step("type inference with guard modes", () => {
-    // .optional field infers T | undefined
+    // .optional field infers optional property
     const isForm = createTypeGuard({
       required: isString,
       optional: isString.optional,
     });
     type Form = typeof isForm._TYPE;
-    assertType<Equals<Form, { required: string; optional: string | undefined }>>();
+    assertType<Equals<Form, { required: string; optional?: string | undefined }>>();
 
     // .or() field infers union
     const isRecord = createTypeGuard({
@@ -5214,6 +5214,44 @@ Deno.test("createTypeGuard shape with string literal constants", async (t) => {
 
     isDeleted.strict({ deletedAt: null, name: "item" });
     assertThrows(() => isDeleted.strict({ deletedAt: "2024-01-01", name: "item" }));
+  });
+});
+
+Deno.test("shape optional property inference", async (t) => {
+  await t.step("optional shape field infers optional property", () => {
+    const isUser = createTypeGuard({ name: isString, email: isString.optional });
+    type User = typeof isUser._TYPE;
+    assertType<Equals<User, { name: string; email?: string | undefined }>>();
+  });
+
+  await t.step("isUndefined shape field infers required property", () => {
+    const isRecord = createTypeGuard({ name: isString, deleted: isUndefined });
+    type Record_ = typeof isRecord._TYPE;
+    assertType<Equals<Record_, { name: string; deleted: undefined }>>();
+  });
+
+  await t.step("mixed required and optional fields", () => {
+    const isProfile = createTypeGuard({
+      name: isString,
+      age: isNumber,
+      bio: isString.optional,
+      avatar: isString.optional,
+    });
+    type Profile = typeof isProfile._TYPE;
+    assertType<Equals<Profile, {
+      name: string;
+      age: number;
+      bio?: string | undefined;
+      avatar?: string | undefined;
+    }>>();
+  });
+
+  await t.step("runtime accepts missing optional properties", () => {
+    const isUser = createTypeGuard({ name: isString, email: isString.optional });
+    assert(isUser({ name: "Alice" }));
+    assert(isUser({ name: "Alice", email: undefined }));
+    assert(isUser({ name: "Alice", email: "alice@test.com" }));
+    assertFalse(isUser({ name: "Alice", email: 123 }));
   });
 });
 
