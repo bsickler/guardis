@@ -5,6 +5,7 @@
 
 import type { StandardSchemaV1 } from "../specs/standard-schema-spec.v1.ts";
 import type {
+  ArrayTypeGuard,
   CanBeEmpty,
   Context,
   ExtendedParser,
@@ -778,21 +779,33 @@ export const isJsonObject: TypeGuard<JsonObject> = createTypeGuard(
 const _isArray = createTypeGuard("array", (t): unknown[] | null => Array.isArray(t) ? t : null);
 
 /**
+ * Wraps a TypeGuard<T[]> with chainable length validation methods.
+ * Each method delegates to .extend() and wraps the result for further chaining.
+ */
+function withArrayMethods<T>(guard: TypeGuard<T[]>): ArrayTypeGuard<T> {
+  const arr = guard as ArrayTypeGuard<T>;
+  arr.ofLength = (n) =>
+    withArrayMethods(guard.extend(`length == ${n}`, (v) => v.length === n ? v : null));
+  arr.min = (n) =>
+    withArrayMethods(guard.extend(`length >= ${n}`, (v) => v.length >= n ? v : null));
+  arr.max = (n) =>
+    withArrayMethods(guard.extend(`length <= ${n}`, (v) => v.length <= n ? v : null));
+  arr.range = (min, max) =>
+    withArrayMethods(
+      guard.extend(`length ${min}..${max}`, (v) => v.length >= min && v.length <= max ? v : null),
+    );
+  return arr;
+}
+
+/**
  * Returns true if input satisfies type array.
  * @param {unknown} t
  * @return {boolean}
  */
-export const isArray: TypeGuard<unknown[]> & {
-  /**
-   * Returns true if input satisfies type array of T.
-   * @param guard The type guard for the array elements
-   * @returns {boolean}
-   */
-  of: <T>(guard: TypeGuard<T>) => TypeGuard<T[]>;
-} = Object.assign(
+export const isArray: ArrayTypeGuard = withArrayMethods(Object.assign(
   _isArray,
   {
-    of: <T>(guard: TypeGuard<T>): TypeGuard<T[]> => {
+    of: <T>(guard: TypeGuard<T>): ArrayTypeGuard<T> => {
       const guardName = hasName(guard) ? guard._.name : undefined;
 
       let name = "array";
@@ -801,7 +814,7 @@ export const isArray: TypeGuard<unknown[]> & {
         name = guardName?.includes(" | ") ? `(${guardName})[]` : `${guardName}[]`;
       }
 
-      return createTypeGuard(
+      return withArrayMethods(createTypeGuard(
         name,
         (v, helpers) => {
           if (!isArray(v)) return null;
@@ -821,10 +834,10 @@ export const isArray: TypeGuard<unknown[]> & {
           // Otherwise, use simple boolean check
           return v.every((item) => guard(item)) ? v as T[] : null;
         },
-      );
+      ));
     },
   },
-);
+));
 
 /**
  * Returns true if input satisfies type array.

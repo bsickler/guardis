@@ -334,6 +334,20 @@ export interface NumberTypeGuard extends TypeGuard<number> {
   eq(target: number): NumberTypeGuard;
 }
 
+/** An array type guard with chainable length validation methods */
+export interface ArrayTypeGuard<T = unknown> extends TypeGuard<T[]> {
+  /** Returns a typed array guard preserving length methods */
+  of<U>(guard: TypeGuard<U>): ArrayTypeGuard<U>;
+  /** Checks array has exactly this length */
+  ofLength(length: number): ArrayTypeGuard<T>;
+  /** Checks array length >= min */
+  min(length: number): ArrayTypeGuard<T>;
+  /** Checks array length <= max */
+  max(length: number): ArrayTypeGuard<T>;
+  /** Checks array length is between min and max (inclusive) */
+  range(min: number, max: number): ArrayTypeGuard<T>;
+}
+
 /** An optional type guard that accepts undefined in addition to the base type */
 export interface OptionalTypeGuard<T1> {
   /** Internal metadata with optional flag for shape type inference */
