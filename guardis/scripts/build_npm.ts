@@ -48,6 +48,7 @@ await build({
       type: "git",
       url: "git+https://github.com/bsickler/guardis.git",
     },
+    sideEffects: false,
   },
   postBuild() {
     Deno.copyFileSync("README.md", "npm/README.md");
