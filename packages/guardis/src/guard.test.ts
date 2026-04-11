@@ -7,6 +7,7 @@ import {
   isBoolean,
   isDate,
   isEmpty,
+  isEnum,
   isExactly,
   isFunction,
   isIterable,
@@ -22,7 +23,6 @@ import {
   isPropertyKey,
   isString,
   isSymbol,
-  isEnum,
   isTuple,
   isUndefined,
 } from "./guard.ts";
@@ -5279,12 +5279,14 @@ Deno.test("shape optional property inference", async (t) => {
       avatar: isString.optional,
     });
     type Profile = typeof isProfile._TYPE;
-    assertType<Equals<Profile, {
-      name: string;
-      age: number;
-      bio?: string | undefined;
-      avatar?: string | undefined;
-    }>>();
+    assertType<
+      Equals<Profile, {
+        name: string;
+        age: number;
+        bio?: string | undefined;
+        avatar?: string | undefined;
+      }>
+    >();
   });
 
   await t.step("runtime accepts missing optional properties", () => {
@@ -5495,9 +5497,7 @@ Deno.test("array length methods", async (t) => {
   });
 
   await t.step("extend after length method", () => {
-    const guard = isArray.of(isNumber).min(1).extend((v) =>
-      v.every((n) => n > 0) ? v : null
-    );
+    const guard = isArray.of(isNumber).min(1).extend((v) => v.every((n) => n > 0) ? v : null);
     assert(guard([1, 2, 3]));
     assertFalse(guard([]));
     assertFalse(guard([-1, 2]));
@@ -5723,5 +5723,10 @@ Deno.test("isEnum", async (t) => {
     const isPayload = createTypeGuard({ color: isColor });
     assert(isPayload({ color: "red" }));
     assertFalse(isPayload({ color: "yellow" }));
+  });
+
+  await t.step("inferred type matches the original enum", () => {
+    assertType<Equals<typeof isColor._TYPE, typeof Color[keyof typeof Color]>>();
+    assertType<Equals<typeof isDirection._TYPE, typeof Direction[keyof typeof Direction]>>();
   });
 });
