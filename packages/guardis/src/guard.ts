@@ -741,6 +741,9 @@ export function createTypeGuard<T1>(
   // StandardSchemaV1 compatibility - uses context-aware validation for path tracking
   callback.validate = (value: unknown) => context(value, createContext());
 
+  // Branding: returns the same guard retyped as Brand<T, B>. Zero runtime cost.
+  callback.brand = () => callback;
+
   callback["~standard"] = {
     version: 1,
     vendor: "guardis",
