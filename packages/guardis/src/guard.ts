@@ -1277,17 +1277,6 @@ function isPluginPlainObject(value: unknown): value is Record<string, unknown> {
     typeof value !== "function";
 }
 
-/** Checks if a plain object has at least one guard-like value (function or nested object) */
-function looksLikeShape(value: Record<string, unknown>): boolean {
-  const keys = Object.keys(value);
-  if (keys.length === 0) return false;
-  for (const key of keys) {
-    const v = value[key];
-    if (typeof v === "function") return true;
-    if (isPluginPlainObject(v)) return true;
-  }
-  return false;
-}
 
 /**
  * Creates an extended factory function that applies plugins to every guard it creates.
@@ -1319,16 +1308,10 @@ function withPluginsImpl<const Plugins extends readonly AnyPlugin[]>(
       parserOrShape = args[0];
       pluginOptions = args[1];
     } else if (isPluginPlainObject(args[0])) {
-      if (args.length === 1 && looksLikeShape(args[0] as Record<string, unknown>)) {
-        parserOrShape = args[0] as TypeGuardShape;
-        pluginOptions = undefined;
-      } else if (args.length === 2) {
-        parserOrShape = args[0] as TypeGuardShape;
-        pluginOptions = args[1];
-      } else {
-        parserOrShape = args[0] as TypeGuardShape;
-        pluginOptions = undefined;
-      }
+      // A plain object as first arg is always a shape — you can't create a guard
+      // from just plugin options. Second arg (if present) is plugin options.
+      parserOrShape = args[0] as TypeGuardShape;
+      pluginOptions = args[1];
     } else {
       throw new TypeError("Invalid arguments to extended factory: first argument must be a name (string), parser (function), or shape (plain object)");
     }
