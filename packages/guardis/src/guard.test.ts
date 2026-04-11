@@ -5648,3 +5648,161 @@ Deno.test("createTypeGuard with verified shape (explicit type parameter)", async
     assertType<Equals<typeof isPositive._TYPE, number>>();
   });
 });
+
+Deno.test("Parser auto-compilation safety", async (t) => {
+  await t.step("parser with data-dependent property access is not broken by compilation", () => {
+    // This parser accesses v.age directly after has() — the Proxy get trap
+    // must cause compilation bailout so the custom logic is preserved.
+    type Person = { name: string; age: number };
+    const isAdult = createTypeGuard<Person>((v, { has }) => {
+      if (isObject(v) && has(v, "name", isString) && has(v, "age", isNumber)) {
+        if (v.age < 18) return null;
+        return v;
+      }
+      return null;
+    });
+
+    assert(isAdult({ name: "Alice", age: 30 }));
+    assertFalse(isAdult({ name: "Bob", age: 10 }));
+    assertFalse(isAdult({ name: "Charlie" }));
+    assertFalse(isAdult("not an object"));
+  });
+
+  await t.step("parser with Object.keys enumeration is not broken by compilation", () => {
+    // Object.keys triggers ownKeys trap — must bail out.
+    const isStrictObject = createTypeGuard<{ name: string }>((v, { has }) => {
+      if (isObject(v) && has(v, "name", isString)) {
+        if (Object.keys(v).length > 1) return null;
+        return v;
+      }
+      return null;
+    });
+
+    assert(isStrictObject({ name: "Alice" }));
+    assertFalse(isStrictObject({ name: "Alice", extra: true }));
+  });
+
+  await t.step("parser that transforms the value is not broken by compilation", () => {
+    const isNormalized = createTypeGuard<{ name: string; normalized: true }>((v, { has }) => {
+      if (isObject(v) && has(v, "name", isString)) {
+        return { ...v, normalized: true as const };
+      }
+      return null;
+    });
+
+    const result = isNormalized({ name: "Alice" });
+    assert(result);
+    // Validate the transform actually happened
+    const validated = isNormalized.validate({ name: "Alice" });
+    assert("value" in validated);
+    assertEquals(validated.value.normalized, true);
+  });
+
+  await t.step("parser using fail helper is not broken by compilation", () => {
+    const isPositiveAge = createTypeGuard<number>("PositiveAge", (v, { fail }) => {
+      if (typeof v !== "number") return fail("Must be a number");
+      if (v < 0) return fail("Must be positive");
+      return v;
+    });
+
+    assert(isPositiveAge(5));
+    assertFalse(isPositiveAge(-1));
+    assertFalse(isPositiveAge("not a number"));
+  });
+
+  await t.step("parser using includes helper is not broken by compilation", () => {
+    const VALID_ROLES = ["admin", "user", "guest"] as const;
+    const isRole = createTypeGuard<{ role: string }>((v, { has, includes }) => {
+      if (isObject(v) && has(v, "role", isString) && includes(VALID_ROLES, v.role)) {
+        return v;
+      }
+      return null;
+    });
+
+    assert(isRole({ role: "admin" }));
+    assertFalse(isRole({ role: "superadmin" }));
+  });
+
+  await t.step("compilable parser achieves same results as shape", () => {
+    // A standard has-chain parser — should be auto-compiled.
+    type User = { name: string; age: number; active: boolean };
+    const isUserParser = createTypeGuard<User>((v, { has }) => {
+      if (
+        isObject(v) &&
+        has(v, "name", isString) &&
+        has(v, "age", isNumber) &&
+        has(v, "active", isBoolean)
+      ) return v;
+      return null;
+    });
+
+    const isUserShape = createTypeGuard({
+      name: isString,
+      age: isNumber,
+      active: isBoolean,
+    });
+
+    const valid = { name: "Alice", age: 30, active: true };
+    const invalid = { name: 123, age: "thirty", active: "yes" };
+
+    // Boolean path: same results
+    assertEquals(isUserParser(valid), isUserShape(valid));
+    assertEquals(isUserParser(invalid), isUserShape(invalid));
+
+    // Missing field
+    assertFalse(isUserParser({ name: "Alice", age: 30 }));
+    assertFalse(isUserShape({ name: "Alice", age: 30 }));
+
+    // Not an object
+    assertFalse(isUserParser("string"));
+    assertFalse(isUserShape("string"));
+    assertFalse(isUserParser(null));
+    assertFalse(isUserShape(null));
+  });
+
+  await t.step("parser with hasOptional compiles and works", () => {
+    type User = { name: string; age?: number };
+    const isUser = createTypeGuard<User>((v, { has, hasOptional }) => {
+      if (isObject(v) && has(v, "name", isString) && hasOptional(v, "age", isNumber)) {
+        return v;
+      }
+      return null;
+    });
+
+    assert(isUser({ name: "Alice" }));
+    assert(isUser({ name: "Alice", age: 30 }));
+    assertFalse(isUser({ name: "Alice", age: "thirty" }));
+    assertFalse(isUser({}));
+  });
+
+  await t.step("parser with hasNot compiles and works", () => {
+    type PublicUser = { name: string };
+    const isPublicUser = createTypeGuard<PublicUser>((v, { has, hasNot }) => {
+      if (isObject(v) && has(v, "name", isString) && hasNot(v, "password")) {
+        return v;
+      }
+      return null;
+    });
+
+    assert(isPublicUser({ name: "Alice" }));
+    assertFalse(isPublicUser({ name: "Alice", password: "secret" }));
+    assertFalse(isPublicUser({}));
+  });
+
+  await t.step("parser with nested guards compiles and works", () => {
+    type Address = { city: string; zip: string };
+    type Person = { name: string; address: Address };
+    const isAddress = createTypeGuard<Address>((v, { has }) => {
+      if (isObject(v) && has(v, "city", isString) && has(v, "zip", isString)) return v;
+      return null;
+    });
+    const isPerson = createTypeGuard<Person>((v, { has }) => {
+      if (isObject(v) && has(v, "name", isString) && has(v, "address", isAddress)) return v;
+      return null;
+    });
+
+    assert(isPerson({ name: "Alice", address: { city: "NYC", zip: "10001" } }));
+    assertFalse(isPerson({ name: "Alice", address: { city: "NYC" } }));
+    assertFalse(isPerson({ name: "Alice" }));
+  });
+});

@@ -161,7 +161,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 type FieldDescriptor =
   | { kind: "typeGuard"; key: string; guard: TypeGuard<unknown> }
   | { kind: "nested"; key: string; fields: FieldDescriptor[] }
-  | { kind: "typePredicate"; key: string; guard: (value: unknown) => boolean };
+  | { kind: "typePredicate"; key: string; guard: (value: unknown) => boolean }
+  | { kind: "required"; key: string }
+  | { kind: "absent"; key: string };
 
 /**
  * Compiles a TypeGuardShape into a pre-resolved array of field descriptors.
@@ -267,6 +269,30 @@ function validateCompiledField(
         }
         break;
       }
+      case "required": {
+        if (key in obj) {
+          result[key] = obj[key];
+        } else {
+          const message = `Missing required property: ${key}`;
+          if (ctx) {
+            ctx.addIssue(message);
+          } else {
+            localIssues.push({ message, path: [key] });
+          }
+        }
+        break;
+      }
+      case "absent": {
+        if (key in obj) {
+          const message = `Property must not be present: ${key}`;
+          if (ctx) {
+            ctx.addIssue(message);
+          } else {
+            localIssues.push({ message, path: [key] });
+          }
+        }
+        break;
+      }
     }
   } finally {
     if (ctx) ctx.popPath();
@@ -300,6 +326,14 @@ function validateCompiledShapeBoolean(
       }
       case "typePredicate": {
         if (!desc.guard(value[key])) return false;
+        break;
+      }
+      case "required": {
+        if (!(key in value)) return false;
+        break;
+      }
+      case "absent": {
+        if (key in value) return false;
         break;
       }
     }
@@ -517,6 +551,125 @@ const createNotEmptyTypeGuard = <T>(guard: Predicate<T>) => {
  * ```
  */
 
+/**
+ * Classifies a guard into a FieldDescriptor, reusing the same logic as compileShape.
+ */
+function classifyGuard(
+  key: string,
+  guard: ((v: unknown) => boolean) | TypeGuard<unknown>,
+): FieldDescriptor {
+  if (hasContext(guard as Predicate<unknown>)) {
+    return { kind: "typeGuard", key, guard: guard as unknown as TypeGuard<unknown> };
+  }
+  return { kind: "typePredicate", key, guard: guard as (value: unknown) => boolean };
+}
+
+/**
+ * Attempts to auto-compile a parser callback into pre-compiled field descriptors.
+ * Runs the parser once at creation time against a Proxy probe that records
+ * has/hasOptional/hasNot calls. If the parser follows a compilable pattern
+ * (isObject + unconditional has-chain, returning value unchanged), returns
+ * a compiled parser equivalent to shape-based guards. Otherwise returns null
+ * and the caller falls back to the original closure-based parser.
+ */
+function tryCompileParser<T1>(parser: Parser<T1>): Parser<T1> | null {
+  const fields: FieldDescriptor[] = [];
+  let failed = false;
+
+  const probe = new Proxy({} as Record<string, unknown>, {
+    has() {
+      return true;
+    },
+    get() {
+      failed = true;
+      return undefined;
+    },
+    ownKeys() {
+      failed = true;
+      return [];
+    },
+    set() {
+      failed = true;
+      return true;
+    },
+    deleteProperty() {
+      failed = true;
+      return true;
+    },
+  });
+
+  const probeHelpers: HelpersWithContext = {
+    has: ((_t: object, k: PropertyKey, guard?: (v: unknown) => boolean) => {
+      if (failed) return true;
+      if (guard) {
+        fields.push(classifyGuard(String(k), guard));
+      } else {
+        fields.push({ kind: "required", key: String(k) });
+      }
+      return true;
+    }) as HelpersWithContext["has"],
+    hasOptional: ((_t: object, k: PropertyKey, guard?: (v: unknown) => boolean) => {
+      if (failed) return true;
+      if (guard && hasContext(guard as Predicate<unknown>)) {
+        const g = guard as unknown as TypeGuard<unknown>;
+        if (g.optional) {
+          fields.push({ kind: "typeGuard", key: String(k), guard: g.optional as unknown as TypeGuard<unknown> });
+        } else {
+          fields.push(classifyGuard(String(k), guard));
+        }
+      } else if (guard) {
+        fields.push({ kind: "typePredicate", key: String(k), guard: guard as (v: unknown) => boolean });
+      }
+      return true;
+    }) as HelpersWithContext["hasOptional"],
+    hasNot: ((_t: object, k: PropertyKey) => {
+      if (failed) return true;
+      fields.push({ kind: "absent", key: String(k) });
+      return true;
+    }) as HelpersWithContext["hasNot"],
+    tupleHas: (() => {
+      failed = true;
+      return true;
+    }) as unknown as HelpersWithContext["tupleHas"],
+    includes: ((arr: readonly unknown[], val: unknown) => {
+      failed = true;
+      return arr.includes(val);
+    }) as HelpersWithContext["includes"],
+    keyOf: (() => {
+      failed = true;
+      return false;
+    }) as unknown as HelpersWithContext["keyOf"],
+    exact: ((a: unknown, b: unknown) => {
+      failed = true;
+      return a === b;
+    }) as HelpersWithContext["exact"],
+    fail: (() => {
+      failed = true;
+      return null;
+    }) as HelpersWithContext["fail"],
+    _ctx: undefined,
+  };
+
+  try {
+    const result = parser(probe as unknown, probeHelpers);
+    if (result !== probe || failed || fields.length === 0) return null;
+  } catch {
+    return null;
+  }
+
+  // Compilation succeeded — use compiled fields for the boolean fast path,
+  // but fall back to the original parser for the validate path to preserve
+  // exact behavioral parity (original object returned, custom error messages, etc.)
+  return (val: unknown, helpers: HelpersWithContext) => {
+    const ctx = helpers._ctx;
+    if (ctx === undefined) {
+      return validateCompiledShapeBoolean(val, fields) ? (val as T1) : null;
+    }
+    // Validate path: use original parser to preserve exact error messages and return value
+    return parser(val, helpers);
+  };
+}
+
 /** Pre-compiles a shape into a parser that uses cached field descriptors. */
 function compileShapeParser<T1>(shape: TypeGuardShape): Parser<T1> {
   const fields = compileShape(shape);
@@ -615,10 +768,11 @@ export function createTypeGuard<T1>(
   const parserOrShape = args.length === 1 ? args[0] : args[1];
   const name = args.length === 2 ? args[0] as string : undefined;
 
-  // Convert shape to parser, then continue with normal guard creation
+  // Convert shape to parser, or try to auto-compile parser callbacks into
+  // field descriptors for parity with shape-based performance.
   const parser: Parser<T1> = isTypeGuardShape(parserOrShape)
     ? compileShapeParser(parserOrShape)
-    : parserOrShape;
+    : tryCompileParser(parserOrShape) ?? parserOrShape;
 
   /**
    * Internal validation method that accepts a context for path tracking.
