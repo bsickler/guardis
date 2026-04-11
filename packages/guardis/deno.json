@@ -16,13 +16,17 @@
       "description": "Run unit tests.",
       "command": "deno test"
     },
-    "bench:all": {
-      "description": "Run all library benchmarks on the typeguards to detect slow parsing logic.",
-      "command": "deno bench benchmarks/guard*.bench.ts"
+    "bench:competitors": {
+      "description": "Run comparative benchmarks against Zod, ArkType, and Valibot.",
+      "command": "deno bench --config ../benchmarks/deno.json ../benchmarks/"
     },
-    "bench:guards": {
-      "description": "Run library benchmarks on the typeguards to detect slow parsing logic.",
-      "command": "deno bench benchmarks/guard.bench.ts"
+    "bench:primitives": {
+      "description": "Benchmark primitive type guards.",
+      "command": "deno bench benchmarks/guard.bench.ts benchmarks/guard.json.bench.ts benchmarks/guard.jsonArray.bench.ts"
+    },
+    "bench:parser-vs-shape": {
+      "description": "Benchmark parser vs shape object validation across complexity levels.",
+      "command": "deno bench benchmarks/parser-vs-shape.bench.ts"
     },
     "build:npm": {
       "description": "Build npm package using dnt.",
