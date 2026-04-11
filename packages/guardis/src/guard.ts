@@ -220,15 +220,26 @@ function validateCompiledField(
       }
 
       case "typeGuard": {
-        const guardCtx = ctx ?? createContext([key]);
-        const r = desc.guard._.context(obj[key], guardCtx);
-        if ("value" in r) {
-          result[key] = r.value;
-        } else if (!ctx) {
-          localIssues.push(...r.issues);
+        if (ctx) {
+          const r = desc.guard._.context(obj[key], ctx);
+          if ("value" in r) result[key] = r.value;
+
+          // Issues are already in ctx.issues — guards write directly via addIssue.
+        } else {
+          // No ctx — call without context arg to hit the bypass path (defaultHelpers,
+          // no createContext/createHelpers allocation). Prepend the field key to paths.
+          const r = desc.guard._.context(obj[key]);
+          if ("value" in r) {
+            result[key] = r.value;
+          } else {
+            for (const issue of r.issues) {
+              localIssues.push({
+                message: issue.message,
+                path: issue.path ? [key, ...issue.path] : [key],
+              });
+            }
+          }
         }
-        // When ctx is present, issues are already in ctx.issues — guards write
-        // directly to the shared context via addIssue or by returning ctx.issues.
         break;
       }
 

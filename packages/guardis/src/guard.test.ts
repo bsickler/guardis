@@ -4337,6 +4337,32 @@ Deno.test("createTypeGuard shape", async (t) => {
         Equals<StandardSchemaV1.InferOutput<typeof isPersonShape>, { name: string; age: number }>
       >();
     });
+
+    await t.step("validate: sequential field paths are isolated after push/pop", () => {
+      const result = isPersonShape.validate({ name: 123, age: "bad" });
+      assert("issues" in result && result.issues);
+      // Both fields should fail — verify each issue carries only its own path,
+      // not a leaked path segment from the previous field's push/pop cycle.
+      const paths = result.issues.map((i) => i.path);
+      assert(paths.some((p) => p?.length === 1 && p[0] === "name"), "missing name path");
+      assert(paths.some((p) => p?.length === 1 && p[0] === "age"), "missing age path");
+      // No issue should have a path longer than 1 (leaked push from sibling)
+      for (const p of paths) {
+        assert(!p || p.length <= 1, `unexpected nested path: ${JSON.stringify(p)}`);
+      }
+    });
+
+    await t.step("strict: popPath fires even when strict guard throws mid-validation", () => {
+      const isShape = createTypeGuard({ name: isString, age: isNumber });
+
+      // strict on invalid input throws
+      assertThrows(() => isShape.strict({ name: 123, age: 30 }));
+
+      // After the throw, the guard's internal state should be clean.
+      // A subsequent validate on valid input must succeed without stale path leakage.
+      const result = isShape.validate({ name: "Alice", age: 30 });
+      assert("value" in result, "validate should succeed after a strict throw");
+    });
   });
 
   await t.step("named shape", async (t) => {
@@ -4501,6 +4527,8 @@ Deno.test("createTypeGuard shape", async (t) => {
       const result = isFormShape.validate({ name: "", bio: "A person" });
       assert("issues" in result && result.issues);
       assert(result.issues.length > 0);
+      // Verify the issue carries the correct field path from the mutable cursor
+      assertEquals(result.issues[0].path, ["name"]);
     });
 
     await t.step("optional.notEmpty guard in shape works", () => {
