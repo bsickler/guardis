@@ -383,7 +383,10 @@ Deno.test("formatErrorMessage", async (t) => {
   await t.step("handles functions without producing undefined", () => {
     // Bug fix: JSON.stringify(function) returns undefined
     assertEquals(formatErrorMessage(() => {}, "object"), "Expected object. Received: [Function]");
-    assertEquals(formatErrorMessage(function namedFn() {}, "object"), "Expected object. Received: [Function: namedFn]");
+    assertEquals(
+      formatErrorMessage(function namedFn() {}, "object"),
+      "Expected object. Received: [Function: namedFn]",
+    );
   });
 
   await t.step("handles circular references without throwing", () => {
@@ -397,7 +400,10 @@ Deno.test("formatErrorMessage", async (t) => {
 
   await t.step("handles objects with BigInt properties", () => {
     const obj = { id: BigInt(999), name: "test" };
-    assertEquals(formatErrorMessage(obj, "array"), 'Expected array. Received: {"id":"999n","name":"test"}');
+    assertEquals(
+      formatErrorMessage(obj, "array"),
+      'Expected array. Received: {"id":"999n","name":"test"}',
+    );
   });
 
   await t.step("works without name parameter", () => {
@@ -408,7 +414,7 @@ Deno.test("formatErrorMessage", async (t) => {
 
 Deno.test("unionOf", async (t) => {
   await t.step("creates union from multiple guards", () => {
-    const isStringOrNumber = unionOf(isString as TypeGuard<string>, isNumber);
+    const isStringOrNumber = unionOf(isString, isNumber);
 
     assert(isStringOrNumber("hello"));
     assert(isStringOrNumber(42));
@@ -417,14 +423,14 @@ Deno.test("unionOf", async (t) => {
   });
 
   await t.step("works with single guard", () => {
-    const justString = unionOf(isString as TypeGuard<string>);
+    const justString = unionOf(isString);
 
     assert(justString("hello"));
     assertFalse(justString(42));
   });
 
   await t.step("validates correctly with three or more guards", () => {
-    const isStringOrNumberOrBoolean = unionOf(isString as TypeGuard<string>, isNumber, isBoolean);
+    const isStringOrNumberOrBoolean = unionOf(isString, isNumber, isBoolean);
 
     assert(isStringOrNumberOrBoolean("hello"));
     assert(isStringOrNumberOrBoolean(42));
@@ -434,12 +440,12 @@ Deno.test("unionOf", async (t) => {
   });
 
   await t.step("validate method returns proper error messages", () => {
-    const isStringOrNumber = unionOf(isString as TypeGuard<string>, isNumber);
+    const isStringOrNumber = unionOf(isString, isNumber);
 
     assertEquals(isStringOrNumber.validate("hello"), { value: "hello" });
     assertEquals(isStringOrNumber.validate(42), { value: 42 });
     assertEquals(isStringOrNumber.validate(true), {
-      issues: [{ message: 'Expected string | number. Received: true' }],
+      issues: [{ message: "Expected string | number. Received: true" }],
     });
   });
 
