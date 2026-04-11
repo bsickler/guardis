@@ -143,23 +143,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-/** Adds issues from a guard result to the context if not already tracked. */
-function propagateIssues(
-  issues: ReadonlyArray<StandardSchemaV1.Issue>,
-  key: string,
-  ctx: Context,
-): void {
-  for (const issue of issues) {
-    const alreadyTracked = ctx.issues.some((i) =>
-      i.message === issue.message &&
-      JSON.stringify(i.path) === JSON.stringify(issue.path)
-    );
-    if (!alreadyTracked) {
-      ctx.issues.push({ message: issue.message, path: issue.path ?? [key] });
-    }
-  }
-}
-
 /**
  * Pre-compiled field descriptor. Built once at createTypeGuard time to avoid
  * per-call type dispatch and guard allocation in validateField.
@@ -241,13 +224,11 @@ function validateCompiledField(
         const r = desc.guard._.context(obj[key], guardCtx);
         if ("value" in r) {
           result[key] = r.value;
-        } else if (ctx) {
-          // Some guards (e.g. notEmpty, optional) return issues via the Result
-          // object instead of writing them directly to ctx. Merge those into ctx.
-          propagateIssues(r.issues, key, ctx);
-        } else {
+        } else if (!ctx) {
           localIssues.push(...r.issues);
         }
+        // When ctx is present, issues are already in ctx.issues — guards write
+        // directly to the shared context via addIssue or by returning ctx.issues.
         break;
       }
 
@@ -323,15 +304,19 @@ function validateCompiledShape(
   }
 
   const result: Record<string, unknown> = {};
-  const localIssues: StandardSchemaV1.Issue[] = [];
 
-  for (let i = 0; i < fields.length; i++) {
-    validateCompiledField(value, fields[i], ctx, localIssues, result);
+  if (ctx) {
+    for (let i = 0; i < fields.length; i++) {
+      validateCompiledField(value, fields[i], ctx, null!, result);
+    }
+    return ctx.issues.length > 0 ? { issues: ctx.issues } : { value: result };
   }
 
-  const issues = ctx ? ctx.issues : localIssues;
-
-  return issues.length > 0 ? { issues } : { value: result };
+  const localIssues: StandardSchemaV1.Issue[] = [];
+  for (let i = 0; i < fields.length; i++) {
+    validateCompiledField(value, fields[i], undefined, localIssues, result);
+  }
+  return localIssues.length > 0 ? { issues: localIssues } : { value: result };
 }
 
 /**
@@ -460,15 +445,18 @@ const createOptionalTypeGuard = <T>(
 const createNotEmptyTypeGuard = <T>(guard: Predicate<T>) => {
   const notEmpty = (value: unknown): value is T => !isEmpty(value) && guard(value);
   const name = hasName(guard) ? `non-empty ${guard._.name}` : undefined;
-  const notEmptyParser: Parser<T> = (value: unknown) =>
-    notEmpty(value) && guard(value) ? value : null;
+  const notEmptyParser = (value: unknown) => notEmpty(value) && guard(value) ? value : null;
 
   const context = (value: unknown, ctx?: Context): StandardSchemaV1.Result<T> => {
     if (notEmpty(value)) return { value };
 
     const message = formatErrorMessage(value, name);
-    const path = ctx?.path.length ? [...ctx.path] : undefined;
-    return { issues: [path ? { message, path } : { message }] };
+    if (ctx) {
+      ctx.addIssue(message);
+      return { issues: ctx.issues };
+    }
+
+    return { issues: [{ message }] };
   };
 
   notEmpty._ = {

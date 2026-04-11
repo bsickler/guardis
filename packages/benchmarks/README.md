@@ -66,17 +66,17 @@ The other libraries use their respective `safeParse` equivalents:
 
 | Benchmark | Guardis (fast) | Guardis (validate) | Zod | ArkType | Valibot |
 |-----------|---------------:|-------------------:|----:|--------:|--------:|
-| string  | 258.19M | 173.33M (baseline) | 44.66M (0.26x) | 260.73M (1.50x) | 116.22M (0.67x) |
-| number  | 249.71M | 76.36M (baseline)  | 41.48M (0.54x) | 128.28M (1.68x) | 82.27M (1.08x)  |
-| boolean | 257.82M | 33.51M (baseline)  | 53.01M (1.58x) | 69.91M (2.09x)  | 82.92M (2.47x)  |
+| string  | 257.69M | 170.61M (baseline) | 44.65M (0.26x) | 256.32M (1.50x) | 117.48M (0.69x) |
+| number  | 247.90M | 75.82M (baseline)  | 40.17M (0.53x) | 129.13M (1.70x) | 83.38M (1.10x)  |
+| boolean | 251.47M | 34.03M (baseline)  | 51.82M (1.52x) | 69.53M (2.04x)  | 82.20M (2.42x)  |
 
 #### Invalid Input
 
 | Benchmark | Guardis (fast) | Guardis (validate) | Zod | ArkType | Valibot |
 |-----------|---------------:|-------------------:|----:|--------:|--------:|
-| string  | 281.81M | 28.15M (baseline) | 3.67M (0.13x) | 736.98K (0.03x) | 23.00M (0.82x) |
-| number  | 255.64M | 28.03M (baseline) | 3.77M (0.13x) | 743.73K (0.03x) | 15.73M (0.56x) |
-| boolean | 236.98M | 16.81M (baseline) | 3.77M (0.22x) | 284.14K (0.02x) | 14.94M (0.89x) |
+| string  | 260.60M | 28.11M (baseline) | 3.77M (0.13x) | 731.08K (0.03x) | 23.37M (0.83x) |
+| number  | 250.14M | 27.93M (baseline) | 3.82M (0.14x) | 728.76K (0.03x) | 15.91M (0.57x) |
+| boolean | 240.79M | 16.38M (baseline) | 3.78M (0.23x) | 281.27K (0.02x) | 15.35M (0.94x) |
 
 ### Object Schema
 
@@ -86,13 +86,13 @@ A flat DTO: `{ name: string, age: number, active: boolean, score: number, email?
 
 | Benchmark | Guardis (fast) | Guardis (validate) | Zod | ArkType | Valibot |
 |-----------|---------------:|-------------------:|----:|--------:|--------:|
-| object | 18.91M | 5.55M (baseline) | 3.73M (0.67x) | 188.10M (33.86x) | 6.26M (1.13x) |
+| object | 18.84M | 5.61M (baseline) | 3.78M (0.67x) | 188.65M (33.63x) | 6.07M (1.08x) |
 
 #### Invalid Input
 
 | Benchmark | Guardis (fast) | Guardis (validate) | Zod | ArkType | Valibot |
 |-----------|---------------:|-------------------:|----:|--------:|--------:|
-| object | 74.59M | 793.17K (baseline) | 838.81K (1.06x) | 103.67K (0.13x) | 2.41M (3.04x) |
+| object | 73.98M | 3.10M (baseline) | 854.94K (0.28x) | 99.84K (0.03x) | 2.23M (0.72x) |
 
 ### Real World
 
@@ -103,13 +103,13 @@ tags (string array), and metadata (source, version, referral).
 
 | Benchmark | Guardis (fast) | Guardis (validate) | Zod | ArkType | Valibot |
 |-----------|---------------:|-------------------:|----:|--------:|--------:|
-| real-world | 6.72M | 1.97M (baseline) | 1.04M (0.53x) | 62.05M (31.57x) | 1.94M (0.99x) |
+| real-world | 7.23M | 1.83M (baseline) | 1.06M (0.58x) | 60.63M (33.16x) | 1.92M (1.05x) |
 
 #### Invalid Input
 
 | Benchmark | Guardis (fast) | Guardis (validate) | Zod | ArkType | Valibot |
 |-----------|---------------:|-------------------:|----:|--------:|--------:|
-| real-world | 51.84M | 144.65K (baseline) | 350.80K (2.43x) | 43.41K (0.30x) | 711.33K (4.92x) |
+| real-world | 52.28M | 1.30M (baseline) | 336.52K (0.26x) | 42.78K (0.03x) | 654.87K (0.50x) |
 
 ## What these numbers don't tell you
 
