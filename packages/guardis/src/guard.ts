@@ -18,6 +18,7 @@ import type {
   JsonValue,
   NamedParser,
   NumberTypeGuard,
+  StringTypeGuard,
   Parser,
   ParserEntry,
   Predicate,
@@ -785,10 +786,26 @@ export const isBoolean: TypeGuard<boolean> = createTypeGuard(
  * @param {unknown} t
  * @return {boolean}
  */
-export const isString: TypeGuard<string> = createTypeGuard(
+/**
+ * Wraps a string TypeGuard with chainable length validation methods.
+ * Each method delegates to .extend() and wraps the result for further chaining.
+ */
+function withStringMethods(guard: TypeGuard<string>): StringTypeGuard {
+  const str = guard as StringTypeGuard;
+  str.ofLength = (n) => withStringMethods(guard.extend(`length == ${n}`, (v) => v.length === n ? v : null));
+  str.min = (n) => withStringMethods(guard.extend(`length >= ${n}`, (v) => v.length >= n ? v : null));
+  str.max = (n) => withStringMethods(guard.extend(`length <= ${n}`, (v) => v.length <= n ? v : null));
+  str.range = (min, max) =>
+    withStringMethods(
+      guard.extend(`length ${min}..${max}`, (v) => v.length >= min && v.length <= max ? v : null),
+    );
+  return str;
+}
+
+export const isString: StringTypeGuard = withStringMethods(createTypeGuard(
   "string",
   (t): string | null => typeof t === "string" ? t : null,
-);
+));
 
 /**
  * Wraps a TypeGuard<number> with chainable comparison methods (gt, gte, lt, lte, eq).
@@ -921,7 +938,7 @@ const isNull: TypeGuard<null> = createTypeGuard<null>(
  */
 export const isJsonPrimitive: TypeGuard<JsonPrimitive> = unionOf(
   isBoolean,
-  isString,
+  isString as TypeGuard<string>,
   isNumber,
   isNull,
 );
@@ -942,7 +959,7 @@ export const isObject: TypeGuard<object> = createTypeGuard(
  * @param {unknown} t
  * @return {boolean}
  */
-export const isPropertyKey: TypeGuard<PropertyKey> = unionOf(isString, isNumber, isSymbol);
+export const isPropertyKey: TypeGuard<PropertyKey> = unionOf(isString as TypeGuard<string>, isNumber, isSymbol);
 
 /**
  * Returns true if input satisfies type object. _BEWARE_ object

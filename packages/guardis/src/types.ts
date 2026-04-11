@@ -341,6 +341,18 @@ export interface NumberTypeGuard extends TypeGuard<number> {
   eq(target: number): NumberTypeGuard;
 }
 
+/** A string type guard with chainable length validation methods */
+export interface StringTypeGuard extends TypeGuard<string> {
+  /** Checks string has exactly this length */
+  ofLength(length: number): StringTypeGuard;
+  /** Checks string length >= min */
+  min(length: number): StringTypeGuard;
+  /** Checks string length <= max */
+  max(length: number): StringTypeGuard;
+  /** Checks string length is between min and max (inclusive) */
+  range(min: number, max: number): StringTypeGuard;
+}
+
 /** An array type guard with chainable length validation methods */
 export interface ArrayTypeGuard<T = unknown> extends TypeGuard<T[]> {
   /** Returns a typed array guard preserving length methods */

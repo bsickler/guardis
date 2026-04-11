@@ -1,5 +1,6 @@
 import { assert, assertEquals, assertFalse, assertThrows } from "@std/assert";
 import { createTypeGuard, isArray, isBoolean, isNull, isNumber, isString } from "./guard.ts";
+import type { TypeGuard } from "./types.ts";
 import {
   doesNotHaveProperty,
   exact,
@@ -407,7 +408,7 @@ Deno.test("formatErrorMessage", async (t) => {
 
 Deno.test("unionOf", async (t) => {
   await t.step("creates union from multiple guards", () => {
-    const isStringOrNumber = unionOf(isString, isNumber);
+    const isStringOrNumber = unionOf(isString as TypeGuard<string>, isNumber);
 
     assert(isStringOrNumber("hello"));
     assert(isStringOrNumber(42));
@@ -416,14 +417,14 @@ Deno.test("unionOf", async (t) => {
   });
 
   await t.step("works with single guard", () => {
-    const justString = unionOf(isString);
+    const justString = unionOf(isString as TypeGuard<string>);
 
     assert(justString("hello"));
     assertFalse(justString(42));
   });
 
   await t.step("validates correctly with three or more guards", () => {
-    const isStringOrNumberOrBoolean = unionOf(isString, isNumber, isBoolean);
+    const isStringOrNumberOrBoolean = unionOf(isString as TypeGuard<string>, isNumber, isBoolean);
 
     assert(isStringOrNumberOrBoolean("hello"));
     assert(isStringOrNumberOrBoolean(42));
@@ -433,7 +434,7 @@ Deno.test("unionOf", async (t) => {
   });
 
   await t.step("validate method returns proper error messages", () => {
-    const isStringOrNumber = unionOf(isString, isNumber);
+    const isStringOrNumber = unionOf(isString as TypeGuard<string>, isNumber);
 
     assertEquals(isStringOrNumber.validate("hello"), { value: "hello" });
     assertEquals(isStringOrNumber.validate(42), { value: 42 });
