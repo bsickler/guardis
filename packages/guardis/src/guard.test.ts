@@ -1,4 +1,5 @@
 import { assert, assertEquals, assertFalse, assertThrows } from "@std/assert";
+import type { StandardSchemaV1 } from "../specs/standard-schema-spec.v1.ts";
 import {
   createTypeGuard,
   isArray,
@@ -2712,6 +2713,10 @@ Deno.test("createTypeGuard", async (t) => {
     assert(isPositiveNumber["~standard"]);
     assertEquals(isPositiveNumber["~standard"].version, 1);
     assertEquals(isPositiveNumber["~standard"].vendor, "guardis");
+    assert(isPositiveNumber["~standard"].types !== undefined);
+
+    // InferOutput resolves to the guarded type
+    assertType<Equals<StandardSchemaV1.InferOutput<typeof isPositiveNumber>, number>>();
   });
 });
 
@@ -4324,6 +4329,13 @@ Deno.test("createTypeGuard shape", async (t) => {
       const directResult = isPersonShape.validate(input);
       const standardResult = isPersonShape["~standard"].validate(input);
       assertEquals(directResult, standardResult);
+    });
+
+    await t.step("~standard.types exists for external InferInput/InferOutput", () => {
+      assert(isPersonShape["~standard"].types !== undefined);
+      assertType<
+        Equals<StandardSchemaV1.InferOutput<typeof isPersonShape>, { name: string; age: number }>
+      >();
     });
   });
 
