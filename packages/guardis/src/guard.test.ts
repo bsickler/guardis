@@ -20,6 +20,7 @@ import {
   isNumeric,
   isObject,
   isPropertyKey,
+  isRecord,
   isString,
   isSymbol,
   isTuple,
@@ -5646,5 +5647,69 @@ Deno.test("createTypeGuard with verified shape (explicit type parameter)", async
     assert(isPositive(5));
     assertFalse(isPositive(-1));
     assertType<Equals<typeof isPositive._TYPE, number>>();
+  });
+});
+
+Deno.test("isRecord", async (t) => {
+  await t.step("accepts record with matching values", () => {
+    assert(isRecord(isString)({ a: "foo", b: "bar" }));
+  });
+
+  await t.step("rejects record with non-matching values", () => {
+    assertFalse(isRecord(isString)({ a: "foo", b: 42 }));
+  });
+
+  await t.step("accepts record with number values", () => {
+    assert(isRecord(isNumber)({ x: 1, y: 2 }));
+  });
+
+  await t.step("accepts empty object", () => {
+    assert(isRecord(isString)({}));
+  });
+
+  await t.step("rejects null", () => {
+    assertFalse(isRecord(isString)(null));
+  });
+
+  await t.step("rejects array", () => {
+    assertFalse(isRecord(isString)([1, 2, 3]));
+  });
+
+  await t.step("rejects non-object", () => {
+    assertFalse(isRecord(isString)("not object"));
+  });
+
+  await t.step("validate returns issues with path", () => {
+    const result = isRecord(isString).validate({ a: "ok", b: 42 });
+    assert("issues" in result);
+    if ("issues" in result) {
+      assert(result.issues!.length > 0);
+      const paths = result.issues!.map((i) => i.path);
+      assert(paths.some((p) => p !== undefined && p.includes("b")));
+    }
+  });
+
+  await t.step("strict throws on invalid value", () => {
+    assertThrows(() => isRecord(isString).strict({ a: 42 }));
+  });
+
+  await t.step("optional accepts undefined", () => {
+    assert(isRecord(isString).optional(undefined));
+  });
+
+  await t.step("works inside a shape", () => {
+    const isConfig = createTypeGuard({ env: isRecord(isString) });
+    assert(isConfig({ env: { NODE_ENV: "prod" } }));
+    assertFalse(isConfig({ env: { NODE_ENV: 123 } }));
+  });
+
+  await t.step("two-arg form validates keys", () => {
+    const isEnvKey = createTypeGuard<"NODE_ENV" | "PORT">("EnvKey", (v) => {
+      if (v === "NODE_ENV" || v === "PORT") return v;
+      return null;
+    });
+    const guard = isRecord(isEnvKey, isString);
+    assert(guard({ NODE_ENV: "prod", PORT: "3000" }));
+    assertFalse(guard({ INVALID_KEY: "value" }));
   });
 });

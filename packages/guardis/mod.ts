@@ -44,4 +44,5 @@ export const Is = {
   Tuple: g.isTuple,
   Date: g.isDate,
   Exactly: g.isExactly,
+  Record: g.isRecord,
 } as const;
