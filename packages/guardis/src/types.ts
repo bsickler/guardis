@@ -4,15 +4,22 @@ import type { exact, includes, tupleHas } from "./utilities.ts";
 /**
  * Context for tracking validation paths and collecting issues during validation.
  * Only present during `validate()` calls, not during regular type guard checks.
+ *
+ * The Context uses a mutable cursor for path tracking: `pushPath` and `popPath`
+ * mutate the path in place rather than allocating a new Context. Callers must
+ * push and pop in matched pairs. `addIssue` defensively copies the path when
+ * capturing an issue, so captured issues remain stable after the cursor unwinds.
  */
 export interface Context {
   /** The current path being validated (array of property keys and indices) */
-  readonly path: ReadonlyArray<PropertyKey>;
+  readonly path: PropertyKey[];
   /** The collected validation issues */
   readonly issues: StandardSchemaV1.Issue[];
-  /** Creates a new context with the segment added to the path */
-  pushPath(segment: PropertyKey): Context;
-  /** Adds an issue at the current path */
+  /** Pushes a segment onto the path in place */
+  pushPath(segment: PropertyKey): void;
+  /** Pops the most recent segment from the path */
+  popPath(): void;
+  /** Adds an issue at the current path (defensively copies the path) */
   addIssue(message: string): void;
 }
 
@@ -410,3 +417,26 @@ export type InferShape<S extends TypeGuardShape> = Simplify<
     -readonly [K in keyof S as IsOptionalGuard<S[K]> extends true ? K : never]?: InferShapeField<S[K]>;
   }
 >;
+
+/** Maps a property type to the acceptable guard predicate or nested shape for that type */
+type ShapeFieldFor<T> =
+  | ((value: unknown) => value is T)
+  | (T extends Record<string, unknown> ? VerifiedShape<T> : never);
+
+/** Maps an optional property type to a guard that accepts T | undefined with the optional flag */
+type OptionalShapeFieldFor<T> =
+  | (((value: unknown) => value is (T | undefined)) & { _: { optional: true } })
+  | (T extends Record<string, unknown>
+    ? VerifiedShape<T> & { _: { optional: true } }
+    : never);
+
+/**
+ * Constrains a shape object so that each field must be a guard matching the
+ * corresponding property type in T. Required properties must have a non-optional
+ * guard; optional properties must use an OptionalTypeGuard.
+ */
+export type VerifiedShape<T> = {
+  [K in keyof T as K extends string ? K : never]-?: undefined extends T[K]
+    ? OptionalShapeFieldFor<Exclude<T[K], undefined>>
+    : ShapeFieldFor<T[K]>;
+};

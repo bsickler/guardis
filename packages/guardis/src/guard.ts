@@ -25,6 +25,7 @@ import type {
   TupleOfLength,
   TypeGuard,
   TypeGuardShape,
+  VerifiedShape,
 } from "./types.ts";
 import { createContext, createStrictContext } from "./context.ts";
 import { hasContext, hasName } from "./introspect.ts";
@@ -43,18 +44,75 @@ import {
 
 /**
  * Creates a helpers object for use in type guard parsers.
- * When ctx is provided, has/hasOptional pass context for path tracking.
- * When ctx is undefined, they use raw functions (for boolean type guard calls).
+ * When ctx is provided, has/hasOptional/tupleHas push a path segment before calling
+ * the utility and pop after (with try/finally, since strict mode throws on addIssue
+ * and inner guards may propagate that throw). When ctx is undefined, they pass the
+ * utility a raw undefined context for boolean-only validation.
  */
 function createHelpers(ctx?: Context): HelpersWithContext {
+  const has = <K extends PropertyKey, G = unknown>(
+    t: object,
+    k: K,
+    guard?: (v: unknown) => v is G,
+    errorMessage?: string,
+  ): t is { [K2 in K]: G } => {
+    if (!ctx) return hasProperty(t, k, guard, undefined, undefined);
+    ctx.pushPath(k);
+    try {
+      return hasProperty(t, k, guard, ctx, errorMessage);
+    } finally {
+      ctx.popPath();
+    }
+  };
+
+  const hasNot = <K extends PropertyKey>(
+    t: object,
+    k: K,
+    errorMessage?: string,
+  ): t is { [K2 in K]: never } => {
+    if (!ctx) return doesNotHaveProperty(t, k, undefined, undefined);
+    ctx.pushPath(k);
+    try {
+      return doesNotHaveProperty(t, k, ctx, errorMessage);
+    } finally {
+      ctx.popPath();
+    }
+  };
+
+  const hasOptional = <K extends PropertyKey, G = unknown>(
+    t: object,
+    k: K,
+    guard?: (v: unknown) => v is G,
+    errorMessage?: string,
+  ): t is { [K2 in K]+?: G } => {
+    if (!ctx) return hasOptionalProperty(t, k, guard, undefined, undefined);
+    ctx.pushPath(k);
+    try {
+      return hasOptionalProperty(t, k, guard, ctx, errorMessage);
+    } finally {
+      ctx.popPath();
+    }
+  };
+
+  const tupleHasHelper = <T extends readonly unknown[], I extends number, G = unknown>(
+    t: T,
+    i: I,
+    guard: (v: unknown) => v is G,
+  ): t is T & { [K in I]: G } => {
+    if (!ctx) return tupleHas(t, i, guard, undefined);
+    ctx.pushPath(i);
+    try {
+      return tupleHas(t, i, guard, ctx);
+    } finally {
+      ctx.popPath();
+    }
+  };
+
   return {
-    has: (t, k, guard?, errorMessage?) =>
-      hasProperty(t, k, guard, ctx?.pushPath(k), ctx ? errorMessage : undefined),
-    hasNot: (t, k, errorMessage?) =>
-      doesNotHaveProperty(t, k, ctx?.pushPath(k), ctx ? errorMessage : undefined),
-    hasOptional: (t, k, guard?, errorMessage?) =>
-      hasOptionalProperty(t, k, guard, ctx?.pushPath(k), ctx ? errorMessage : undefined),
-    tupleHas: (t, i, guard) => tupleHas(t, i, guard, ctx?.pushPath(i)),
+    has,
+    hasNot,
+    hasOptional,
+    tupleHas: tupleHasHelper,
     includes,
     keyOf: <T extends object>(k: unknown, t: T, errorMessage?: string) =>
       keyOf(k, t, ctx, ctx ? errorMessage : undefined),
@@ -71,6 +129,17 @@ function createHelpers(ctx?: Context): HelpersWithContext {
 const defaultHelpers = createHelpers();
 
 /**
+ * Returns cached helpers for a Context, creating them on first access.
+ * Since the Context is a mutable cursor (one instance per validation call),
+ * a single helpers object works for all guards in the call tree.
+ */
+function getHelpers(ctx: Context): HelpersWithContext {
+  const c = ctx as Context & { _helpers?: HelpersWithContext };
+  if (!c._helpers) c._helpers = createHelpers(ctx);
+  return c._helpers;
+}
+
+/**
  * Checks if a value is a TypeGuardShape object (plain object, not a function).
  * Uses raw checks instead of isObject/isFunction to avoid temporal dead zone
  * issues — this function is called during createTypeGuard's implementation,
@@ -85,107 +154,166 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-/** Adds issues from a guard result to the context if not already tracked. */
-function propagateIssues(
-  issues: ReadonlyArray<StandardSchemaV1.Issue>,
-  key: string,
-  ctx: Context,
-): void {
-  for (const issue of issues) {
-    const alreadyTracked = ctx.issues.some((i) =>
-      i.message === issue.message &&
-      JSON.stringify(i.path) === JSON.stringify(issue.path)
-    );
-    if (!alreadyTracked) {
-      ctx.issues.push({ message: issue.message, path: issue.path ?? [key] });
+/**
+ * Pre-compiled field descriptor. Built once at createTypeGuard time to avoid
+ * per-call type dispatch and guard allocation in validateField.
+ */
+type FieldDescriptor =
+  | { kind: "typeGuard"; key: string; guard: TypeGuard<unknown> }
+  | { kind: "nested"; key: string; fields: FieldDescriptor[] }
+  | { kind: "typePredicate"; key: string; guard: (value: unknown) => boolean };
+
+/**
+ * Compiles a TypeGuardShape into a pre-resolved array of field descriptors.
+ * Classifies each field's guard type once and caches isExactly() guards for constants.
+ */
+function compileShape(shape: TypeGuardShape): FieldDescriptor[] {
+  const descriptors: FieldDescriptor[] = [];
+
+  for (const key of Object.keys(shape)) {
+    const guard = shape[key];
+
+    // Primitive constant — cache as a typeGuard wrapping isExactly
+    if (guard === null || (typeof guard !== "object" && typeof guard !== "function")) {
+      descriptors.push({ kind: "typeGuard", key, guard: isExactly(guard) });
+      continue;
     }
+
+    // Nested shape — recursively compile
+    if (isTypeGuardShape(guard)) {
+      descriptors.push({ kind: "nested", key, fields: compileShape(guard) });
+      continue;
+    }
+
+    if (typeof guard !== "function") continue;
+
+    // TypeGuard (with _.context for path tracking)
+    if (hasContext(guard as Predicate<unknown>)) {
+      descriptors.push({
+        kind: "typeGuard",
+        key,
+        guard: guard as unknown as TypeGuard<unknown>,
+      });
+      continue;
+    }
+
+    // Plain type predicate function
+    descriptors.push({ kind: "typePredicate", key, guard: guard as (value: unknown) => boolean });
   }
+
+  return descriptors;
 }
 
 /**
- * Validates a single shape field against its guard.
- * When ctx is provided, issues are pushed to the shared context.
- * When ctx is absent, issues are collected into localIssues.
+ * Validates a single pre-compiled field descriptor against an object value.
  */
-function validateField(
+function validateCompiledField(
   obj: Record<string, unknown>,
-  key: string,
-  guard: TypeGuardShape[string],
+  desc: FieldDescriptor,
   ctx: Context | undefined,
   localIssues: StandardSchemaV1.Issue[],
   result: Record<string, unknown>,
 ): void {
-  const childCtx = ctx?.pushPath(key);
+  const key = desc.key;
 
-  // Primitive constant — use exact equality check
-  if (guard === null || (typeof guard !== "object" && typeof guard !== "function")) {
-    const exactGuard = isExactly(guard);
-    const guardCtx = childCtx ?? createContext([key]);
-    const r = exactGuard._.context(obj[key], guardCtx);
+  if (ctx) ctx.pushPath(key);
 
-    if ("value" in r) {
-      result[key] = r.value;
-    } else if (childCtx) {
-      propagateIssues(r.issues, key, ctx!);
-    } else {
-      localIssues.push(...r.issues);
+  try {
+    switch (desc.kind) {
+      case "nested": {
+        const r = validateCompiledShape(obj[key], desc.fields, ctx);
+        if ("value" in r) {
+          result[key] = r.value;
+        } else if (!ctx) {
+          localIssues.push(...r.issues);
+        }
+        break;
+      }
+
+      case "typeGuard": {
+        if (ctx) {
+          const r = desc.guard._.context(obj[key], ctx);
+          if ("value" in r) result[key] = r.value;
+
+          // Issues are already in ctx.issues — guards write directly via addIssue.
+        } else {
+          // No ctx — call without context arg to hit the bypass path (defaultHelpers,
+          // no createContext/createHelpers allocation). Prepend the field key to paths.
+          const r = desc.guard._.context(obj[key]);
+          if ("value" in r) {
+            result[key] = r.value;
+          } else {
+            for (const issue of r.issues) {
+              localIssues.push({
+                message: issue.message,
+                path: issue.path ? [key, ...issue.path] : [key],
+              });
+            }
+          }
+        }
+        break;
+      }
+
+      case "typePredicate": {
+        if (desc.guard(obj[key])) {
+          result[key] = obj[key];
+        } else {
+          const message = `Validation failed for property "${String(key)}"`;
+          if (ctx) {
+            ctx.addIssue(message);
+          } else {
+            localIssues.push({ message, path: [key] });
+          }
+        }
+        break;
+      }
     }
-    return;
-  }
-
-  // Nested shape — recurse
-  if (isTypeGuardShape(guard)) {
-    const r = validateShape(obj[key], guard, childCtx);
-
-    if ("value" in r) {
-      result[key] = r.value;
-    } else if (!childCtx) {
-      localIssues.push(...r.issues);
-    }
-
-    return;
-  }
-
-  if (typeof guard !== "function") return;
-
-  // Context-aware guard (TypeGuard with _.context)
-  if (hasContext(guard as Predicate<unknown>)) {
-    const guardCtx = childCtx ?? createContext([key]);
-
-    const r = (guard as unknown as TypeGuard<unknown>)._.context(obj[key], guardCtx);
-    if ("value" in r) {
-      result[key] = r.value;
-    } else if (childCtx) {
-      propagateIssues(r.issues, key, ctx!);
-    } else {
-      localIssues.push(...r.issues);
-    }
-
-    return;
-  }
-
-  // Plain boolean guard
-  if (guard(obj[key])) {
-    result[key] = obj[key];
-    return;
-  }
-
-  const message = `Validation failed for property "${String(key)}"`;
-  if (childCtx) {
-    childCtx.addIssue(message);
-  } else {
-    localIssues.push({ message, path: [key] });
+  } finally {
+    if (ctx) ctx.popPath();
   }
 }
 
 /**
- * Recursively validates a value against a TypeGuardShape.
- * When ctx is provided, issues are pushed to the shared context for path tracking.
- * When ctx is absent, issues are collected locally and returned.
+ * Fast path for shape validation when no context is provided.
+ * Returns true/false without allocating result, issues, or Context objects.
+ * Used by boolean guard calls (the common case) via compileShapeParser.
  */
-function validateShape(
+function validateCompiledShapeBoolean(
   value: unknown,
-  shape: TypeGuardShape,
+  fields: FieldDescriptor[],
+): boolean {
+  if (!isRecord(value)) return false;
+
+  for (let i = 0; i < fields.length; i++) {
+    const desc = fields[i];
+    const key = desc.key;
+
+    switch (desc.kind) {
+      case "nested": {
+        if (!validateCompiledShapeBoolean(value[key], desc.fields)) return false;
+        break;
+      }
+      case "typeGuard": {
+        // Call the raw boolean callback directly — no context, no helpers, no issues.
+        if (!desc.guard(value[key])) return false;
+        break;
+      }
+      case "typePredicate": {
+        if (!desc.guard(value[key])) return false;
+        break;
+      }
+    }
+  }
+  return true;
+}
+
+/**
+ * Slow path for shape validation when a context is provided.
+ * Tracks issues and path information for .validate() calls.
+ */
+function validateCompiledShape(
+  value: unknown,
+  fields: FieldDescriptor[],
   ctx?: Context,
 ): StandardSchemaV1.Result<Record<string, unknown>> {
   if (!isRecord(value)) {
@@ -198,15 +326,19 @@ function validateShape(
   }
 
   const result: Record<string, unknown> = {};
-  const localIssues: StandardSchemaV1.Issue[] = [];
 
-  for (const key of Object.keys(shape)) {
-    validateField(value, key, shape[key], ctx, localIssues, result);
+  if (ctx) {
+    for (let i = 0; i < fields.length; i++) {
+      validateCompiledField(value, fields[i], ctx, null!, result);
+    }
+    return ctx.issues.length > 0 ? { issues: ctx.issues } : { value: result };
   }
 
-  const issues = ctx ? ctx.issues : localIssues;
-
-  return issues.length > 0 ? { issues } : { value: result };
+  const localIssues: StandardSchemaV1.Issue[] = [];
+  for (let i = 0; i < fields.length; i++) {
+    validateCompiledField(value, fields[i], undefined, localIssues, result);
+  }
+  return localIssues.length > 0 ? { issues: localIssues } : { value: result };
 }
 
 /**
@@ -223,7 +355,7 @@ const createStrictTypeGuard = <T>(
 ): StrictTypeGuard<T> => {
   return (value: unknown, errorMsg?: string): value is T => {
     const ctx = createStrictContext();
-    const helpers = createHelpers(ctx);
+    const helpers = getHelpers(ctx);
     const result = parser(value, helpers);
 
     if (result === null) {
@@ -335,15 +467,18 @@ const createOptionalTypeGuard = <T>(
 const createNotEmptyTypeGuard = <T>(guard: Predicate<T>) => {
   const notEmpty = (value: unknown): value is T => !isEmpty(value) && guard(value);
   const name = hasName(guard) ? `non-empty ${guard._.name}` : undefined;
-  const notEmptyParser: Parser<T> = (value: unknown) =>
-    notEmpty(value) && guard(value) ? value : null;
+  const notEmptyParser = (value: unknown) => notEmpty(value) && guard(value) ? value : null;
 
   const context = (value: unknown, ctx?: Context): StandardSchemaV1.Result<T> => {
     if (notEmpty(value)) return { value };
 
     const message = formatErrorMessage(value, name);
-    const path = ctx?.path.length ? [...ctx.path] : undefined;
-    return { issues: [path ? { message, path } : { message }] };
+    if (ctx) {
+      ctx.addIssue(message);
+      return { issues: ctx.issues };
+    }
+
+    return { issues: [{ message }] };
   };
 
   notEmpty._ = {
@@ -381,6 +516,24 @@ const createNotEmptyTypeGuard = <T>(guard: Predicate<T>) => {
  * const isString = createTypeGuard(parseString);
  * ```
  */
+
+/** Pre-compiles a shape into a parser that uses cached field descriptors. */
+function compileShapeParser<T1>(shape: TypeGuardShape): Parser<T1> {
+  const fields = compileShape(shape);
+
+  return (val: unknown, helpers: HelpersWithContext) => {
+    const ctx = helpers._ctx;
+    // Fast path: no context means no issue tracking needed — skip all allocations
+    // (result object, localIssues array, per-field Context instances, helpers objects).
+    if (ctx === undefined) {
+      return validateCompiledShapeBoolean(val, fields) ? (val as T1) : null;
+    }
+    // Slow path: caller wants issue tracking via .validate() or nested validation.
+    const result = validateCompiledShape(val, fields, ctx);
+    return "value" in result ? result.value as T1 : null;
+  };
+}
+
 export function createTypeGuard<T1>(parser: Parser<T1>): TypeGuard<T1>;
 /**
  * Creates a type guard from a parser function with a custom type name.
@@ -425,6 +578,37 @@ export function createTypeGuard<const S extends TypeGuardShape>(
   name: string,
   shape: S,
 ): TypeGuard<InferShape<S>>;
+/**
+ * Creates a type guard from a shape object, verified against an explicit type parameter.
+ *
+ * The shape must match the structure of T1 — TypeScript will error if fields are
+ * missing, extra, or have wrong guard types. The returned guard is typed as
+ * `TypeGuard<T1>`, preserving your existing type as the source of truth.
+ *
+ * @param shape A shape object whose fields are verified against T1.
+ * @returns A type guard function typed as TypeGuard<T1>.
+ *
+ * @example
+ * ```typescript
+ * type User = { id: number; name: string };
+ * const isUser = createTypeGuard<User>({ id: isNumber, name: isString });
+ * ```
+ */
+export function createTypeGuard<T1 extends Record<string, unknown>>(
+  shape: VerifiedShape<T1>,
+): TypeGuard<T1>;
+/**
+ * Creates a type guard from a shape object with a custom name, verified against
+ * an explicit type parameter.
+ *
+ * @param name The type name to use for error messages.
+ * @param shape A shape object whose fields are verified against T1.
+ * @returns A type guard function typed as TypeGuard<T1>.
+ */
+export function createTypeGuard<T1 extends Record<string, unknown>>(
+  name: string,
+  shape: VerifiedShape<T1>,
+): TypeGuard<T1>;
 export function createTypeGuard<T1>(
   ...args: [Parser<T1> | TypeGuardShape] | [string, Parser<T1> | TypeGuardShape]
 ): TypeGuard<T1> {
@@ -433,32 +617,39 @@ export function createTypeGuard<T1>(
 
   // Convert shape to parser, then continue with normal guard creation
   const parser: Parser<T1> = isTypeGuardShape(parserOrShape)
-    ? (val, helpers) => {
-      const ctx = (helpers as HelpersWithContext)._ctx;
-      const result = validateShape(val, parserOrShape, ctx);
-      return "value" in result ? result.value as T1 : null;
-    }
-    : parserOrShape as Parser<T1>;
+    ? compileShapeParser(parserOrShape)
+    : parserOrShape;
 
   /**
    * Internal validation method that accepts a context for path tracking.
    * This is used by nested validations to propagate paths.
+   *
+   * Fast path: when no caller context is provided, reuse the module-level
+   * defaultHelpers constant instead of allocating a fresh HelpersWithContext
+   * (which would create 8 closures per call).
    */
-  const context = (
-    value: unknown,
-    ctx?: Context,
-  ): StandardSchemaV1.Result<T1> => {
-    const issuesBefore = ctx?.issues.length;
-    const helpers = createHelpers(ctx);
+  const context = (value: unknown, ctx?: Context): StandardSchemaV1.Result<T1> => {
+    // Bypass path: no caller context, no issue tracking needed. Reuse defaultHelpers.
+    if (ctx === undefined) {
+      const result = parser(value, defaultHelpers);
+      if (result !== null) {
+        // Special case: isNull parser returns `true` when value is null
+        return { value: result === true && value === null ? value as T1 : result };
+      }
+      return { issues: [{ message: formatErrorMessage(value, name) }] };
+    }
+
+    const issuesBefore = ctx.issues.length;
+    const helpers = getHelpers(ctx);
     const result = parser(value, helpers);
 
     // If parser returned null and no child issues were added, add this guard's error
-    if (result === null && ctx && ctx.issues.length === issuesBefore) {
+    if (result === null && ctx.issues.length === issuesBefore) {
       ctx.addIssue(formatErrorMessage(value, name));
     }
 
     // Check if THIS guard added any issues (not sibling issues from shared context)
-    const hasNewIssues = ctx !== undefined && ctx.issues.length > issuesBefore!;
+    const hasNewIssues = ctx.issues.length > issuesBefore;
 
     if (result !== null && !hasNewIssues) {
       // Special case: isNull parser returns `true` when value is null
@@ -467,7 +658,7 @@ export function createTypeGuard<T1>(
 
     // Return accumulated issues if this guard contributed any
     if (hasNewIssues) {
-      return { issues: ctx!.issues };
+      return { issues: ctx.issues };
     }
 
     return { issues: [{ message: formatErrorMessage(value, name) }] };
@@ -554,7 +745,8 @@ export function createTypeGuard<T1>(
     version: 1,
     vendor: "guardis",
     validate: callback.validate,
-  } as const;
+    types: {} as StandardSchemaV1.Types<T1>,
+  };
 
   // Attach the type to the function for easy access
   return (<T1>(t: unknown): TypeGuard<T1> => t as TypeGuard<T1>)(callback);
@@ -676,12 +868,14 @@ export function isExactly<const T>(expected: T): TypeGuard<T> {
  * @param {unknown} t
  * @return {boolean}
  */
+const NUMERIC_RE = /^-?\d*\.?\d+$/;
+
 export const isNumeric: NumberTypeGuard = withComparisons(createTypeGuard(
   "numeric",
   (t): number | null => {
     if (isNumber(t)) return t as number;
 
-    if (!/^-?\d*\.?\d+$/.test(t as string)) return null;
+    if (!NUMERIC_RE.test(t as string)) return null;
 
     const _t = parseInt(t as string) || parseFloat(t as string);
 
@@ -824,9 +1018,13 @@ export const isArray: ArrayTypeGuard = withArrayMethods(Object.assign(
           // If we have a context, use index-aware validation
           if (ctx && hasContext(guard)) {
             for (let i = 0; i < v.length; i++) {
-              const childCtx = ctx.pushPath(i);
-              const result = guard._.context(v[i], childCtx);
-              if (result.issues) return null; // issues already added to parent ctx
+              ctx.pushPath(i);
+              try {
+                const result = guard._.context(v[i], ctx);
+                if (result.issues) return null; // issues already added to parent ctx
+              } finally {
+                ctx.popPath();
+              }
             }
             return v as T[];
           }

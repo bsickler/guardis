@@ -1,7 +1,9 @@
 {
-  "workspace": ["packages/guardis/", "packages/guardis-hono/"],
+  "workspace": ["packages/guardis/", "packages/guardis-hono/", "packages/benchmarks/"],
   "tasks": {
     "test": "cd packages/guardis && deno task test && cd ../guardis-hono && deno task test",
+    "bench": "cd packages/benchmarks && deno bench",
+    "bench:guards": "cd packages/guardis && deno task bench:all",
     "build:guardis": "cd packages/guardis && deno run -A scripts/build_npm.ts",
     "build:hono": "cd packages/guardis-hono && deno run -A scripts/build_npm.ts",
     "build:npm": "deno task build:guardis && deno task build:hono"

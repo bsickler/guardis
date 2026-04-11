@@ -1,18 +1,59 @@
 # Guardis
 
-**Type-first validation for TypeScript.** Define your types, then validate with them — not the other way around.
+**Composable type guards for TypeScript** — start from your types or start from your guards. Either way, you get runtime validation with full type narrowing.
 
-Guardis gives you composable type guards that follow your TypeScript types instead of replacing them. Use the built-in guards, extend them, or create your own — each one comes with strict, assert, optional, and validate modes out of the box.
+Guardis works however your project does. Have 200 existing interfaces? Write guards that follow them. Starting fresh? Define a guard and extract the type. No schema language to learn — just TypeScript functions that compose.
+
+## Two Ways In
+
+### You already have types — add validation to them
+
+You've got `User` defined across your codebase. You need runtime validation. With schema-first libraries, you rewrite the type:
 
 ```ts
-import { createTypeGuard, isObject, isNumber, isString } from "jsr:@spudlabs/guardis";
+// ❌ Zod: rewrite your type as a schema, keep both in sync manually
+const UserSchema = z.object({ id: z.number(), name: z.string(), email: z.string().optional() });
+type User = z.infer<typeof UserSchema>; // replaces your original type
+```
 
-type User = { id: number; name: string };
+With Guardis, your type stays. The guard follows it:
 
-const isUser = createTypeGuard<User>((val, { has }) =>
-  isObject(val) && has(val, "id", isNumber) && has(val, "name", isString) ? val : null
+```ts
+import { createTypeGuard, isObject, isNumber, isString } from "@spudlabs/guardis";
+
+type User = { id: number; name: string; email?: string };
+
+const isUser = createTypeGuard<User>((val, { has, hasOptional }) =>
+  isObject(val) && has(val, "id", isNumber) && has(val, "name", isString)
+    && hasOptional(val, "email", isString)
+    ? val : null
 );
+```
 
+### Starting fresh — let the guard define the type
+
+No existing type? Define the guard with shape syntax and extract the type with `_TYPE`:
+
+```ts
+import { createTypeGuard, isNumber, isString } from "@spudlabs/guardis";
+
+const isUser = createTypeGuard({
+  id: isNumber,
+  name: isString,
+  email: isString.optional,
+});
+
+type User = typeof isUser._TYPE;
+// { id: number; name: string; email?: string }
+```
+
+One definition, one source of truth — same as the schema-first workflow you're used to, but with plain TypeScript guards instead of a schema DSL.
+
+### Use it everywhere
+
+Either way, you get the same full-featured guard:
+
+```ts
 // Narrow types in conditionals
 if (isUser(response.data)) {
   console.log(response.data.name); // TypeScript knows this is a User
@@ -27,6 +68,83 @@ if (result.issues) {
   console.log(result.issues); // [{ message, path }]
 }
 ```
+
+## Migrating from Zod
+
+Whether you want to keep your existing types or let Guardis derive them, the migration is straightforward. Here's a real-world form before and after:
+
+**Before — Zod**
+```ts
+import { z } from "zod";
+
+const ContactFormSchema = z.object({
+  name: z.string().min(1),
+  email: z.string().email(),
+  age: z.number().min(0).max(150),
+  nickname: z.string().nullable(),
+  message: z.string().min(1),
+});
+
+type ContactForm = z.infer<typeof ContactFormSchema>;
+```
+
+**After — Guardis (keeping your existing type)**
+```ts
+import { createTypeGuard, isObject, isNumber, isString, isNull } from "@spudlabs/guardis";
+import { isEmail } from "@spudlabs/guardis/strings";
+
+type ContactForm = {
+  name: string;
+  email: string;
+  age: number;
+  nickname: string | null;
+  message: string;
+};
+
+const isContactForm = createTypeGuard<ContactForm>((val, { has }) =>
+  isObject(val)
+    && has(val, "name", isString.notEmpty)
+    && has(val, "email", isEmail)
+    && has(val, "age", isNumber.gte(0).lte(150))
+    && has(val, "nickname", isString.or(isNull))
+    && has(val, "message", isString.notEmpty)
+    ? val : null
+);
+```
+
+**After — Guardis (deriving the type from the guard)**
+```ts
+import { createTypeGuard, isNumber, isString, isNull } from "@spudlabs/guardis";
+import { isEmail } from "@spudlabs/guardis/strings";
+
+const isContactForm = createTypeGuard({
+  name: isString.notEmpty,
+  email: isEmail,
+  age: isNumber.gte(0).lte(150),
+  nickname: isString.or(isNull),
+  message: isString.notEmpty,
+});
+
+type ContactForm = typeof isContactForm._TYPE;
+```
+
+Both approaches give you the same guard with the same runtime behavior. The callback syntax lets you annotate an existing type with `<ContactForm>` for compile-time safety; the shape syntax infers the type for you. Pick whichever fits your codebase.
+
+**What you gain:**
+- Every guard gets `.strict()`, `.optional()`, `.validate()`, `.or()`, and `.notEmpty` automatically
+- StandardSchemaV1 compliance for framework integration
+- Zero dependencies, ~2KB gzipped
+- No schema DSL to learn — guards are plain TypeScript functions
+
+**Concept mapping:**
+| Zod | Guardis |
+|-----|---------|
+| `z.infer<typeof Schema>` | `typeof guard._TYPE` (or use your existing type) |
+| `.parse()` | `.strict()` (throws on failure) |
+| `.safeParse()` | `.validate()` (returns `{ value }` or `{ issues }`) |
+| `.min()`, `.max()` | `.gte()`, `.lte()`, or `.extend()` |
+| `.email()`, `.uuid()` | `isEmail`, `isUUIDv4` from `/strings` |
+| `z.object({...})` | `createTypeGuard({...})` with shape syntax |
 
 ## Install
 
@@ -54,7 +172,7 @@ import {
   isString, isNumber, isBoolean, isNull, isUndefined,
   isArray, isObject, isDate, isFunction, isIterable, isTuple,
   isJsonValue, isJsonObject, isJsonArray,
-} from "jsr:@spudlabs/guardis";
+} from "@spudlabs/guardis";
 
 isString("hello");              // true
 isNumber(42);                   // true
@@ -67,7 +185,7 @@ isJsonValue({ a: 1, b: "x" }); // true
 You can also access all built-in guards through the `Is` namespace:
 
 ```ts
-import { Is } from "jsr:@spudlabs/guardis";
+import { Is } from "@spudlabs/guardis";
 
 Is.String("hello"); // true
 Is.Number(42);       // true
@@ -115,7 +233,7 @@ const result = isString.validate(42);
 The simplest way to create a guard for an object type — pass a shape mapping properties to guards. TypeScript infers the validated type directly from the shape, so you don't need to define a separate type:
 
 ```ts
-import { createTypeGuard, isNumber, isString, isNull } from "jsr:@spudlabs/guardis";
+import { createTypeGuard, isNumber, isString, isNull } from "@spudlabs/guardis";
 
 const isUser = createTypeGuard({
   id: isNumber,
@@ -143,7 +261,7 @@ const isContactForm = createTypeGuard({
 For more complex validation logic, pass a callback with helper functions. The helpers like `has` and `hasOptional` progressively narrow the type as you validate each property, so TypeScript tracks the validated shape through each check:
 
 ```ts
-import { createTypeGuard, isObject, isNumber, isString } from "jsr:@spudlabs/guardis";
+import { createTypeGuard, isObject, isNumber, isString } from "@spudlabs/guardis";
 
 type User = {
   id: number;
@@ -224,7 +342,7 @@ All modes carry through to extended guards — `.strict()`, `.optional()`, `.val
 Common string format validators:
 
 ```ts
-import { isEmail, isUUIDv4, isUSPhone } from "jsr:@spudlabs/guardis/strings";
+import { isEmail, isUUIDv4, isUSPhone } from "@spudlabs/guardis/strings";
 
 isEmail("user@example.com");     // true
 isUUIDv4("550e8400-...");        // true
@@ -234,7 +352,7 @@ isUSPhone("555-123-4567");       // true
 ### HTTP
 
 ```ts
-import { isNativeURL, isRequest, isResponse } from "jsr:@spudlabs/guardis/http";
+import { isNativeURL, isRequest, isResponse } from "@spudlabs/guardis/http";
 
 isNativeURL(new URL("https://example.com")); // true
 isRequest(new Request("https://api.com"));   // true
@@ -244,7 +362,7 @@ isResponse(new Response("data"));            // true
 ### Async
 
 ```ts
-import { isPromise, isAsyncFunction } from "jsr:@spudlabs/guardis/async";
+import { isPromise, isAsyncFunction } from "@spudlabs/guardis/async";
 
 isPromise(fetch("/api"));              // true
 isAsyncFunction(async () => {});       // true
@@ -257,8 +375,8 @@ TypeScript is structurally typed — any `string` can be assigned where another 
 Guardis specialized modules have branded variants (`/strings-branded`, `/http-branded`) that return branded types instead of plain primitives. By branding a value at the point of validation, the type carries proof that it was checked. The rest of your application can require the branded type in function signatures and interfaces — no need to re-validate at every step. You also can't accidentally pass an `Email` where a `UUID` is expected, even though both are strings at runtime.
 
 ```ts
-import { isEmail, type Email } from "jsr:@spudlabs/guardis/strings-branded";
-import { isUUIDv4, type UUIDv4 } from "jsr:@spudlabs/guardis/strings-branded";
+import { isEmail, type Email } from "@spudlabs/guardis/strings-branded";
+import { isUUIDv4, type UUIDv4 } from "@spudlabs/guardis/strings-branded";
 
 const email: Email = isEmail.strict("user@example.com");
 const id: UUIDv4 = isUUIDv4.strict("550e8400-e29b-41d4-a716-446655440000");
@@ -274,7 +392,7 @@ const oops: UUIDv4 = email;
 Generate multiple guards at once:
 
 ```ts
-import { batch } from "jsr:@spudlabs/guardis";
+import { batch } from "@spudlabs/guardis";
 
 const { isRed, isBlue, isGreen } = batch({
   Red: (val) => val === "red" ? val : null,
@@ -288,7 +406,7 @@ const { isRed, isBlue, isGreen } = batch({
 Add custom guards to the `Is` object:
 
 ```ts
-import { extend, Is as BaseIs } from "jsr:@spudlabs/guardis";
+import { extend, Is as BaseIs } from "@spudlabs/guardis";
 
 const Is = extend(BaseIs, {
   Email: (val) => typeof val === "string" && val.includes("@") ? val : null,
@@ -331,6 +449,10 @@ function process(input: unknown) {
   // TypeScript knows: string
 }
 ```
+
+## Benchmarks
+
+See [packages/benchmarks](packages/benchmarks/README.md) for comparative benchmarks against Zod, ArkType, and Valibot.
 
 ## Zero Dependencies | MIT License
 

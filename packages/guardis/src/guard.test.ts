@@ -1,4 +1,5 @@
 import { assert, assertEquals, assertFalse, assertThrows } from "@std/assert";
+import type { StandardSchemaV1 } from "../specs/standard-schema-spec.v1.ts";
 import {
   createTypeGuard,
   isArray,
@@ -2712,6 +2713,10 @@ Deno.test("createTypeGuard", async (t) => {
     assert(isPositiveNumber["~standard"]);
     assertEquals(isPositiveNumber["~standard"].version, 1);
     assertEquals(isPositiveNumber["~standard"].vendor, "guardis");
+    assert(isPositiveNumber["~standard"].types !== undefined);
+
+    // InferOutput resolves to the guarded type
+    assertType<Equals<StandardSchemaV1.InferOutput<typeof isPositiveNumber>, number>>();
   });
 });
 
@@ -4325,6 +4330,39 @@ Deno.test("createTypeGuard shape", async (t) => {
       const standardResult = isPersonShape["~standard"].validate(input);
       assertEquals(directResult, standardResult);
     });
+
+    await t.step("~standard.types exists for external InferInput/InferOutput", () => {
+      assert(isPersonShape["~standard"].types !== undefined);
+      assertType<
+        Equals<StandardSchemaV1.InferOutput<typeof isPersonShape>, { name: string; age: number }>
+      >();
+    });
+
+    await t.step("validate: sequential field paths are isolated after push/pop", () => {
+      const result = isPersonShape.validate({ name: 123, age: "bad" });
+      assert("issues" in result && result.issues);
+      // Both fields should fail — verify each issue carries only its own path,
+      // not a leaked path segment from the previous field's push/pop cycle.
+      const paths = result.issues.map((i) => i.path);
+      assert(paths.some((p) => p?.length === 1 && p[0] === "name"), "missing name path");
+      assert(paths.some((p) => p?.length === 1 && p[0] === "age"), "missing age path");
+      // No issue should have a path longer than 1 (leaked push from sibling)
+      for (const p of paths) {
+        assert(!p || p.length <= 1, `unexpected nested path: ${JSON.stringify(p)}`);
+      }
+    });
+
+    await t.step("strict: popPath fires even when strict guard throws mid-validation", () => {
+      const isShape = createTypeGuard({ name: isString, age: isNumber });
+
+      // strict on invalid input throws
+      assertThrows(() => isShape.strict({ name: 123, age: 30 }));
+
+      // After the throw, the guard's internal state should be clean.
+      // A subsequent validate on valid input must succeed without stale path leakage.
+      const result = isShape.validate({ name: "Alice", age: 30 });
+      assert("value" in result, "validate should succeed after a strict throw");
+    });
   });
 
   await t.step("named shape", async (t) => {
@@ -4489,6 +4527,8 @@ Deno.test("createTypeGuard shape", async (t) => {
       const result = isFormShape.validate({ name: "", bio: "A person" });
       assert("issues" in result && result.issues);
       assert(result.issues.length > 0);
+      // Verify the issue carries the correct field path from the mutable cursor
+      assertEquals(result.issues[0].path, ["name"]);
     });
 
     await t.step("optional.notEmpty guard in shape works", () => {
@@ -5479,5 +5519,132 @@ Deno.test("array length methods", async (t) => {
     assertEquals(isForm.validate({ items: [1, 2] }), { value: { items: [1, 2] } });
     const result = isForm.validate({ items: [] });
     assert(!("value" in result));
+  });
+});
+
+Deno.test("createTypeGuard with verified shape (explicit type parameter)", async (t) => {
+  await t.step("basic typed shape guard validates correctly", () => {
+    type User = { id: number; name: string };
+    const isUser = createTypeGuard<User>({ id: isNumber, name: isString });
+
+    assert(isUser({ id: 1, name: "Alice" }));
+    assertFalse(isUser({ id: "1", name: "Alice" }));
+    assertFalse(isUser({ name: "Alice" }));
+    assertFalse(isUser("not an object"));
+  });
+
+  await t.step("_TYPE matches the explicit type parameter", () => {
+    type User = { id: number; name: string };
+    const isUser = createTypeGuard<User>({ id: isNumber, name: isString });
+    assertType<Equals<typeof isUser._TYPE, User>>();
+  });
+
+  await t.step("optional fields with .optional guards", () => {
+    type User = { id: number; name: string; email?: string };
+    const isUser = createTypeGuard<User>({
+      id: isNumber,
+      name: isString,
+      email: isString.optional,
+    });
+
+    assert(isUser({ id: 1, name: "Alice" }));
+    assert(isUser({ id: 1, name: "Alice", email: "a@b.com" }));
+    assert(isUser({ id: 1, name: "Alice", email: undefined }));
+    assertFalse(isUser({ id: 1, name: "Alice", email: 42 }));
+    assertType<Equals<typeof isUser._TYPE, User>>();
+  });
+
+  await t.step("named typed shape guard", () => {
+    type User = { id: number; name: string };
+    const isUser = createTypeGuard<User>("User", { id: isNumber, name: isString });
+
+    assert(isUser({ id: 1, name: "Alice" }));
+    assertFalse(isUser({ id: "wrong" }));
+    assertType<Equals<typeof isUser._TYPE, User>>();
+  });
+
+  await t.step("nested object shapes", () => {
+    type Address = { street: string; city: string };
+    type Person = { name: string; address: Address };
+    const isPerson = createTypeGuard<Person>({
+      name: isString,
+      address: { street: isString, city: isString },
+    });
+
+    assert(isPerson({ name: "Alice", address: { street: "123 Main", city: "NYC" } }));
+    assertFalse(isPerson({ name: "Alice", address: { street: "123 Main" } }));
+    assertFalse(isPerson({ name: "Alice" }));
+    assertType<Equals<typeof isPerson._TYPE, Person>>();
+  });
+
+  await t.step("union guard fields via .or()", () => {
+    type Flexible = { value: string | number };
+    const isFlexible = createTypeGuard<Flexible>({ value: isString.or(isNumber) });
+
+    assert(isFlexible({ value: "hello" }));
+    assert(isFlexible({ value: 42 }));
+    assertFalse(isFlexible({ value: true }));
+    assertType<Equals<typeof isFlexible._TYPE, Flexible>>();
+  });
+
+  await t.step("strict mode throws on invalid data", () => {
+    type User = { id: number; name: string };
+    const isUser = createTypeGuard<User>({ id: isNumber, name: isString });
+
+    assert(isUser.strict({ id: 1, name: "Alice" }));
+    assertThrows(() => isUser.strict({ id: "wrong" }), TypeError);
+  });
+
+  await t.step("optional mode accepts undefined", () => {
+    type User = { id: number; name: string };
+    const isUser = createTypeGuard<User>({ id: isNumber, name: isString });
+
+    assert(isUser.optional(undefined));
+    assert(isUser.optional({ id: 1, name: "Alice" }));
+    assertFalse(isUser.optional("not a user"));
+  });
+
+  await t.step("validate mode returns structured results", () => {
+    type User = { id: number; name: string };
+    const isUser = createTypeGuard<User>({ id: isNumber, name: isString });
+
+    const success = isUser.validate({ id: 1, name: "Alice" });
+    assert("value" in success);
+
+    const failure = isUser.validate({ id: "wrong" });
+    assert("issues" in failure);
+  });
+
+  await t.step("or mode creates union guard", () => {
+    type User = { id: number; name: string };
+    const isUser = createTypeGuard<User>({ id: isNumber, name: isString });
+    const isUserOrNull = isUser.or(isNull);
+
+    assert(isUserOrNull(null));
+    assert(isUserOrNull({ id: 1, name: "Alice" }));
+    assertFalse(isUserOrNull("neither"));
+  });
+
+  await t.step("extend adds properties to typed shape guard", () => {
+    type User = { id: number; name: string };
+    const isUser = createTypeGuard<User>({ id: isNumber, name: isString });
+    const isEmployee = isUser.extend({ role: isString });
+
+    assert(isEmployee({ id: 1, name: "Alice", role: "dev" }));
+    assertFalse(isEmployee({ id: 1, name: "Alice" }));
+  });
+
+  await t.step("existing shape overload still infers type", () => {
+    const isUser = createTypeGuard({ id: isNumber, name: isString });
+    assertType<Equals<typeof isUser._TYPE, { id: number; name: string }>>();
+  });
+
+  await t.step("existing parser overload still works", () => {
+    const isPositive = createTypeGuard<number>((val) =>
+      typeof val === "number" && val > 0 ? val : null
+    );
+    assert(isPositive(5));
+    assertFalse(isPositive(-1));
+    assertType<Equals<typeof isPositive._TYPE, number>>();
   });
 });

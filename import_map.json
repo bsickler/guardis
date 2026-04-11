@@ -6,6 +6,10 @@
     "hono/": "npm:/hono@^4.10.0/",
 
     "@spudlabs/guardis": "./packages/guardis/mod.ts",
-    "@spudlabs/guardis-hono": "./packages/guardis-hono/mod.ts"
+    "@spudlabs/guardis-hono": "./packages/guardis-hono/mod.ts",
+
+    "zod": "npm:zod@^3",
+    "arktype": "npm:arktype@^2",
+    "valibot": "npm:valibot@^1"
   }
 }
