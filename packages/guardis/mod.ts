@@ -7,6 +7,7 @@
  */
 
 export * from "./src/guard.ts";
+export * from "./src/plugin.ts";
 export * from "./src/extend.ts";
 export * from "./src/batch.ts";
 export * from "./src/brand.ts";
