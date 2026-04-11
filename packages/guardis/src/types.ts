@@ -339,6 +339,8 @@ export interface NumberTypeGuard extends TypeGuard<number> {
    * @returns A new NumberTypeGuard with the comparison applied
    */
   eq(target: number): NumberTypeGuard;
+  /** Returns a guard that rejects Infinity and -Infinity. Chainable. */
+  finite: NumberTypeGuard;
 }
 
 /** An array type guard with chainable length validation methods */

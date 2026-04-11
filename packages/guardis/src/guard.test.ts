@@ -9,6 +9,7 @@ import {
   isEmpty,
   isExactly,
   isFunction,
+  isInt,
   isIterable,
   isJsonArray,
   isJsonObject,
@@ -5646,5 +5647,63 @@ Deno.test("createTypeGuard with verified shape (explicit type parameter)", async
     assert(isPositive(5));
     assertFalse(isPositive(-1));
     assertType<Equals<typeof isPositive._TYPE, number>>();
+  });
+});
+
+Deno.test("isInt", async (t) => {
+  await t.step("basic functionality", () => {
+    // Valid inputs
+    assert(isInt(42));
+    assert(isInt(-1));
+    assert(isInt(0));
+
+    // Invalid inputs
+    assertFalse(isInt(3.14));
+    assertFalse(isInt(NaN));
+    assertFalse(isInt(Infinity));
+    assertFalse(isInt("42"));
+  });
+
+  await t.step("chaining comparisons", () => {
+    assert(isInt.gt(0).lt(100)(50));
+    assertFalse(isInt.gt(0).lt(100)(0));
+    assertFalse(isInt.gt(0).lt(100)(100));
+  });
+
+  await t.step("strict mode", () => {
+    isInt.strict(42);
+    assertThrows(() => isInt.strict(3.14));
+  });
+
+  await t.step("validate method", () => {
+    assertEquals(isInt.validate(42), { value: 42 });
+    const result = isInt.validate(3.14);
+    assert("issues" in result);
+  });
+
+  await t.step("optional mode", () => {
+    assert(isInt.optional(undefined));
+    assert(isInt.optional(42));
+    assertFalse(isInt.optional(3.14));
+  });
+});
+
+Deno.test("isNumber.finite", async (t) => {
+  await t.step("basic functionality", () => {
+    assert(isNumber.finite(42));
+    assert(isNumber.finite(-3.14));
+
+    assertFalse(isNumber.finite(Infinity));
+    assertFalse(isNumber.finite(-Infinity));
+  });
+
+  await t.step("chaining after finite", () => {
+    assert(isNumber.finite.gte(0)(5));
+    assertFalse(isNumber.finite.gte(0)(-1));
+  });
+
+  await t.step("strict mode", () => {
+    isNumber.finite.strict(42);
+    assertThrows(() => isNumber.finite.strict(Infinity));
   });
 });

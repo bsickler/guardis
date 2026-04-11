@@ -801,6 +801,11 @@ function withComparisons(guard: TypeGuard<number>): NumberTypeGuard {
   numeric.lt = (n) => withComparisons(guard.extend(`< ${n}`, (v) => v < n ? v : null));
   numeric.lte = (n) => withComparisons(guard.extend(`<= ${n}`, (v) => v <= n ? v : null));
   numeric.eq = (n) => withComparisons(guard.extend(`== ${n}`, (v) => v === n ? v : null));
+  Object.defineProperty(numeric, 'finite', {
+    get: () => withComparisons(guard.extend('finite', (v) => Number.isFinite(v) ? v : null)),
+    enumerable: true,
+    configurable: true,
+  });
   return numeric;
 }
 
@@ -816,6 +821,17 @@ function withComparisons(guard: TypeGuard<number>): NumberTypeGuard {
 export const isNumber: NumberTypeGuard = withComparisons(createTypeGuard(
   "number",
   (t): number | null => typeof t === "number" && !Number.isNaN(t) ? t : null,
+));
+
+/**
+ * Returns true if input is an integer. Rejects NaN, Infinity, and non-integer numbers.
+ *
+ * @param {unknown} t
+ * @return {boolean}
+ */
+export const isInt: NumberTypeGuard = withComparisons(createTypeGuard(
+  "integer",
+  (t): number | null => typeof t === "number" && Number.isInteger(t) ? t : null,
 ));
 
 /**
