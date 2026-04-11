@@ -89,6 +89,8 @@ export type GuardMeta<T> = {
   context: (value: unknown, ctx?: Context) => StandardSchemaV1.Result<T>;
   /** Indicates this guard is an optional variant, used by InferShape to mark properties as optional */
   optional?: true;
+  /** Plugin metadata keyed by plugin ID. Only present on guards created via an extended factory. */
+  plugins?: Record<string, unknown>;
 };
 
 export interface TypeGuard<T1> extends StandardSchemaV1<T1> {
