@@ -27,7 +27,7 @@ const isPositive = createTypeGuard<number>((val) =>
 ## Features
 
 - **Type-First**: Define TypeScript types first, validation follows
-- **Zero Dependencies**: No runtime dependencies
+- **Zero Dependencies**: No runtime dependencies (~5 KB gzipped)
 - **Multiple Modes**: Basic, strict (throws), assert, optional, notEmpty, and validate variants
 - **StandardSchemaV1 Compatible**: Built-in `validate` method returns structured results with detailed error messages
 - **Helper Functions**: Built-in utilities for object, array and tuple validation
