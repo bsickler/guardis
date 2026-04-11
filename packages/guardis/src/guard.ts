@@ -19,6 +19,7 @@ import type {
   NamedParser,
   NumberTypeGuard,
   Parser,
+  RecordTypeGuard,
   ParserEntry,
   Predicate,
   StrictTypeGuard,
@@ -150,7 +151,7 @@ function isTypeGuardShape(value: unknown): value is TypeGuardShape {
     typeof value !== "function";
 }
 
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
+function _isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -282,7 +283,7 @@ function validateCompiledShapeBoolean(
   value: unknown,
   fields: FieldDescriptor[],
 ): boolean {
-  if (!isPlainRecord(value)) return false;
+  if (!_isRecord(value)) return false;
 
   for (let i = 0; i < fields.length; i++) {
     const desc = fields[i];
@@ -316,7 +317,7 @@ function validateCompiledShape(
   fields: FieldDescriptor[],
   ctx?: Context,
 ): StandardSchemaV1.Result<Record<string, unknown>> {
-  if (!isPlainRecord(value)) {
+  if (!_isRecord(value)) {
     const message = "Expected an object";
 
     if (!ctx) return { issues: [{ message }] };
@@ -1269,68 +1270,71 @@ isTupleOptional.assert = isTupleOptional.strict;
 isTuple.optional = isTupleOptional;
 
 /**
- * Creates a type guard for `Record<K, V>` dictionaries.
- *
- * When called with one argument, validates that all values match the given guard
- * (keys are any string). When called with two arguments, validates both keys and values.
+ * Returns true if input is a plain object (not null, not an array).
+ * Use `.of(guard)` to validate that all values match a specific type.
  *
  * @example
  * ```typescript
- * const isStringRecord = isRecord(isString);
+ * isRecord({ a: 1, b: 2 });              // true
+ * isRecord([1, 2]);                      // false
+ * isRecord(null);                        // false
+ *
+ * const isStringRecord = isRecord.of(isString);
  * isStringRecord({ a: "foo", b: "bar" }); // true
  * isStringRecord({ a: "foo", b: 42 });    // false
- * isStringRecord({});                     // true (empty is valid)
  * ```
  */
-export function isRecord<V>(valueGuard: TypeGuard<V>): TypeGuard<Record<string, V>>;
-export function isRecord<K extends string, V>(
-  keyGuard: TypeGuard<K>,
-  valueGuard: TypeGuard<V>,
-): TypeGuard<Record<K, V>>;
-export function isRecord<V>(
-  keyOrValueGuard: TypeGuard<unknown>,
-  valueGuard?: TypeGuard<unknown>,
-): TypeGuard<Record<string, V>> {
-  // Resolve overloads
-  const kGuard = valueGuard ? keyOrValueGuard : undefined;
-  const vGuard = valueGuard ?? keyOrValueGuard;
+export const isRecord: RecordTypeGuard = Object.assign(
+  createTypeGuard(
+    "record",
+    (t): Record<string, unknown> | null =>
+      typeof t === "object" && t !== null && !Array.isArray(t)
+        ? t as Record<string, unknown>
+        : null,
+  ),
+  {
+    of: (<V>(
+      keyOrValueGuard: TypeGuard<unknown>,
+      valueGuard?: TypeGuard<unknown>,
+    ) => {
+      const kGuard = valueGuard ? keyOrValueGuard : undefined;
+      const vGuard = valueGuard ?? keyOrValueGuard;
 
-  // Build name
-  const kName = kGuard && hasName(kGuard) ? kGuard._.name : "string";
-  const vName = hasName(vGuard as TypeGuard<unknown>)
-    ? (vGuard as TypeGuard<unknown>)._.name
-    : "unknown";
-  const name = `Record<${kName}, ${vName}>`;
+      const kName = kGuard && hasName(kGuard) ? kGuard._.name : "string";
+      const vName = hasName(vGuard as TypeGuard<unknown>)
+        ? (vGuard as TypeGuard<unknown>)._.name
+        : "unknown";
+      const name = `Record<${kName}, ${vName}>`;
 
-  return createTypeGuard(name, (val, helpers) => {
-    if (!isObject(val) || Array.isArray(val)) return null;
+      return createTypeGuard(name, (val, helpers) => {
+        if (!isObject(val) || Array.isArray(val)) return null;
 
-    const ctx = (helpers as HelpersWithContext)._ctx;
-    const entries = Object.entries(val as Record<string, unknown>);
+        const ctx = (helpers as HelpersWithContext)._ctx;
+        const entries = Object.entries(val as Record<string, unknown>);
 
-    for (const [key, value] of entries) {
-      // Validate key if key guard provided
-      if (kGuard && !kGuard(key)) {
-        if (ctx) ctx.addIssue(`Invalid key "${key}" in ${name}`);
-        return null;
-      }
+        for (const [key, value] of entries) {
+          if (kGuard && !kGuard(key)) {
+            if (ctx) ctx.addIssue(`Invalid key "${key}" in ${name}`);
+            return null;
+          }
 
-      // Validate value
-      if (ctx) {
-        ctx.pushPath(key);
-        try {
-          const result = (vGuard as TypeGuard<unknown>)._.context(value, ctx);
-          if (!("value" in result)) return null;
-        } finally {
-          ctx.popPath();
+          if (ctx) {
+            ctx.pushPath(key);
+            try {
+              const result = (vGuard as TypeGuard<unknown>)._.context(value, ctx);
+              if (!("value" in result)) return null;
+            } finally {
+              ctx.popPath();
+            }
+          } else {
+            if (!(vGuard as TypeGuard<unknown>)(value)) return null;
+          }
         }
-      } else {
-        if (!(vGuard as TypeGuard<unknown>)(value)) return null;
-      }
-    }
 
-    return val as Record<string, V>;
-  });
-}
+        return val as Record<string, V>;
+      });
+    }) as RecordTypeGuard["of"],
+  },
+) as RecordTypeGuard;
 
 export { isEmpty, isIterable, isNil, isNull, isTuple };

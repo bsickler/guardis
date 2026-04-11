@@ -5651,36 +5651,44 @@ Deno.test("createTypeGuard with verified shape (explicit type parameter)", async
 });
 
 Deno.test("isRecord", async (t) => {
-  await t.step("accepts record with matching values", () => {
-    assert(isRecord(isString)({ a: "foo", b: "bar" }));
+  await t.step("base guard accepts plain objects", () => {
+    assert(isRecord({ a: 1, b: "two" }));
+    assert(isRecord({}));
   });
 
-  await t.step("rejects record with non-matching values", () => {
-    assertFalse(isRecord(isString)({ a: "foo", b: 42 }));
+  await t.step("base guard rejects non-objects", () => {
+    assertFalse(isRecord(null));
+    assertFalse(isRecord([1, 2, 3]));
+    assertFalse(isRecord("not object"));
+    assertFalse(isRecord(42));
   });
 
-  await t.step("accepts record with number values", () => {
-    assert(isRecord(isNumber)({ x: 1, y: 2 }));
+  await t.step(".of() accepts record with matching values", () => {
+    assert(isRecord.of(isString)({ a: "foo", b: "bar" }));
   });
 
-  await t.step("accepts empty object", () => {
-    assert(isRecord(isString)({}));
+  await t.step(".of() rejects record with non-matching values", () => {
+    assertFalse(isRecord.of(isString)({ a: "foo", b: 42 }));
   });
 
-  await t.step("rejects null", () => {
-    assertFalse(isRecord(isString)(null));
+  await t.step(".of() accepts record with number values", () => {
+    assert(isRecord.of(isNumber)({ x: 1, y: 2 }));
   });
 
-  await t.step("rejects array", () => {
-    assertFalse(isRecord(isString)([1, 2, 3]));
+  await t.step(".of() accepts empty object", () => {
+    assert(isRecord.of(isString)({}));
   });
 
-  await t.step("rejects non-object", () => {
-    assertFalse(isRecord(isString)("not object"));
+  await t.step(".of() rejects null", () => {
+    assertFalse(isRecord.of(isString)(null));
   });
 
-  await t.step("validate returns issues with path", () => {
-    const result = isRecord(isString).validate({ a: "ok", b: 42 });
+  await t.step(".of() rejects array", () => {
+    assertFalse(isRecord.of(isString)([1, 2, 3]));
+  });
+
+  await t.step(".of() validate returns issues with path", () => {
+    const result = isRecord.of(isString).validate({ a: "ok", b: 42 });
     assert("issues" in result);
     if ("issues" in result) {
       assert(result.issues!.length > 0);
@@ -5689,26 +5697,26 @@ Deno.test("isRecord", async (t) => {
     }
   });
 
-  await t.step("strict throws on invalid value", () => {
-    assertThrows(() => isRecord(isString).strict({ a: 42 }));
+  await t.step(".of() strict throws on invalid value", () => {
+    assertThrows(() => isRecord.of(isString).strict({ a: 42 }));
   });
 
-  await t.step("optional accepts undefined", () => {
-    assert(isRecord(isString).optional(undefined));
+  await t.step(".of() optional accepts undefined", () => {
+    assert(isRecord.of(isString).optional(undefined));
   });
 
-  await t.step("works inside a shape", () => {
-    const isConfig = createTypeGuard({ env: isRecord(isString) });
+  await t.step(".of() works inside a shape", () => {
+    const isConfig = createTypeGuard({ env: isRecord.of(isString) });
     assert(isConfig({ env: { NODE_ENV: "prod" } }));
     assertFalse(isConfig({ env: { NODE_ENV: 123 } }));
   });
 
-  await t.step("two-arg form validates keys", () => {
+  await t.step(".of() two-arg form validates keys", () => {
     const isEnvKey = createTypeGuard<"NODE_ENV" | "PORT">("EnvKey", (v) => {
       if (v === "NODE_ENV" || v === "PORT") return v;
       return null;
     });
-    const guard = isRecord(isEnvKey, isString);
+    const guard = isRecord.of(isEnvKey, isString);
     assert(guard({ NODE_ENV: "prod", PORT: "3000" }));
     assertFalse(guard({ INVALID_KEY: "value" }));
   });

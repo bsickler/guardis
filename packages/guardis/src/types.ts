@@ -355,6 +355,17 @@ export interface ArrayTypeGuard<T = unknown> extends TypeGuard<T[]> {
   range(min: number, max: number): ArrayTypeGuard<T>;
 }
 
+/** A record type guard with `.of()` for typed value/key validation */
+export interface RecordTypeGuard extends TypeGuard<Record<string, unknown>> {
+  /** Returns a guard that validates all values match the given guard */
+  of<V>(valueGuard: TypeGuard<V>): TypeGuard<Record<string, V>>;
+  /** Returns a guard that validates both keys and values */
+  of<K extends string, V>(
+    keyGuard: TypeGuard<K>,
+    valueGuard: TypeGuard<V>,
+  ): TypeGuard<Record<K, V>>;
+}
+
 /** An optional type guard that accepts undefined in addition to the base type */
 export interface OptionalTypeGuard<T1> {
   /** Internal metadata with optional flag for shape type inference */
