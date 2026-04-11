@@ -22,6 +22,7 @@ import {
   isPropertyKey,
   isString,
   isSymbol,
+  isEnum,
   isTuple,
   isUndefined,
 } from "./guard.ts";
@@ -5646,5 +5647,81 @@ Deno.test("createTypeGuard with verified shape (explicit type parameter)", async
     assert(isPositive(5));
     assertFalse(isPositive(-1));
     assertType<Equals<typeof isPositive._TYPE, number>>();
+  });
+});
+
+Deno.test("isEnum", async (t) => {
+  // Define test enums
+  enum Color {
+    Red = "red",
+    Green = "green",
+    Blue = "blue",
+  }
+  enum Direction {
+    Up = 0,
+    Down = 1,
+    Left = 2,
+    Right = 3,
+  }
+  enum Mixed {
+    Name = "alice",
+    Age = 30,
+  }
+
+  const isColor = isEnum(Color);
+  const isDirection = isEnum(Direction);
+
+  await t.step("validates string enum members", () => {
+    assert(isColor("red"));
+    assert(isColor("green"));
+    assert(isColor("blue"));
+  });
+
+  await t.step("rejects non-members of string enum", () => {
+    assertFalse(isColor("yellow"));
+    assertFalse(isColor(""));
+    assertFalse(isColor(42));
+  });
+
+  await t.step("validates numeric enum members", () => {
+    assert(isDirection(0));
+    assert(isDirection(1));
+    assert(isDirection(3));
+  });
+
+  await t.step("rejects non-members of numeric enum", () => {
+    assertFalse(isDirection(4));
+    assertFalse(isDirection(-1));
+    // Reverse mapping keys should NOT be valid
+    assertFalse(isDirection("Up"));
+    assertFalse(isDirection("Down"));
+  });
+
+  await t.step("handles mixed enum", () => {
+    const isMixed = isEnum(Mixed);
+    assert(isMixed("alice"));
+    assert(isMixed(30));
+    assertFalse(isMixed("bob"));
+    assertFalse(isMixed(31));
+  });
+
+  await t.step("strict mode throws on non-member", () => {
+    assertThrows(() => isColor.strict("yellow"));
+  });
+
+  await t.step("validate mode returns issues", () => {
+    const result = isColor.validate("yellow");
+    assert("issues" in result && result.issues);
+  });
+
+  await t.step("optional accepts undefined", () => {
+    assert(isColor.optional(undefined));
+    assert(isColor.optional("red"));
+  });
+
+  await t.step("works in shapes", () => {
+    const isPayload = createTypeGuard({ color: isColor });
+    assert(isPayload({ color: "red" }));
+    assertFalse(isPayload({ color: "yellow" }));
   });
 });

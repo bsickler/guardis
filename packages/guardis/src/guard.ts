@@ -1268,4 +1268,27 @@ isTupleOptional.assert = isTupleOptional.strict;
  */
 isTuple.optional = isTupleOptional;
 
+/**
+ * Creates a type guard from a TypeScript enum object.
+ * Validates that a value is a member of the enum.
+ * Handles both string and numeric enums (filters reverse mappings for numeric enums).
+ */
+export function isEnum<T extends Record<string, string | number>>(
+  enumObj: T,
+): TypeGuard<T[keyof T]> {
+  // Filter out numeric enum reverse mappings.
+  // For numeric enums, Object.keys includes both "Name" and "0" (the reverse mapping).
+  // We keep only entries where the key is not a stringified number.
+  const values = Object.entries(enumObj)
+    .filter(([key]) => isNaN(Number(key)))
+    .map(([, value]) => value);
+  const memberSet = new Set<string | number>(values);
+  const name = `enum(${values.join(" | ")})`;
+
+  return createTypeGuard(
+    name,
+    (t): T[keyof T] | null => memberSet.has(t as string | number) ? t as T[keyof T] : null,
+  );
+}
+
 export { isEmpty, isIterable, isNil, isNull, isTuple };
