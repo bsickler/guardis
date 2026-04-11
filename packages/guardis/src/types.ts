@@ -4,15 +4,22 @@ import type { exact, includes, tupleHas } from "./utilities.ts";
 /**
  * Context for tracking validation paths and collecting issues during validation.
  * Only present during `validate()` calls, not during regular type guard checks.
+ *
+ * The Context uses a mutable cursor for path tracking: `pushPath` and `popPath`
+ * mutate the path in place rather than allocating a new Context. Callers must
+ * push and pop in matched pairs. `addIssue` defensively copies the path when
+ * capturing an issue, so captured issues remain stable after the cursor unwinds.
  */
 export interface Context {
   /** The current path being validated (array of property keys and indices) */
-  readonly path: ReadonlyArray<PropertyKey>;
+  readonly path: PropertyKey[];
   /** The collected validation issues */
   readonly issues: StandardSchemaV1.Issue[];
-  /** Creates a new context with the segment added to the path */
-  pushPath(segment: PropertyKey): Context;
-  /** Adds an issue at the current path */
+  /** Pushes a segment onto the path in place */
+  pushPath(segment: PropertyKey): void;
+  /** Pops the most recent segment from the path */
+  popPath(): void;
+  /** Adds an issue at the current path (defensively copies the path) */
   addIssue(message: string): void;
 }
 

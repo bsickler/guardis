@@ -1,6 +1,15 @@
 /**
  * Runs `deno bench --json` and formats results as markdown comparison tables.
- * Guardis is the 1.0x baseline; other libraries show relative performance.
+ *
+ * Guardis is shown as two columns:
+ *   - Guardis (fast) — the boolean type guard call, `isUser(x)`, which returns
+ *     true/false without allocating error details. This is the idiomatic Guardis API.
+ *   - Guardis (validate) — the Standard Schema path, `isUser.validate(x)`, which
+ *     returns a Result object with full issue tracking. This is the apples-to-apples
+ *     comparison against Zod.safeParse, ArkType, and valibot.safeParse.
+ *
+ * Relative performance (e.g. "1.5x") is computed against the Guardis (validate)
+ * baseline since that's the strictly comparable path across all libraries.
  *
  * Usage: deno run -A scripts/format-results.ts
  */
@@ -39,12 +48,17 @@ interface ParsedResult {
   opsPerSec: number;
 }
 
+// Order matters: longer library names must come first so "guardis-validate"
+// matches before "guardis" in the regex alternation.
+const LIBRARIES = ["guardis-validate", "guardis", "zod", "arktype", "valibot"] as const;
+const SCENARIO_ORDER = ["primitives", "object-schema", "real-world"];
+
 function identifyLibrary(origin: string): string | null {
-  const match = origin.match(/\/benchmarks\/(guardis|zod|arktype|valibot)\//);
+  const match = origin.match(
+    /\/benchmarks\/(guardis-validate|guardis|zod|arktype|valibot)\//,
+  );
   return match ? match[1] : null;
 }
-
-const SCENARIO_ORDER = ["primitives", "object-schema", "real-world"];
 
 function identifyScenario(origin: string): string | null {
   for (const scenario of SCENARIO_ORDER) {
@@ -54,15 +68,17 @@ function identifyScenario(origin: string): string | null {
 }
 
 function parseBenchName(name: string): { benchName: string; path: string } {
-  const match = name.match(/^\w+:\s+(.+?)\s+\((valid|invalid)\)$/);
+  // Library prefix may contain a hyphen (e.g. "guardis-validate:")
+  const match = name.match(/^[\w-]+:\s+(.+?)\s+\((valid|invalid)\)$/);
   if (match) return { benchName: match[1], path: match[2] };
   return { benchName: name, path: "unknown" };
 }
 
 function computeOpsPerSec(result: BenchResult): number | null {
   if (!result.ok) return null;
-  const { avg, highPrecision } = result.ok;
-  return highPrecision ? 1_000_000_000 / avg : 1_000_000 / avg;
+  // Deno bench reports avg in nanoseconds regardless of highPrecision.
+  // highPrecision indicates timer source precision, not a unit change.
+  return 1_000_000_000 / result.ok.avg;
 }
 
 function formatOps(ops: number): string {
@@ -72,8 +88,8 @@ function formatOps(ops: number): string {
   return ops.toFixed(0);
 }
 
-function formatRelative(opsPerSec: number, baseline: number, library: string): string {
-  if (library === "guardis") return "baseline";
+function formatRelative(opsPerSec: number, baseline: number): string {
+  if (baseline === 0) return "-";
   const ratio = opsPerSec / baseline;
   return `${ratio.toFixed(2)}x`;
 }
@@ -98,6 +114,21 @@ async function main() {
   console.log(`# Benchmark Results\n`);
   console.log(`- **Runtime:** ${data.runtime}`);
   console.log(`- **CPU:** ${data.cpu}\n`);
+
+  console.log(`## About these numbers\n`);
+  console.log(
+    "Guardis is shown as two columns. **Guardis (fast)** is the boolean type guard call " +
+      "`isUser(x)` — the idiomatic Guardis API, which returns true/false and does not " +
+      "build error details. **Guardis (validate)** is `isUser.validate(x)`, which " +
+      "returns a Standard Schema result with full issue tracking. The other libraries " +
+      "use their respective `safeParse` equivalents.\n",
+  );
+  console.log(
+    "Relative performance is computed against **Guardis (validate)** so it's a strict " +
+      "apples-to-apples comparison. The fast path column shows raw ops/sec without a " +
+      "relative multiplier because it represents a different API shape that the other " +
+      "libraries don't expose.\n",
+  );
 
   // Parse all results
   const parsed: ParsedResult[] = [];
@@ -134,8 +165,12 @@ async function main() {
 
     for (const path of paths) {
       console.log(`### ${path === "valid" ? "Valid Input" : "Invalid Input"}\n`);
-      console.log("| Benchmark | Guardis | Zod | ArkType | Valibot |");
-      console.log("|-----------|---------|-----|---------|---------|");
+      console.log(
+        "| Benchmark | Guardis (fast) | Guardis (validate) | Zod | ArkType | Valibot |",
+      );
+      console.log(
+        "|-----------|---------------:|-------------------:|----:|--------:|--------:|",
+      );
 
       for (const benchName of benchNames) {
         const row = parsed.filter(
@@ -143,17 +178,31 @@ async function main() {
         );
         if (row.length === 0) continue;
 
-        const guardisOps = row.find((r) => r.library === "guardis")?.opsPerSec ?? 0;
+        const guardisFast = row.find((r) => r.library === "guardis")?.opsPerSec ?? 0;
+        const guardisValidate = row.find((r) => r.library === "guardis-validate")?.opsPerSec ??
+          0;
+        const baseline = guardisValidate;
 
-        const cells = ["guardis", "zod", "arktype", "valibot"].map((lib) => {
+        // Guardis (fast): raw ops/sec, no relative multiplier
+        const fastCell = guardisFast > 0 ? formatOps(guardisFast) : "-";
+
+        // Guardis (validate): marked as baseline
+        const validateCell = guardisValidate > 0
+          ? `${formatOps(guardisValidate)} (baseline)`
+          : "-";
+
+        // Other libraries: ops/sec + relative to guardis-validate
+        const otherCells = (["zod", "arktype", "valibot"] as const).map((lib) => {
           const result = row.find((r) => r.library === lib);
           if (!result) return "-";
-          const ops = formatOps(result.opsPerSec);
-          const rel = formatRelative(result.opsPerSec, guardisOps, lib);
-          return `${ops} (${rel})`;
+          return `${formatOps(result.opsPerSec)} (${
+            formatRelative(result.opsPerSec, baseline)
+          })`;
         });
 
-        console.log(`| ${benchName} | ${cells.join(" | ")} |`);
+        console.log(
+          `| ${benchName} | ${fastCell} | ${validateCell} | ${otherCells.join(" | ")} |`,
+        );
       }
       console.log("");
     }

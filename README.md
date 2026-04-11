@@ -332,6 +332,10 @@ function process(input: unknown) {
 }
 ```
 
+## Benchmarks
+
+See [packages/benchmarks](packages/benchmarks/README.md) for comparative benchmarks against Zod, ArkType, and Valibot.
+
 ## Zero Dependencies | MIT License
 
 Built for Deno and Node.js with no runtime dependencies.
