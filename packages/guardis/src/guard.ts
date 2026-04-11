@@ -723,7 +723,8 @@ export function createTypeGuard<T1>(
     version: 1,
     vendor: "guardis",
     validate: callback.validate,
-  } as const;
+    types: {} as StandardSchemaV1.Types<T1>,
+  };
 
   // Attach the type to the function for easy access
   return (<T1>(t: unknown): TypeGuard<T1> => t as TypeGuard<T1>)(callback);
