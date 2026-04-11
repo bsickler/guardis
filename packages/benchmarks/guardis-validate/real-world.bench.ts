@@ -22,15 +22,18 @@ const isApiRequest = createTypeGuard({
   },
 });
 
+// Validate-path benchmarks: uses .validate() which returns a StandardSchemaV1.Result
+// with full issue tracking. Compares apples-to-apples with Zod.safeParse, etc.
+
 Deno.bench({
-  name: "guardis: real-world (valid)",
+  name: "guardis-validate: real-world (valid)",
   fn() {
-    isApiRequest(VALID_API_REQUEST);
+    isApiRequest.validate(VALID_API_REQUEST);
   },
 });
 Deno.bench({
-  name: "guardis: real-world (invalid)",
+  name: "guardis-validate: real-world (invalid)",
   fn() {
-    isApiRequest(INVALID_API_REQUEST);
+    isApiRequest.validate(INVALID_API_REQUEST);
   },
 });
