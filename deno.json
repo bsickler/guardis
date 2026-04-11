@@ -1,8 +1,9 @@
 {
-  "workspace": ["guardis/", "hono/"],
+  "workspace": ["packages/guardis/", "packages/guardis-hono/"],
   "tasks": {
-    "build:guardis": "cd guardis && deno run -A scripts/build_npm.ts",
-    "build:hono": "cd hono && deno run -A scripts/build_npm.ts",
+    "test": "cd packages/guardis && deno task test && cd ../guardis-hono && deno task test",
+    "build:guardis": "cd packages/guardis && deno run -A scripts/build_npm.ts",
+    "build:hono": "cd packages/guardis-hono && deno run -A scripts/build_npm.ts",
     "build:npm": "deno task build:guardis && deno task build:hono"
   },
   "importMap": "./import_map.json",

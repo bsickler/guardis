@@ -18,7 +18,7 @@ await build({
   compilerOptions: {
     lib: ["ES2022", "DOM"],
   },
-  importMap: "../import_map.json",
+  importMap: "../../import_map.json",
   package: {
     name,
     version: Deno.args[0] || version,
