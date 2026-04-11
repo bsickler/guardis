@@ -5523,6 +5523,54 @@ Deno.test("array length methods", async (t) => {
   });
 });
 
+Deno.test("string length methods", async (t) => {
+  await t.step("min", () => {
+    assert(isString.min(1)("hello"));
+    assertFalse(isString.min(1)(""));
+  });
+
+  await t.step("max", () => {
+    assert(isString.max(5)("hi"));
+    assertFalse(isString.max(3)("toolong"));
+  });
+
+  await t.step("ofLength", () => {
+    assert(isString.ofLength(3)("abc"));
+    assertFalse(isString.ofLength(3)("ab"));
+  });
+
+  await t.step("range", () => {
+    assert(isString.range(1, 10)("hello"));
+    assertFalse(isString.range(1, 10)(""));
+  });
+
+  await t.step("chaining min and max", () => {
+    assert(isString.min(1).max(255)("hello"));
+    assertFalse(isString.min(1).max(255)(""));
+  });
+
+  await t.step("edge case: ofLength(0)", () => {
+    assert(isString.ofLength(0)(""));
+  });
+
+  await t.step("strict throws on invalid", () => {
+    assertThrows(() => isString.min(1).strict(""));
+  });
+
+  await t.step("validate returns issues on invalid", () => {
+    const result = isString.min(1).validate("");
+    assert(!("value" in result));
+    assert("issues" in result);
+  });
+
+  await t.step("non-string input rejected", () => {
+    assertFalse(isString.min(1)(42));
+    assertFalse(isString.max(5)(null));
+    assertFalse(isString.ofLength(3)(undefined));
+    assertFalse(isString.range(1, 10)(123));
+  });
+});
+
 Deno.test("createTypeGuard with verified shape (explicit type parameter)", async (t) => {
   await t.step("basic typed shape guard validates correctly", () => {
     type User = { id: number; name: string };

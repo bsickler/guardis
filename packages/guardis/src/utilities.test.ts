@@ -1,5 +1,6 @@
 import { assert, assertEquals, assertFalse, assertThrows } from "@std/assert";
 import { createTypeGuard, isArray, isBoolean, isNull, isNumber, isString } from "./guard.ts";
+import type { TypeGuard } from "./types.ts";
 import {
   doesNotHaveProperty,
   exact,
@@ -382,7 +383,10 @@ Deno.test("formatErrorMessage", async (t) => {
   await t.step("handles functions without producing undefined", () => {
     // Bug fix: JSON.stringify(function) returns undefined
     assertEquals(formatErrorMessage(() => {}, "object"), "Expected object. Received: [Function]");
-    assertEquals(formatErrorMessage(function namedFn() {}, "object"), "Expected object. Received: [Function: namedFn]");
+    assertEquals(
+      formatErrorMessage(function namedFn() {}, "object"),
+      "Expected object. Received: [Function: namedFn]",
+    );
   });
 
   await t.step("handles circular references without throwing", () => {
@@ -396,7 +400,10 @@ Deno.test("formatErrorMessage", async (t) => {
 
   await t.step("handles objects with BigInt properties", () => {
     const obj = { id: BigInt(999), name: "test" };
-    assertEquals(formatErrorMessage(obj, "array"), 'Expected array. Received: {"id":"999n","name":"test"}');
+    assertEquals(
+      formatErrorMessage(obj, "array"),
+      'Expected array. Received: {"id":"999n","name":"test"}',
+    );
   });
 
   await t.step("works without name parameter", () => {
@@ -438,7 +445,7 @@ Deno.test("unionOf", async (t) => {
     assertEquals(isStringOrNumber.validate("hello"), { value: "hello" });
     assertEquals(isStringOrNumber.validate(42), { value: 42 });
     assertEquals(isStringOrNumber.validate(true), {
-      issues: [{ message: 'Expected string | number. Received: true' }],
+      issues: [{ message: "Expected string | number. Received: true" }],
     });
   });
 
