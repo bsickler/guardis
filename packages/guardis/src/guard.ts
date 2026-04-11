@@ -1268,4 +1268,40 @@ isTupleOptional.assert = isTupleOptional.strict;
  */
 isTuple.optional = isTupleOptional;
 
+/**
+ * Creates a type guard from a TypeScript enum object.
+ * Validates that a value is a member of the enum.
+ *
+ * Handles both string and numeric enums. TypeScript compiles numeric enums
+ * with reverse mappings — for `enum Dir { Up = 0, Down = 1 }`, the compiled
+ * object is `{ Up: 0, Down: 1, 0: "Up", 1: "Down" }`. The stringified-number
+ * keys (`"0"`, `"1"`) are the reverse mappings and must be filtered out so
+ * that only the real enum values (`0`, `1`) are treated as valid members.
+ * String enums (`enum Color { Red = "red" }`) produce no reverse mappings,
+ * so the filter is a no-op for them.
+ *
+ * Note: TypeScript does not support exact type-level equality checks for enum
+ * types. The inferred `_TYPE` is the enum's value union (e.g. `Color.Red |
+ * Color.Green | Color.Blue`) rather than the branded `Color` type itself.
+ * Both are mutually assignable — `const c: Color = x` compiles after narrowing
+ * — but they are not identical under strict type-equality checks like
+ * `Equals<A, B>`. This is a known TypeScript limitation, not a Guardis bug.
+ * See: https://github.com/microsoft/TypeScript/issues/49497
+ */
+export function isEnum<const T extends Record<string, string | number>>(
+  enumObj: T,
+): TypeGuard<T[keyof T]> {
+  // Keep only entries whose key is not a stringified number (filters reverse mappings).
+  const values = Object.entries(enumObj)
+    .filter(([key]) => isNaN(Number(key)))
+    .map(([, value]) => value);
+  const memberSet = new Set(values);
+  const name = `enum(${values.join(" | ")})`;
+
+  return createTypeGuard(
+    name,
+    (t) => memberSet.has(t as T[keyof T]) ? t as T[keyof T] : null,
+  );
+}
+
 export { isEmpty, isIterable, isNil, isNull, isTuple };
