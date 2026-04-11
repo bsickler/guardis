@@ -1,0 +1,14 @@
+{
+  "name": "@spudlabs/guardis-benchmarks",
+  "version": "0.0.0",
+  "description": "Comparative benchmarks for Guardis against Zod, ArkType, and Valibot.",
+  "exports": {},
+  "tasks": {
+    "bench": "deno bench",
+    "format": "deno run -A scripts/format-results.ts"
+  },
+  "compilerOptions": {},
+  "fmt": {
+    "lineWidth": 100
+  }
+}
