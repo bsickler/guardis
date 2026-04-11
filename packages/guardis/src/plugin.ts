@@ -1,4 +1,4 @@
-import type { Parser, TypeGuardShape } from "./types.ts";
+import type { InferShape, Parser, TypeGuard, TypeGuardShape } from "./types.ts";
 
 /**
  * A plugin that enriches type guards with metadata at creation time.
@@ -23,7 +23,7 @@ export interface GuardPlugin<TId extends string, TData, TOptions = void> {
 }
 
 // deno-lint-ignore no-explicit-any
-type AnyPlugin = GuardPlugin<string, any, any>;
+export type AnyPlugin = GuardPlugin<string, any, any>;
 
 /** Extracts the merged plugin data record from a tuple of plugins. */
 export type MergePluginData<Plugins extends readonly AnyPlugin[]> = {
@@ -47,3 +47,24 @@ type MergePluginOptionsInner<
     ? MergePluginOptionsInner<Tail, TOpts extends void ? Acc : Acc & TOpts>
   : Acc
   : Acc;
+
+/**
+ * Type for the extended factory function returned by `withPlugins`.
+ */
+// deno-lint-ignore no-explicit-any
+export type PluginOpts<Plugins extends readonly AnyPlugin[]> = MergePluginOptions<Plugins> extends infer O ? [keyof O] extends [never] ? void : O : void;
+
+export type PluginGuard<T, Plugins extends readonly AnyPlugin[]> = TypeGuard<T> & {
+  _: TypeGuard<T>["_"] & { plugins: MergePluginData<Plugins> };
+};
+
+export interface ExtendedFactory<Plugins extends readonly AnyPlugin[]> {
+  <T>(parser: Parser<T>): PluginGuard<T, Plugins>;
+  <T>(name: string, parser: Parser<T>): PluginGuard<T, Plugins>;
+  <const S extends TypeGuardShape>(shape: S): PluginGuard<InferShape<S>, Plugins>;
+  <const S extends TypeGuardShape>(name: string, shape: S): PluginGuard<InferShape<S>, Plugins>;
+  <T>(parser: Parser<T>, options: PluginOpts<Plugins>): PluginGuard<T, Plugins>;
+  <T>(name: string, parser: Parser<T>, options: PluginOpts<Plugins>): PluginGuard<T, Plugins>;
+  <const S extends TypeGuardShape>(shape: S, options: PluginOpts<Plugins>): PluginGuard<InferShape<S>, Plugins>;
+  <const S extends TypeGuardShape>(name: string, shape: S, options: PluginOpts<Plugins>): PluginGuard<InferShape<S>, Plugins>;
+}

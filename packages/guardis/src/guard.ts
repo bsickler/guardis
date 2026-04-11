@@ -28,6 +28,7 @@ import type {
   VerifiedShape,
 } from "./types.ts";
 import { createContext, createStrictContext } from "./context.ts";
+import type { AnyPlugin, ExtendedFactory } from "./plugin.ts";
 import { hasContext, hasName } from "./introspect.ts";
 import {
   doesNotHaveProperty,
@@ -1269,3 +1270,98 @@ isTupleOptional.assert = isTupleOptional.strict;
 isTuple.optional = isTupleOptional;
 
 export { isEmpty, isIterable, isNil, isNull, isTuple };
+
+/** Checks if a value looks like a TypeGuardShape (plain object, not function/array) */
+function isPluginPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value) &&
+    typeof value !== "function";
+}
+
+/** Checks if a plain object has at least one guard-like value (function or nested object) */
+function looksLikeShape(value: Record<string, unknown>): boolean {
+  const keys = Object.keys(value);
+  if (keys.length === 0) return false;
+  for (const key of keys) {
+    const v = value[key];
+    if (typeof v === "function") return true;
+    if (isPluginPlainObject(v)) return true;
+  }
+  return false;
+}
+
+/**
+ * Creates an extended factory function that applies plugins to every guard it creates.
+ * Validates that all plugin IDs are unique (throws TypeError on duplicates).
+ */
+function _withPlugins<const Plugins extends readonly AnyPlugin[]>(
+  ...plugins: Plugins
+): ExtendedFactory<Plugins> {
+  const ids = new Set<string>();
+  for (const plugin of plugins) {
+    if (ids.has(plugin.id)) {
+      throw new TypeError(`Duplicate plugin id: "${plugin.id}"`);
+    }
+    ids.add(plugin.id);
+  }
+
+  // deno-lint-ignore no-explicit-any
+  const factory = (...args: any[]): any => {
+    let name: string | undefined;
+    let parserOrShape: Parser | TypeGuardShape;
+    // deno-lint-ignore no-explicit-any
+    let pluginOptions: any;
+
+    if (typeof args[0] === "string") {
+      name = args[0];
+      parserOrShape = args[1];
+      pluginOptions = args[2];
+    } else if (typeof args[0] === "function") {
+      parserOrShape = args[0];
+      pluginOptions = args[1];
+    } else if (isPluginPlainObject(args[0])) {
+      if (args.length === 1 && looksLikeShape(args[0] as Record<string, unknown>)) {
+        parserOrShape = args[0] as TypeGuardShape;
+        pluginOptions = undefined;
+      } else if (args.length === 2) {
+        parserOrShape = args[0] as TypeGuardShape;
+        pluginOptions = args[1];
+      } else {
+        parserOrShape = args[0] as TypeGuardShape;
+        pluginOptions = undefined;
+      }
+    } else {
+      throw new TypeError("Invalid arguments to extended factory");
+    }
+
+    const pluginData: Record<string, unknown> = {};
+    let currentArgs: Parser | TypeGuardShape = parserOrShape;
+
+    for (const plugin of plugins) {
+      const result = plugin.init(name, currentArgs, pluginOptions);
+      currentArgs = result.args;
+      pluginData[plugin.id] = result.data;
+    }
+
+    const guard = name !== undefined
+      ? createTypeGuard(name, currentArgs as Parser)
+      : createTypeGuard(currentArgs as Parser);
+
+    guard._.plugins = pluginData;
+
+    return guard;
+  };
+
+  return factory as ExtendedFactory<Plugins>;
+}
+
+// Attach withPlugins as a static method on createTypeGuard
+// deno-lint-ignore no-explicit-any
+(createTypeGuard as any).withPlugins = _withPlugins;
+
+// Declaration merge: makes TypeScript aware of the .withPlugins static method
+// deno-lint-ignore no-namespace no-explicit-any
+export namespace createTypeGuard {
+  export declare function withPlugins<const Plugins extends readonly import("./plugin.ts").GuardPlugin<string, any, any>[]>(
+    ...plugins: Plugins
+  ): import("./plugin.ts").ExtendedFactory<Plugins>;
+}
