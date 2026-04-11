@@ -18,11 +18,12 @@ import type {
   JsonValue,
   NamedParser,
   NumberTypeGuard,
-  StringTypeGuard,
   Parser,
   ParserEntry,
   Predicate,
+  Simplify,
   StrictTypeGuard,
+  StringTypeGuard,
   TupleOfLength,
   TypeGuard,
   TypeGuardShape,
@@ -790,22 +791,24 @@ export const isBoolean: TypeGuard<boolean> = createTypeGuard(
  * Wraps a string TypeGuard with chainable length validation methods.
  * Each method delegates to .extend() and wraps the result for further chaining.
  */
-function withStringMethods(guard: TypeGuard<string>): StringTypeGuard {
-  const str = guard as StringTypeGuard;
-  str.ofLength = (n) => withStringMethods(guard.extend(`length == ${n}`, (v) => v.length === n ? v : null));
-  str.min = (n) => withStringMethods(guard.extend(`length >= ${n}`, (v) => v.length >= n ? v : null));
-  str.max = (n) => withStringMethods(guard.extend(`length <= ${n}`, (v) => v.length <= n ? v : null));
-  str.range = (min, max) =>
-    withStringMethods(
+function withStringMethods(guard: TypeGuard<string>): TypeGuard<string> & StringTypeGuard {
+  return Object.assign(guard, {
+    ofLength: (n: number) => guard.extend(`length == ${n}`, (v) => v.length === n ? v : null),
+    range: (min: number, max: number) =>
       guard.extend(`length ${min}..${max}`, (v) => v.length >= min && v.length <= max ? v : null),
-    );
-  return str;
+    min: (n: number) =>
+      withStringMethods(guard.extend(`length >= ${n}`, (v) => v.length >= n ? v : null)),
+    max: (n: number) =>
+      withStringMethods(guard.extend(`length <= ${n}`, (v) => v.length <= n ? v : null)),
+  }) as TypeGuard<string> & StringTypeGuard;
 }
 
-export const isString: StringTypeGuard = withStringMethods(createTypeGuard(
-  "string",
-  (t): string | null => typeof t === "string" ? t : null,
-));
+export const isString: TypeGuard<string> & Simplify<StringTypeGuard> = withStringMethods(
+  createTypeGuard(
+    "string",
+    (t): string | null => typeof t === "string" ? t : null,
+  ),
+);
 
 /**
  * Wraps a TypeGuard<number> with chainable comparison methods (gt, gte, lt, lte, eq).
@@ -938,7 +941,7 @@ const isNull: TypeGuard<null> = createTypeGuard<null>(
  */
 export const isJsonPrimitive: TypeGuard<JsonPrimitive> = unionOf(
   isBoolean,
-  isString as TypeGuard<string>,
+  isString,
   isNumber,
   isNull,
 );
@@ -959,7 +962,11 @@ export const isObject: TypeGuard<object> = createTypeGuard(
  * @param {unknown} t
  * @return {boolean}
  */
-export const isPropertyKey: TypeGuard<PropertyKey> = unionOf(isString as TypeGuard<string>, isNumber, isSymbol);
+export const isPropertyKey: TypeGuard<PropertyKey> = unionOf(
+  isString as TypeGuard<string>,
+  isNumber,
+  isSymbol,
+);
 
 /**
  * Returns true if input satisfies type object. _BEWARE_ object

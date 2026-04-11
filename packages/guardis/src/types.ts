@@ -342,15 +342,15 @@ export interface NumberTypeGuard extends TypeGuard<number> {
 }
 
 /** A string type guard with chainable length validation methods */
-export interface StringTypeGuard extends TypeGuard<string> {
+export interface StringTypeGuard {
   /** Checks string has exactly this length */
-  ofLength(length: number): StringTypeGuard;
+  ofLength(length: number): TypeGuard<string>;
   /** Checks string length >= min */
-  min(length: number): StringTypeGuard;
+  min(length: number): TypeGuard<string> & Omit<StringTypeGuard, "min" | "ofLength" | "range">;
   /** Checks string length <= max */
-  max(length: number): StringTypeGuard;
+  max(length: number): TypeGuard<string> & Omit<StringTypeGuard, "max" | "ofLength" | "range">;
   /** Checks string length is between min and max (inclusive) */
-  range(min: number, max: number): StringTypeGuard;
+  range(min: number, max: number): TypeGuard<string>;
 }
 
 /** An array type guard with chainable length validation methods */
@@ -423,10 +423,15 @@ type IsOptionalGuard<F> = F extends { _: { optional: true } } ? true : false;
 
 /** Recursively infers the TypeScript type from a TypeGuardShape */
 export type InferShape<S extends TypeGuardShape> = Simplify<
-  {
-    -readonly [K in keyof S as IsOptionalGuard<S[K]> extends true ? never : K]: InferShapeField<S[K]>;
-  } & {
-    -readonly [K in keyof S as IsOptionalGuard<S[K]> extends true ? K : never]?: InferShapeField<S[K]>;
+  & {
+    -readonly [K in keyof S as IsOptionalGuard<S[K]> extends true ? never : K]: InferShapeField<
+      S[K]
+    >;
+  }
+  & {
+    -readonly [K in keyof S as IsOptionalGuard<S[K]> extends true ? K : never]?: InferShapeField<
+      S[K]
+    >;
   }
 >;
 
@@ -437,9 +442,8 @@ type ShapeFieldFor<T> =
 
 /** Maps an optional property type to a guard that accepts T | undefined with the optional flag */
 type OptionalShapeFieldFor<T> =
-  | (((value: unknown) => value is (T | undefined)) & { _: { optional: true } })
-  | (T extends Record<string, unknown>
-    ? VerifiedShape<T> & { _: { optional: true } }
+  | (((value: unknown) => value is T | undefined) & { _: { optional: true } })
+  | (T extends Record<string, unknown> ? VerifiedShape<T> & { _: { optional: true } }
     : never);
 
 /**
