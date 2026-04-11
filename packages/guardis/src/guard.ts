@@ -25,6 +25,7 @@ import type {
   TupleOfLength,
   TypeGuard,
   TypeGuardShape,
+  VerifiedShape,
 } from "./types.ts";
 import { createContext, createStrictContext } from "./context.ts";
 import { hasContext, hasName } from "./introspect.ts";
@@ -425,6 +426,37 @@ export function createTypeGuard<const S extends TypeGuardShape>(
   name: string,
   shape: S,
 ): TypeGuard<InferShape<S>>;
+/**
+ * Creates a type guard from a shape object, verified against an explicit type parameter.
+ *
+ * The shape must match the structure of T1 — TypeScript will error if fields are
+ * missing, extra, or have wrong guard types. The returned guard is typed as
+ * `TypeGuard<T1>`, preserving your existing type as the source of truth.
+ *
+ * @param shape A shape object whose fields are verified against T1.
+ * @returns A type guard function typed as TypeGuard<T1>.
+ *
+ * @example
+ * ```typescript
+ * type User = { id: number; name: string };
+ * const isUser = createTypeGuard<User>({ id: isNumber, name: isString });
+ * ```
+ */
+export function createTypeGuard<T1 extends Record<string, unknown>>(
+  shape: VerifiedShape<T1>,
+): TypeGuard<T1>;
+/**
+ * Creates a type guard from a shape object with a custom name, verified against
+ * an explicit type parameter.
+ *
+ * @param name The type name to use for error messages.
+ * @param shape A shape object whose fields are verified against T1.
+ * @returns A type guard function typed as TypeGuard<T1>.
+ */
+export function createTypeGuard<T1 extends Record<string, unknown>>(
+  name: string,
+  shape: VerifiedShape<T1>,
+): TypeGuard<T1>;
 export function createTypeGuard<T1>(
   ...args: [Parser<T1> | TypeGuardShape] | [string, Parser<T1> | TypeGuardShape]
 ): TypeGuard<T1> {

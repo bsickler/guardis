@@ -410,3 +410,26 @@ export type InferShape<S extends TypeGuardShape> = Simplify<
     -readonly [K in keyof S as IsOptionalGuard<S[K]> extends true ? K : never]?: InferShapeField<S[K]>;
   }
 >;
+
+/** Maps a property type to the acceptable guard predicate or nested shape for that type */
+type ShapeFieldFor<T> =
+  | ((value: unknown) => value is T)
+  | (T extends Record<string, unknown> ? VerifiedShape<T> : never);
+
+/** Maps an optional property type to a guard that accepts T | undefined with the optional flag */
+type OptionalShapeFieldFor<T> =
+  | (((value: unknown) => value is (T | undefined)) & { _: { optional: true } })
+  | (T extends Record<string, unknown>
+    ? VerifiedShape<T> & { _: { optional: true } }
+    : never);
+
+/**
+ * Constrains a shape object so that each field must be a guard matching the
+ * corresponding property type in T. Required properties must have a non-optional
+ * guard; optional properties must use an OptionalTypeGuard.
+ */
+export type VerifiedShape<T> = {
+  [K in keyof T as K extends string ? K : never]-?: undefined extends T[K]
+    ? OptionalShapeFieldFor<Exclude<T[K], undefined>>
+    : ShapeFieldFor<T[K]>;
+};
