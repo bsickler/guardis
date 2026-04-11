@@ -857,12 +857,14 @@ export function isExactly<const T>(expected: T): TypeGuard<T> {
  * @param {unknown} t
  * @return {boolean}
  */
+const NUMERIC_RE = /^-?\d*\.?\d+$/;
+
 export const isNumeric: NumberTypeGuard = withComparisons(createTypeGuard(
   "numeric",
   (t): number | null => {
     if (isNumber(t)) return t as number;
 
-    if (!/^-?\d*\.?\d+$/.test(t as string)) return null;
+    if (!NUMERIC_RE.test(t as string)) return null;
 
     const _t = parseInt(t as string) || parseFloat(t as string);
 
