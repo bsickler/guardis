@@ -103,89 +103,116 @@ function propagateIssues(
 }
 
 /**
- * Validates a single shape field against its guard.
- * When ctx is provided, issues are pushed to the shared context.
- * When ctx is absent, issues are collected into localIssues.
+ * Pre-compiled field descriptor. Built once at createTypeGuard time to avoid
+ * per-call type dispatch and guard allocation in validateField.
  */
-function validateField(
+type FieldDescriptor =
+  | { kind: "typeGuard"; key: string; guard: TypeGuard<unknown> }
+  | { kind: "nested"; key: string; fields: FieldDescriptor[] }
+  | { kind: "typePredicate"; key: string; guard: (value: unknown) => boolean };
+
+/**
+ * Compiles a TypeGuardShape into a pre-resolved array of field descriptors.
+ * Classifies each field's guard type once and caches isExactly() guards for constants.
+ */
+function compileShape(shape: TypeGuardShape): FieldDescriptor[] {
+  const descriptors: FieldDescriptor[] = [];
+
+  for (const key of Object.keys(shape)) {
+    const guard = shape[key];
+
+    // Primitive constant — cache as a typeGuard wrapping isExactly
+    if (guard === null || (typeof guard !== "object" && typeof guard !== "function")) {
+      descriptors.push({ kind: "typeGuard", key, guard: isExactly(guard) });
+      continue;
+    }
+
+    // Nested shape — recursively compile
+    if (isTypeGuardShape(guard)) {
+      descriptors.push({ kind: "nested", key, fields: compileShape(guard) });
+      continue;
+    }
+
+    if (typeof guard !== "function") continue;
+
+    // TypeGuard (with _.context for path tracking)
+    if (hasContext(guard as Predicate<unknown>)) {
+      descriptors.push({
+        kind: "typeGuard",
+        key,
+        guard: guard as unknown as TypeGuard<unknown>,
+      });
+      continue;
+    }
+
+    // Plain type predicate function
+    descriptors.push({ kind: "typePredicate", key, guard: guard as (value: unknown) => boolean });
+  }
+
+  return descriptors;
+}
+
+/**
+ * Validates a single pre-compiled field descriptor against an object value.
+ */
+function validateCompiledField(
   obj: Record<string, unknown>,
-  key: string,
-  guard: TypeGuardShape[string],
+  desc: FieldDescriptor,
   ctx: Context | undefined,
   localIssues: StandardSchemaV1.Issue[],
   result: Record<string, unknown>,
 ): void {
+  const key = desc.key;
   const childCtx = ctx?.pushPath(key);
 
-  // Primitive constant — use exact equality check
-  if (guard === null || (typeof guard !== "object" && typeof guard !== "function")) {
-    const exactGuard = isExactly(guard);
-    const guardCtx = childCtx ?? createContext([key]);
-    const r = exactGuard._.context(obj[key], guardCtx);
-
-    if ("value" in r) {
-      result[key] = r.value;
-    } else if (childCtx) {
-      propagateIssues(r.issues, key, ctx!);
-    } else {
-      localIssues.push(...r.issues);
-    }
-    return;
-  }
-
-  // Nested shape — recurse
-  if (isTypeGuardShape(guard)) {
-    const r = validateShape(obj[key], guard, childCtx);
-
-    if ("value" in r) {
-      result[key] = r.value;
-    } else if (!childCtx) {
-      localIssues.push(...r.issues);
+  switch (desc.kind) {
+    case "nested": {
+      const r = validateCompiledShape(obj[key], desc.fields, childCtx);
+      if ("value" in r) {
+        result[key] = r.value;
+      } else if (!childCtx) {
+        localIssues.push(...r.issues);
+      }
+      break;
     }
 
-    return;
-  }
-
-  if (typeof guard !== "function") return;
-
-  // Context-aware guard (TypeGuard with _.context)
-  if (hasContext(guard as Predicate<unknown>)) {
-    const guardCtx = childCtx ?? createContext([key]);
-
-    const r = (guard as unknown as TypeGuard<unknown>)._.context(obj[key], guardCtx);
-    if ("value" in r) {
-      result[key] = r.value;
-    } else if (childCtx) {
-      propagateIssues(r.issues, key, ctx!);
-    } else {
-      localIssues.push(...r.issues);
+    case "typeGuard": {
+      const guardCtx = childCtx ?? createContext([key]);
+      const r = desc.guard._.context(obj[key], guardCtx);
+      if ("value" in r) {
+        result[key] = r.value;
+      } else if (childCtx) {
+        propagateIssues(r.issues, key, ctx!);
+      } else {
+        localIssues.push(...r.issues);
+      }
+      break;
     }
 
-    return;
-  }
-
-  // Plain boolean guard
-  if (guard(obj[key])) {
-    result[key] = obj[key];
-    return;
-  }
-
-  const message = `Validation failed for property "${String(key)}"`;
-  if (childCtx) {
-    childCtx.addIssue(message);
-  } else {
-    localIssues.push({ message, path: [key] });
+    case "typePredicate": {
+      if (desc.guard(obj[key])) {
+        result[key] = obj[key];
+      } else {
+        const message = `Validation failed for property "${String(key)}"`;
+        if (childCtx) {
+          childCtx.addIssue(message);
+        } else {
+          localIssues.push({ message, path: [key] });
+        }
+      }
+      break;
+    }
   }
 }
 
 /**
- * Recursively validates a value against a TypeGuardShape.
+ * Validates a value against pre-compiled field descriptors.
  * When ctx is provided, issues are pushed to the shared context for path tracking.
  * When ctx is absent, issues are collected locally and returned.
  */
-function validateShape(
+function validateCompiledShape(
   value: unknown,
-  shape: TypeGuardShape,
+  fields: FieldDescriptor[],
   ctx?: Context,
 ): StandardSchemaV1.Result<Record<string, unknown>> {
   if (!isRecord(value)) {
@@ -200,8 +227,8 @@ function validateShape(
   const result: Record<string, unknown> = {};
   const localIssues: StandardSchemaV1.Issue[] = [];
 
-  for (const key of Object.keys(shape)) {
-    validateField(value, key, shape[key], ctx, localIssues, result);
+  for (let i = 0; i < fields.length; i++) {
+    validateCompiledField(value, fields[i], ctx, localIssues, result);
   }
 
   const issues = ctx ? ctx.issues : localIssues;
@@ -381,6 +408,17 @@ const createNotEmptyTypeGuard = <T>(guard: Predicate<T>) => {
  * const isString = createTypeGuard(parseString);
  * ```
  */
+
+/** Pre-compiles a shape into a parser that uses cached field descriptors. */
+function compileShapeParser<T1>(shape: TypeGuardShape): Parser<T1> {
+  const fields = compileShape(shape);
+
+  return (val: unknown, helpers: HelpersWithContext) => {
+    const result = validateCompiledShape(val, fields, helpers._ctx);
+    return "value" in result ? result.value as T1 : null;
+  };
+}
+
 export function createTypeGuard<T1>(parser: Parser<T1>): TypeGuard<T1>;
 /**
  * Creates a type guard from a parser function with a custom type name.
@@ -433,21 +471,14 @@ export function createTypeGuard<T1>(
 
   // Convert shape to parser, then continue with normal guard creation
   const parser: Parser<T1> = isTypeGuardShape(parserOrShape)
-    ? (val, helpers) => {
-      const ctx = (helpers as HelpersWithContext)._ctx;
-      const result = validateShape(val, parserOrShape, ctx);
-      return "value" in result ? result.value as T1 : null;
-    }
-    : parserOrShape as Parser<T1>;
+    ? compileShapeParser(parserOrShape)
+    : parserOrShape;
 
   /**
    * Internal validation method that accepts a context for path tracking.
    * This is used by nested validations to propagate paths.
    */
-  const context = (
-    value: unknown,
-    ctx?: Context,
-  ): StandardSchemaV1.Result<T1> => {
+  const context = (value: unknown, ctx?: Context): StandardSchemaV1.Result<T1> => {
     const issuesBefore = ctx?.issues.length;
     const helpers = createHelpers(ctx);
     const result = parser(value, helpers);
