@@ -129,6 +129,17 @@ function createHelpers(ctx?: Context): HelpersWithContext {
 const defaultHelpers = createHelpers();
 
 /**
+ * Returns cached helpers for a Context, creating them on first access.
+ * Since the Context is a mutable cursor (one instance per validation call),
+ * a single helpers object works for all guards in the call tree.
+ */
+function getHelpers(ctx: Context): HelpersWithContext {
+  const c = ctx as Context & { _helpers?: HelpersWithContext };
+  if (!c._helpers) c._helpers = createHelpers(ctx);
+  return c._helpers;
+}
+
+/**
  * Checks if a value is a TypeGuardShape object (plain object, not a function).
  * Uses raw checks instead of isObject/isFunction to avoid temporal dead zone
  * issues — this function is called during createTypeGuard's implementation,
@@ -344,7 +355,7 @@ const createStrictTypeGuard = <T>(
 ): StrictTypeGuard<T> => {
   return (value: unknown, errorMsg?: string): value is T => {
     const ctx = createStrictContext();
-    const helpers = createHelpers(ctx);
+    const helpers = getHelpers(ctx);
     const result = parser(value, helpers);
 
     if (result === null) {
@@ -629,7 +640,7 @@ export function createTypeGuard<T1>(
     }
 
     const issuesBefore = ctx.issues.length;
-    const helpers = createHelpers(ctx);
+    const helpers = getHelpers(ctx);
     const result = parser(value, helpers);
 
     // If parser returned null and no child issues were added, add this guard's error
