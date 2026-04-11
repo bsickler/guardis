@@ -783,11 +783,6 @@ export const isBoolean: TypeGuard<boolean> = createTypeGuard(
 );
 
 /**
- * Returns true if input satisfies type string.
- * @param {unknown} t
- * @return {boolean}
- */
-/**
  * Wraps a string TypeGuard with chainable length validation methods.
  * Each method delegates to .extend() and wraps the result for further chaining.
  */
@@ -803,6 +798,11 @@ function withStringMethods(guard: TypeGuard<string>): TypeGuard<string> & String
   }) as TypeGuard<string> & StringTypeGuard;
 }
 
+/**
+ * Returns true if input satisfies type string.
+ * @param {unknown} t
+ * @return {boolean}
+ */
 export const isString: TypeGuard<string> & Simplify<StringTypeGuard> = withStringMethods(
   createTypeGuard(
     "string",
