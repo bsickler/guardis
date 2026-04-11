@@ -22,6 +22,7 @@ export interface GuardPlugin<TId extends string, TData, TOptions = void> {
   ): { args: Parser | TypeGuardShape; data: TData };
 }
 
+/** Internal shorthand exported for cross-module use in guard.ts. */
 // deno-lint-ignore no-explicit-any
 export type AnyPlugin = GuardPlugin<string, any, any>;
 
@@ -52,7 +53,7 @@ type MergePluginOptionsInner<
  * Type for the extended factory function returned by `withPlugins`.
  */
 // deno-lint-ignore no-explicit-any
-export type PluginOpts<Plugins extends readonly AnyPlugin[]> = MergePluginOptions<Plugins> extends infer O ? [keyof O] extends [never] ? void : O : void;
+type PluginOpts<Plugins extends readonly AnyPlugin[]> = MergePluginOptions<Plugins> extends infer O ? [keyof O] extends [never] ? void : O : void;
 
 export type PluginGuard<T, Plugins extends readonly AnyPlugin[]> = TypeGuard<T> & {
   _: TypeGuard<T>["_"] & { plugins: MergePluginData<Plugins> };

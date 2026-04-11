@@ -1293,7 +1293,7 @@ function looksLikeShape(value: Record<string, unknown>): boolean {
  * Creates an extended factory function that applies plugins to every guard it creates.
  * Validates that all plugin IDs are unique (throws TypeError on duplicates).
  */
-function _withPlugins<const Plugins extends readonly AnyPlugin[]>(
+function withPluginsImpl<const Plugins extends readonly AnyPlugin[]>(
   ...plugins: Plugins
 ): ExtendedFactory<Plugins> {
   const ids = new Set<string>();
@@ -1330,7 +1330,7 @@ function _withPlugins<const Plugins extends readonly AnyPlugin[]>(
         pluginOptions = undefined;
       }
     } else {
-      throw new TypeError("Invalid arguments to extended factory");
+      throw new TypeError("Invalid arguments to extended factory: first argument must be a name (string), parser (function), or shape (plain object)");
     }
 
     const pluginData: Record<string, unknown> = {};
@@ -1342,9 +1342,11 @@ function _withPlugins<const Plugins extends readonly AnyPlugin[]>(
       pluginData[plugin.id] = result.data;
     }
 
-    const guard = name !== undefined
-      ? createTypeGuard(name, currentArgs as Parser)
-      : createTypeGuard(currentArgs as Parser);
+    const guard = typeof currentArgs === "function"
+      ? (name !== undefined ? createTypeGuard(name, currentArgs) : createTypeGuard(currentArgs))
+      : (name !== undefined
+        ? createTypeGuard(name, currentArgs as TypeGuardShape)
+        : createTypeGuard(currentArgs as TypeGuardShape));
 
     guard._.plugins = pluginData;
 
@@ -1356,11 +1358,28 @@ function _withPlugins<const Plugins extends readonly AnyPlugin[]>(
 
 // Attach withPlugins as a static method on createTypeGuard
 // deno-lint-ignore no-explicit-any
-(createTypeGuard as any).withPlugins = _withPlugins;
+(createTypeGuard as any).withPlugins = withPluginsImpl;
 
 // Declaration merge: makes TypeScript aware of the .withPlugins static method
 // deno-lint-ignore no-namespace no-explicit-any
 export namespace createTypeGuard {
+  /**
+   * Creates an extended factory that applies plugins to every guard it creates.
+   * Each plugin's `init` hook runs once at guard creation time, attaching typed
+   * metadata to `guard._.plugins[pluginId]`.
+   *
+   * @param plugins One or more GuardPlugin instances with unique IDs
+   * @returns An extended factory with the same overloads as createTypeGuard,
+   *          plus an optional plugin options argument
+   * @throws TypeError if two plugins share the same id
+   *
+   * @example
+   * ```typescript
+   * const create = createTypeGuard.withPlugins(myPlugin);
+   * const isUser = create("User", { name: isString }, { description: "A user" });
+   * isUser._.plugins.myPluginId // typed metadata from the plugin
+   * ```
+   */
   export declare function withPlugins<const Plugins extends readonly import("./plugin.ts").GuardPlugin<string, any, any>[]>(
     ...plugins: Plugins
   ): import("./plugin.ts").ExtendedFactory<Plugins>;
