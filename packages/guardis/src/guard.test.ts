@@ -7,8 +7,10 @@ import {
   isBoolean,
   isDate,
   isEmpty,
+  isEnum,
   isExactly,
   isFunction,
+  isInt,
   isIterable,
   isJsonArray,
   isJsonObject,
@@ -5278,12 +5280,14 @@ Deno.test("shape optional property inference", async (t) => {
       avatar: isString.optional,
     });
     type Profile = typeof isProfile._TYPE;
-    assertType<Equals<Profile, {
-      name: string;
-      age: number;
-      bio?: string | undefined;
-      avatar?: string | undefined;
-    }>>();
+    assertType<
+      Equals<Profile, {
+        name: string;
+        age: number;
+        bio?: string | undefined;
+        avatar?: string | undefined;
+      }>
+    >();
   });
 
   await t.step("runtime accepts missing optional properties", () => {
@@ -5494,9 +5498,7 @@ Deno.test("array length methods", async (t) => {
   });
 
   await t.step("extend after length method", () => {
-    const guard = isArray.of(isNumber).min(1).extend((v) =>
-      v.every((n) => n > 0) ? v : null
-    );
+    const guard = isArray.of(isNumber).min(1).extend((v) => v.every((n) => n > 0) ? v : null);
     assert(guard([1, 2, 3]));
     assertFalse(guard([]));
     assertFalse(guard([-1, 2]));
@@ -5519,6 +5521,54 @@ Deno.test("array length methods", async (t) => {
     assertEquals(isForm.validate({ items: [1, 2] }), { value: { items: [1, 2] } });
     const result = isForm.validate({ items: [] });
     assert(!("value" in result));
+  });
+});
+
+Deno.test("string length methods", async (t) => {
+  await t.step("min", () => {
+    assert(isString.min(1)("hello"));
+    assertFalse(isString.min(1)(""));
+  });
+
+  await t.step("max", () => {
+    assert(isString.max(5)("hi"));
+    assertFalse(isString.max(3)("toolong"));
+  });
+
+  await t.step("ofLength", () => {
+    assert(isString.ofLength(3)("abc"));
+    assertFalse(isString.ofLength(3)("ab"));
+  });
+
+  await t.step("range", () => {
+    assert(isString.range(1, 10)("hello"));
+    assertFalse(isString.range(1, 10)(""));
+  });
+
+  await t.step("chaining min and max", () => {
+    assert(isString.min(1).max(255)("hello"));
+    assertFalse(isString.min(1).max(255)(""));
+  });
+
+  await t.step("edge case: ofLength(0)", () => {
+    assert(isString.ofLength(0)(""));
+  });
+
+  await t.step("strict throws on invalid", () => {
+    assertThrows(() => isString.min(1).strict(""));
+  });
+
+  await t.step("validate returns issues on invalid", () => {
+    const result = isString.min(1).validate("");
+    assert(!("value" in result));
+    assert("issues" in result);
+  });
+
+  await t.step("non-string input rejected", () => {
+    assertFalse(isString.min(1)(42));
+    assertFalse(isString.max(5)(null));
+    assertFalse(isString.ofLength(3)(undefined));
+    assertFalse(isString.range(1, 10)(123));
   });
 });
 
@@ -5804,5 +5854,144 @@ Deno.test("Parser auto-compilation safety", async (t) => {
     assert(isPerson({ name: "Alice", address: { city: "NYC", zip: "10001" } }));
     assertFalse(isPerson({ name: "Alice", address: { city: "NYC" } }));
     assertFalse(isPerson({ name: "Alice" }));
+  });
+});
+
+Deno.test("isInt", async (t) => {
+  await t.step("basic functionality", () => {
+    // Valid inputs
+    assert(isInt(42));
+    assert(isInt(-1));
+    assert(isInt(0));
+
+    // Invalid inputs
+    assertFalse(isInt(3.14));
+    assertFalse(isInt(NaN));
+    assertFalse(isInt(Infinity));
+    assertFalse(isInt("42"));
+  });
+
+  await t.step("chaining comparisons", () => {
+    assert(isInt.gt(0).lt(100)(50));
+    assertFalse(isInt.gt(0).lt(100)(0));
+    assertFalse(isInt.gt(0).lt(100)(100));
+  });
+
+  await t.step("strict mode", () => {
+    isInt.strict(42);
+    assertThrows(() => isInt.strict(3.14));
+  });
+
+  await t.step("validate method", () => {
+    assertEquals(isInt.validate(42), { value: 42 });
+    const result = isInt.validate(3.14);
+    assert("issues" in result);
+  });
+
+  await t.step("optional mode", () => {
+    assert(isInt.optional(undefined));
+    assert(isInt.optional(42));
+    assertFalse(isInt.optional(3.14));
+  });
+});
+
+Deno.test("isNumber.finite", async (t) => {
+  await t.step("basic functionality", () => {
+    assert(isNumber.finite(42));
+    assert(isNumber.finite(-3.14));
+
+    assertFalse(isNumber.finite(Infinity));
+    assertFalse(isNumber.finite(-Infinity));
+  });
+
+  await t.step("chaining after finite", () => {
+    assert(isNumber.finite.gte(0)(5));
+    assertFalse(isNumber.finite.gte(0)(-1));
+  });
+
+  await t.step("strict mode", () => {
+    isNumber.finite.strict(42);
+    assertThrows(() => isNumber.finite.strict(Infinity));
+  });
+});
+
+Deno.test("isEnum", async (t) => {
+  // Define test enums
+  enum Color {
+    Red = "red",
+    Green = "green",
+    Blue = "blue",
+  }
+  enum Direction {
+    Up = 0,
+    Down = 1,
+    Left = 2,
+    Right = 3,
+  }
+  enum Mixed {
+    Name = "alice",
+    Age = 30,
+  }
+
+  const isColor = isEnum(Color);
+  const isDirection = isEnum(Direction);
+
+  await t.step("validates string enum members", () => {
+    assert(isColor("red"));
+    assert(isColor("green"));
+    assert(isColor("blue"));
+  });
+
+  await t.step("rejects non-members of string enum", () => {
+    assertFalse(isColor("yellow"));
+    assertFalse(isColor(""));
+    assertFalse(isColor(42));
+  });
+
+  await t.step("validates numeric enum members", () => {
+    assert(isDirection(0));
+    assert(isDirection(1));
+    assert(isDirection(3));
+  });
+
+  await t.step("rejects non-members of numeric enum", () => {
+    assertFalse(isDirection(4));
+    assertFalse(isDirection(-1));
+    // Reverse mapping keys should NOT be valid
+    assertFalse(isDirection("Up"));
+    assertFalse(isDirection("Down"));
+  });
+
+  await t.step("handles mixed enum", () => {
+    const isMixed = isEnum(Mixed);
+    assert(isMixed("alice"));
+    assert(isMixed(30));
+    assertFalse(isMixed("bob"));
+    assertFalse(isMixed(31));
+  });
+
+  await t.step("strict mode throws on non-member", () => {
+    assertThrows(() => isColor.strict("yellow"));
+  });
+
+  await t.step("validate mode returns issues", () => {
+    const result = isColor.validate("yellow");
+    assert("issues" in result && result.issues);
+  });
+
+  await t.step("optional accepts undefined", () => {
+    assert(isColor.optional(undefined));
+    assert(isColor.optional("red"));
+  });
+
+  await t.step("works in shapes", () => {
+    const isPayload = createTypeGuard({ color: isColor });
+    assert(isPayload({ color: "red" }));
+    assertFalse(isPayload({ color: "yellow" }));
+  });
+
+  await t.step("inferred type matches the original enum", () => {
+    assertType<Equals<typeof isColor._TYPE, typeof Color[keyof typeof Color]>>();
+    assertType<Equals<typeof isDirection._TYPE, typeof Direction[keyof typeof Direction]>>();
   });
 });
