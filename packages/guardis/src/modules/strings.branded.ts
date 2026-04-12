@@ -2,8 +2,7 @@
  * This module provides type guards for common string patterns.
  */
 
-import type { Brand } from "../brand.ts";
-import type { TypeGuard } from "../types.ts";
+import type { Brand, TypeGuard } from "../types.ts";
 import {
   isCommaDelimited as _isCommaDelimited,
   isCommaDelimitedIntegers as _isCommaDelimitedIntegers,
