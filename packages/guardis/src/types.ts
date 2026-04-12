@@ -2,6 +2,12 @@ import type { StandardSchemaV1 } from "../specs/standard-schema-spec.v1.ts";
 import type { exact, includes, tupleHas } from "./utilities.ts";
 
 /**
+ * Creates a nominal type by intersecting a base type `T` with a unique brand `B`.
+ * This helps distinguish between types that are structurally identical but conceptually different.
+ */
+export type Brand<T, B extends string> = T & { readonly __brand: B };
+
+/**
  * Context for tracking validation paths and collecting issues during validation.
  * Only present during `validate()` calls, not during regular type guard checks.
  *
@@ -157,6 +163,21 @@ export interface TypeGuard<T1> extends StandardSchemaV1<T1> {
    * @returns
    */
   validate: (value: unknown) => StandardSchemaV1.Result<T1>;
+
+  /**
+   * Returns the same guard retyped as a branded type. No runtime cost — the
+   * guard's validation logic is unchanged, only the TypeScript type narrows
+   * from `T` to `Brand<T, B>`.
+   *
+   * @example
+   * ```typescript
+   * const isUserId = isString.min(1).brand("UserId");
+   * type UserId = typeof isUserId._TYPE; // string & { readonly __brand: "UserId" }
+   *
+   * const isPositiveInt = isInt.gt(0).brand("PositiveInt");
+   * ```
+   */
+  brand<B extends string>(label: B): TypeGuard<Brand<T1, B>>;
 
   /**
    * Extends the current type guard with an additional parser, building upon

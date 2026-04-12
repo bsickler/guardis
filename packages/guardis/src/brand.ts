@@ -1,11 +1,5 @@
 import { createTypeGuard } from "./guard.ts";
-import type { InferShape, Parser, TypeGuard, TypeGuardShape } from "./types.ts";
-
-/**
- * Creates a nominal type by intersecting a base type `T` with a unique brand `B`.
- * This helps distinguish between types that are structurally identical but conceptually different.
- */
-export type Brand<T, B extends string> = T & { readonly __brand: B };
+import type { Brand, InferShape, Parser, TypeGuard, TypeGuardShape } from "./types.ts";
 
 /**
  * Removes the property with the key `brand` from the given type `T`.

@@ -471,3 +471,64 @@ Deno.test("RemoveBrand - compile-time type stripping", () => {
   assertType<Equals<RemoveBrand<Brand<number, "X">>, number>>();
   assertType<Equals<RemoveBrand<Brand<{ a: string }, "X">>, { a: string }>>();
 });
+
+// === .brand() method tests ===
+
+Deno.test(".brand() method", async (t) => {
+  await t.step("brands a primitive guard", () => {
+    const isUserId = isString.brand("UserId");
+
+    assert(isUserId("hello"));
+    assertFalse(isUserId(42));
+
+    // Type-level: _TYPE is Brand<string, "UserId">
+    assertType<Equals<typeof isUserId._TYPE, Brand<string, "UserId">>>();
+  });
+
+  await t.step("brands a number guard", () => {
+    const isAge = isNumber.brand("Age");
+
+    assert(isAge(25));
+    assertFalse(isAge("25"));
+
+    assertType<Equals<typeof isAge._TYPE, Brand<number, "Age">>>();
+  });
+
+  await t.step("brands a shape guard", () => {
+    const isUser = createTypeGuard({ name: isString, age: isNumber }).brand("User");
+
+    assert(isUser({ name: "Alice", age: 30 }));
+    assertFalse(isUser({ name: "Alice" }));
+
+    assertType<
+      Equals<typeof isUser._TYPE, Brand<{ name: string; age: number }, "User">>
+    >();
+  });
+
+  await t.step("preserves full guard API", () => {
+    const isUserId = isString.brand("UserId");
+
+    // .strict() works
+    isUserId.strict("hello");
+    assertThrows(() => isUserId.strict(42));
+
+    // .validate() works
+    const valid = isUserId.validate("hello");
+    assert("value" in valid);
+
+    const invalid = isUserId.validate(42);
+    assert("issues" in invalid);
+
+    // .optional works
+    assert(isUserId.optional(undefined));
+    assert(isUserId.optional("hello"));
+  });
+
+  await t.step("branded guard is the same object (zero runtime cost)", () => {
+    const base = isString;
+    const branded = base.brand("Label");
+    // Same validation function — brand is purely type-level
+    assert(base("test") === branded("test"));
+    assert(base(42) === branded(42));
+  });
+});
