@@ -302,43 +302,20 @@ export type ReplaceTupleIndex<T extends readonly unknown[], X extends number, R>
   readonly [K in keyof T]: K extends `${X}` ? R : T[K];
 };
 
-/** A numeric type guard with chainable comparison methods */
-export interface NumberTypeGuard extends TypeGuard<number> {
-  /**
-   * Returns a guard that checks if the value is greater than the threshold.
-   * Chainable for range validation.
-   * @param threshold The value must be strictly greater than this number
-   * @returns A new NumberTypeGuard with the comparison applied
-   */
-  gt(threshold: number): NumberTypeGuard;
-  /**
-   * Returns a guard that checks if the value is greater than or equal to the threshold.
-   * Chainable for range validation.
-   * @param threshold The value must be greater than or equal to this number
-   * @returns A new NumberTypeGuard with the comparison applied
-   */
-  gte(threshold: number): NumberTypeGuard;
-  /**
-   * Returns a guard that checks if the value is less than the threshold.
-   * Chainable for range validation.
-   * @param threshold The value must be strictly less than this number
-   * @returns A new NumberTypeGuard with the comparison applied
-   */
-  lt(threshold: number): NumberTypeGuard;
-  /**
-   * Returns a guard that checks if the value is less than or equal to the threshold.
-   * Chainable for range validation.
-   * @param threshold The value must be less than or equal to this number
-   * @returns A new NumberTypeGuard with the comparison applied
-   */
-  lte(threshold: number): NumberTypeGuard;
-  /**
-   * Returns a guard that checks if the value is strictly equal to the target.
-   * Chainable for range validation.
-   * @param target The value must be strictly equal to this number
-   * @returns A new NumberTypeGuard with the comparison applied
-   */
-  eq(target: number): NumberTypeGuard;
+/** Chainable number comparison methods */
+export interface NumberTypeGuard {
+  /** Lower bound (exclusive). Can chain with lt/lte/eq. */
+  gt(threshold: number): TypeGuard<number> & Omit<NumberTypeGuard, "gt" | "gte" | "eq">;
+  /** Lower bound (inclusive). Can chain with lt/lte/eq. */
+  gte(threshold: number): TypeGuard<number> & Omit<NumberTypeGuard, "gt" | "gte" | "eq">;
+  /** Upper bound (exclusive). Can chain with gt/gte/eq. */
+  lt(threshold: number): TypeGuard<number> & Omit<NumberTypeGuard, "lt" | "lte" | "eq">;
+  /** Upper bound (inclusive). Can chain with gt/gte/eq. */
+  lte(threshold: number): TypeGuard<number> & Omit<NumberTypeGuard, "lt" | "lte" | "eq">;
+  /** Exact value (terminal). */
+  eq(target: number): TypeGuard<number>;
+  /** Rejects Infinity and -Infinity. Allows further comparisons. */
+  finite: TypeGuard<number> & Omit<NumberTypeGuard, "finite">;
 }
 
 /** A string type guard with chainable length validation methods */

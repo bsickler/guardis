@@ -25,6 +25,7 @@ export const Is = {
   Boolean: g.isBoolean,
   String: g.isString,
   Number: g.isNumber,
+  Int: g.isInt,
   Binary: g.isBinary,
   Numeric: g.isNumeric,
   Symbol: g.isSymbol,

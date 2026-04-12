@@ -814,13 +814,18 @@ export const isString: TypeGuard<string> & Simplify<StringTypeGuard> = withStrin
  * Wraps a TypeGuard<number> with chainable comparison methods (gt, gte, lt, lte, eq).
  * Each method delegates to .extend() and wraps the result for further chaining.
  */
-function withComparisons(guard: TypeGuard<number>): NumberTypeGuard {
-  const numeric = guard as NumberTypeGuard;
+function withComparisons(guard: TypeGuard<number>): TypeGuard<number> & NumberTypeGuard {
+  const numeric = guard as TypeGuard<number> & NumberTypeGuard;
   numeric.gt = (n) => withComparisons(guard.extend(`> ${n}`, (v) => v > n ? v : null));
   numeric.gte = (n) => withComparisons(guard.extend(`>= ${n}`, (v) => v >= n ? v : null));
   numeric.lt = (n) => withComparisons(guard.extend(`< ${n}`, (v) => v < n ? v : null));
   numeric.lte = (n) => withComparisons(guard.extend(`<= ${n}`, (v) => v <= n ? v : null));
-  numeric.eq = (n) => withComparisons(guard.extend(`== ${n}`, (v) => v === n ? v : null));
+  numeric.eq = (n) => guard.extend(`== ${n}`, (v) => v === n ? v : null);
+  Object.defineProperty(numeric, "finite", {
+    get: () => withComparisons(guard.extend("finite", (v) => Number.isFinite(v) ? v : null)),
+    enumerable: true,
+    configurable: true,
+  });
   return numeric;
 }
 
@@ -833,9 +838,20 @@ function withComparisons(guard: TypeGuard<number>): NumberTypeGuard {
  * @param {unknown} t
  * @return {boolean}
  */
-export const isNumber: NumberTypeGuard = withComparisons(createTypeGuard(
+export const isNumber: TypeGuard<number> & NumberTypeGuard = withComparisons(createTypeGuard(
   "number",
   (t): number | null => typeof t === "number" && !Number.isNaN(t) ? t : null,
+));
+
+/**
+ * Returns true if input is an integer. Rejects NaN, Infinity, and non-integer numbers.
+ *
+ * @param {unknown} t
+ * @return {boolean}
+ */
+export const isInt: TypeGuard<number> & NumberTypeGuard = withComparisons(createTypeGuard(
+  "integer",
+  (t): number | null => typeof t === "number" && Number.isInteger(t) ? t : null,
 ));
 
 /**
@@ -890,7 +906,7 @@ export function isExactly<const T>(expected: T): TypeGuard<T> {
  */
 const NUMERIC_RE = /^-?\d*\.?\d+$/;
 
-export const isNumeric: NumberTypeGuard = withComparisons(createTypeGuard(
+export const isNumeric: TypeGuard<number> & NumberTypeGuard = withComparisons(createTypeGuard(
   "numeric",
   (t): number | null => {
     if (isNumber(t)) return t as number;
