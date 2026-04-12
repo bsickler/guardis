@@ -50,11 +50,16 @@ type Helpers = {
     guard?: (v: unknown) => v is G,
     errorMessage?: string,
   ) => t is { [K2 in K]+?: G };
-  tupleHas: typeof tupleHas;
-  includes: typeof includes;
+  tupleHas: <T extends readonly unknown[], I extends number, G = unknown>(
+    t: T,
+    i: I,
+    guard: (v: unknown) => v is G,
+    ctx?: Context,
+  ) => t is T & { [K in I]: G };
+  includes: <T extends readonly unknown[]>(t: T, v: unknown) => v is T[number];
   /** Check if a key exists in an object with optional custom error message */
   keyOf: <T extends object>(k: unknown, t: T, errorMessage?: string) => k is keyof T;
-  exact: typeof exact;
+  exact: <const T>(expected: T, v: unknown) => v is T;
   /** Returns null and adds custom error message to context if during validation */
   fail: (message: string) => null;
 };

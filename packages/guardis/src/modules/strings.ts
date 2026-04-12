@@ -2,7 +2,7 @@
  * Type guards for common string formats such as email, phone numbers, and UUIDs.
  * These guards extend the basic string type guard to include regex-based validation.
  */
-import { isString } from "../guard.ts";
+import { isString } from "./primitives.ts";
 import type { TypeGuard } from "../types.ts";
 
 /** A regex statement to detect _most_ email formats. */

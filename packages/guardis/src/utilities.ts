@@ -268,6 +268,24 @@ export function formatErrorMessage(value: unknown, name?: string): string {
  * @param guards - The type guards to combine into a union.
  * @returns A type guard that accepts any value accepted by at least one of the provided guards.
  */
+/**
+ * Returns true if a value is "empty" — null, undefined, whitespace-only string,
+ * zero-length array, or plain object with no own keys.
+ *
+ * This is the raw predicate backing the isEmpty TypeGuard. It lives here (not in
+ * guard.ts) so that createNotEmptyTypeGuard can use it without a circular import
+ * on the isEmpty TypeGuard defined in primitives.ts.
+ */
+export function isEmptyValue(value: unknown): boolean {
+  if (value === null || value === undefined) return true;
+  if (typeof value === "string") return value.trim() === "";
+  if (Array.isArray(value)) return value.length === 0;
+  if (typeof value === "object" && Object.getPrototypeOf(value) === Object.prototype) {
+    return Object.keys(value).length === 0;
+  }
+  return false;
+}
+
 export const unionOf = <G extends readonly [TypeGuard<unknown>, ...TypeGuard<unknown>[]]>(
   ...guards: G
 ): TypeGuard<GuardedType<G[number]>> => {

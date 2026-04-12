@@ -1,5 +1,6 @@
 import { assert, assertEquals, assertFalse, assertThrows } from "@std/assert";
-import { createTypeGuard, isArray, isBoolean, isNull, isNumber, isString } from "./guard.ts";
+import { createTypeGuard, isNull } from "./guard.ts";
+import { isArray, isBoolean, isNumber, isString } from "./modules/primitives.ts";
 import type { TypeGuard } from "./types.ts";
 import {
   doesNotHaveProperty,

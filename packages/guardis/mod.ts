@@ -5,15 +5,38 @@
  *
  * @module Guardis
  */
+import { isExactly, isNull, isUndefined } from "./src/guard.ts";
+import {
+  isArray,
+  isBinary,
+  isBoolean,
+  isDate,
+  isEmpty,
+  isEnum,
+  isFunction,
+  isInt,
+  isIterable,
+  isJsonArray,
+  isJsonObject,
+  isJsonPrimitive,
+  isJsonValue,
+  isNil,
+  isNumber,
+  isNumeric,
+  isObject,
+  isPropertyKey,
+  isString,
+  isSymbol,
+  isTuple,
+} from "./src/modules/primitives.ts";
 
 export * from "./src/guard.ts";
+export * from "./src/modules/primitives.ts";
 export * from "./src/extend.ts";
 export * from "./src/batch.ts";
 export * from "./src/brand.ts";
 export * from "./src/types.ts";
 export { unionOf } from "./src/utilities.ts";
-
-import * as g from "./src/guard.ts";
 
 /**
  * "Is" serves as the main libray object and contains
@@ -22,28 +45,28 @@ import * as g from "./src/guard.ts";
  * type guards for their respective types.
  */
 export const Is = {
-  Boolean: g.isBoolean,
-  String: g.isString,
-  Number: g.isNumber,
-  Int: g.isInt,
-  Binary: g.isBinary,
-  Numeric: g.isNumeric,
-  Symbol: g.isSymbol,
-  Function: g.isFunction,
-  Object: g.isObject,
-  PropertyKey: g.isPropertyKey,
-  Undefined: g.isUndefined,
-  Array: g.isArray,
-  JsonPrimitive: g.isJsonPrimitive,
-  JsonArray: g.isJsonArray,
-  JsonObject: g.isJsonObject,
-  JsonValue: g.isJsonValue,
-  Null: g.isNull,
-  Nil: g.isNil,
-  Empty: g.isEmpty,
-  Iterable: g.isIterable,
-  Tuple: g.isTuple,
-  Date: g.isDate,
-  Exactly: g.isExactly,
-  Enum: g.isEnum,
+  Boolean: isBoolean,
+  String: isString,
+  Number: isNumber,
+  Int: isInt,
+  Binary: isBinary,
+  Numeric: isNumeric,
+  Symbol: isSymbol,
+  Function: isFunction,
+  Object: isObject,
+  PropertyKey: isPropertyKey,
+  Undefined: isUndefined,
+  Array: isArray,
+  JsonPrimitive: isJsonPrimitive,
+  JsonArray: isJsonArray,
+  JsonObject: isJsonObject,
+  JsonValue: isJsonValue,
+  Null: isNull,
+  Nil: isNil,
+  Empty: isEmpty,
+  Iterable: isIterable,
+  Tuple: isTuple,
+  Date: isDate,
+  Exactly: isExactly,
+  Enum: isEnum,
 } as const;
