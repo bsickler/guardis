@@ -535,25 +535,6 @@ const createNotEmptyTypeGuard = <T>(guard: Predicate<T>) => {
 };
 
 /**
- * Creates a type guard from a parser function.
- *
- * The parser should perform whatever checks are necessary to safely establish
- * that the input is of the specified type.
- *
- * Injects the `has` utility method as the second argument of any parser, as
- * a convenience to check if a property exists in an object.
- *
- * @param parser A function that returns the value if valid, or null if invalid.
- * @returns A type guard function with utility methods.
- *
- * @example
- * ```typescript
- * const parseString = (val: unknown): string | null => typeof val === 'string' ? val : null;
- * const isString = createTypeGuard(parseString);
- * ```
- */
-
-/**
  * Classifies a guard into a FieldDescriptor, reusing the same logic as compileShape.
  */
 function classifyGuard(
@@ -561,8 +542,9 @@ function classifyGuard(
   guard: ((v: unknown) => boolean) | TypeGuard<unknown>,
 ): FieldDescriptor {
   if (hasContext(guard as Predicate<unknown>)) {
-    return { kind: "typeGuard", key, guard: guard as unknown as TypeGuard<unknown> };
+    return { kind: "typeGuard", key, guard: guard as TypeGuard<unknown> };
   }
+
   return { kind: "typePredicate", key, guard: guard as (value: unknown) => boolean };
 }
 
@@ -603,6 +585,7 @@ function tryCompileParser<T1>(parser: Parser<T1>): Parser<T1> | null {
   const probeHelpers: HelpersWithContext = {
     has: ((_t: object, k: PropertyKey, guard?: (v: unknown) => boolean) => {
       if (failed) return true;
+
       if (guard) {
         fields.push(classifyGuard(String(k), guard));
       } else {
@@ -612,20 +595,26 @@ function tryCompileParser<T1>(parser: Parser<T1>): Parser<T1> | null {
     }) as HelpersWithContext["has"],
     hasOptional: ((_t: object, k: PropertyKey, guard?: (v: unknown) => boolean) => {
       if (failed) return true;
+
       if (guard && hasContext(guard as Predicate<unknown>)) {
-        const g = guard as unknown as TypeGuard<unknown>;
+        const g = guard as TypeGuard<unknown>;
         if (g.optional) {
-          fields.push({ kind: "typeGuard", key: String(k), guard: g.optional as unknown as TypeGuard<unknown> });
+          fields.push({
+            kind: "typeGuard",
+            key: String(k),
+            guard: g.optional as TypeGuard<unknown>,
+          });
         } else {
           fields.push(classifyGuard(String(k), guard));
         }
       } else if (guard) {
-        fields.push({ kind: "typePredicate", key: String(k), guard: guard as (v: unknown) => boolean });
+        fields.push({ kind: "typePredicate", key: String(k), guard });
       }
       return true;
     }) as HelpersWithContext["hasOptional"],
     hasNot: ((_t: object, k: PropertyKey) => {
       if (failed) return true;
+
       fields.push({ kind: "absent", key: String(k) });
       return true;
     }) as HelpersWithContext["hasNot"],
@@ -663,10 +652,10 @@ function tryCompileParser<T1>(parser: Parser<T1>): Parser<T1> | null {
   // but fall back to the original parser for the validate path to preserve
   // exact behavioral parity (original object returned, custom error messages, etc.)
   return (val: unknown, helpers: HelpersWithContext) => {
-    const ctx = helpers._ctx;
-    if (ctx === undefined) {
+    if (helpers._ctx === undefined) {
       return validateCompiledShapeBoolean(val, fields) ? (val as T1) : null;
     }
+
     // Validate path: use original parser to preserve exact error messages and return value
     return parser(val, helpers);
   };
@@ -685,10 +674,29 @@ function compileShapeParser<T1>(shape: TypeGuardShape): Parser<T1> {
     }
     // Slow path: caller wants issue tracking via .validate() or nested validation.
     const result = validateCompiledShape(val, fields, ctx);
+
     return "value" in result ? result.value as T1 : null;
   };
 }
 
+/**
+ * Creates a type guard from a parser function.
+ *
+ * The parser should perform whatever checks are necessary to safely establish
+ * that the input is of the specified type.
+ *
+ * Injects the `has` utility method as the second argument of any parser, as
+ * a convenience to check if a property exists in an object.
+ *
+ * @param parser A function that returns the value if valid, or null if invalid.
+ * @returns A type guard function with utility methods.
+ *
+ * @example
+ * ```typescript
+ * const parseString = (val: unknown): string | null => typeof val === 'string' ? val : null;
+ * const isString = createTypeGuard(parseString);
+ * ```
+ */
 export function createTypeGuard<T1>(parser: Parser<T1>): TypeGuard<T1>;
 /**
  * Creates a type guard from a parser function with a custom type name.
@@ -876,11 +884,12 @@ export function createTypeGuard<T1>(
    */
   callback.notEmpty = createNotEmptyTypeGuard(callback);
 
-  type OptionalTypeGuard = ReturnType<typeof createOptionalTypeGuard<T1>> & {
-    notEmpty: typeof callback.notEmpty.optional;
-  };
+  const optional = createOptionalTypeGuard(callback, parser, context) as
+    & ReturnType<typeof createOptionalTypeGuard<T1>>
+    & {
+      notEmpty: typeof callback.notEmpty.optional;
+    };
 
-  const optional = createOptionalTypeGuard(callback, parser, context) as OptionalTypeGuard;
   optional.notEmpty = callback.notEmpty.optional;
   callback.optional = optional;
 
