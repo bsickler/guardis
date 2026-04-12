@@ -1,9 +1,9 @@
 import { assert, assertEquals, assertFalse, assertThrows } from "@std/assert";
-import { type Brand, createBrandedTypeGuard, type RemoveBrand } from "./brand.ts";
+import { createBrandedTypeGuard, type RemoveBrand } from "./brand.ts";
 import { createTypeGuard, isNumber, isObject, isString } from "./guard.ts";
 import { hasMeta, hasName } from "./introspect.ts";
-import type { TypeGuard } from "./types.ts";
-import { type Equals, assertType } from "./test-utils.ts";
+import type { Brand, TypeGuard } from "./types.ts";
+import { assertType, type Equals } from "./test-utils.ts";
 
 // === Branded primitive types ===
 
