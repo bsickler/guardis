@@ -25,6 +25,7 @@ export const Is = {
   Boolean: g.isBoolean,
   String: g.isString,
   Number: g.isNumber,
+  Int: g.isInt,
   Binary: g.isBinary,
   Numeric: g.isNumeric,
   Symbol: g.isSymbol,
@@ -44,4 +45,5 @@ export const Is = {
   Tuple: g.isTuple,
   Date: g.isDate,
   Exactly: g.isExactly,
+  Enum: g.isEnum,
 } as const;
