@@ -302,37 +302,16 @@ export type ReplaceTupleIndex<T extends readonly unknown[], X extends number, R>
   readonly [K in keyof T]: K extends `${X}` ? R : T[K];
 };
 
-/** A numeric type guard with chainable comparison methods */
-/** Number comparison methods available after setting a lower bound */
-type NumberAfterLower = {
-  /** Upper bound (exclusive). Chainable with eq. */
-  lt(threshold: number): TypeGuard<number> & { eq(target: number): TypeGuard<number> };
-  /** Upper bound (inclusive). Chainable with eq. */
-  lte(threshold: number): TypeGuard<number> & { eq(target: number): TypeGuard<number> };
-  /** Exact value (terminal). */
-  eq(target: number): TypeGuard<number>;
-};
-
-/** Number comparison methods available after setting an upper bound */
-type NumberAfterUpper = {
-  /** Lower bound (exclusive). Chainable with eq. */
-  gt(threshold: number): TypeGuard<number> & { eq(target: number): TypeGuard<number> };
-  /** Lower bound (inclusive). Chainable with eq. */
-  gte(threshold: number): TypeGuard<number> & { eq(target: number): TypeGuard<number> };
-  /** Exact value (terminal). */
-  eq(target: number): TypeGuard<number>;
-};
-
 /** Chainable number comparison methods */
 export interface NumberTypeGuard {
   /** Lower bound (exclusive). Can chain with lt/lte/eq. */
-  gt(threshold: number): TypeGuard<number> & NumberAfterLower;
+  gt(threshold: number): TypeGuard<number> & Omit<NumberTypeGuard, "gt" | "gte" | "eq">;
   /** Lower bound (inclusive). Can chain with lt/lte/eq. */
-  gte(threshold: number): TypeGuard<number> & NumberAfterLower;
+  gte(threshold: number): TypeGuard<number> & Omit<NumberTypeGuard, "gt" | "gte" | "eq">;
   /** Upper bound (exclusive). Can chain with gt/gte/eq. */
-  lt(threshold: number): TypeGuard<number> & NumberAfterUpper;
+  lt(threshold: number): TypeGuard<number> & Omit<NumberTypeGuard, "lt" | "lte" | "eq">;
   /** Upper bound (inclusive). Can chain with gt/gte/eq. */
-  lte(threshold: number): TypeGuard<number> & NumberAfterUpper;
+  lte(threshold: number): TypeGuard<number> & Omit<NumberTypeGuard, "lt" | "lte" | "eq">;
   /** Exact value (terminal). */
   eq(target: number): TypeGuard<number>;
   /** Rejects Infinity and -Infinity. Allows further comparisons. */
@@ -409,10 +388,15 @@ type IsOptionalGuard<F> = F extends { _: { optional: true } } ? true : false;
 
 /** Recursively infers the TypeScript type from a TypeGuardShape */
 export type InferShape<S extends TypeGuardShape> = Simplify<
-  {
-    -readonly [K in keyof S as IsOptionalGuard<S[K]> extends true ? never : K]: InferShapeField<S[K]>;
-  } & {
-    -readonly [K in keyof S as IsOptionalGuard<S[K]> extends true ? K : never]?: InferShapeField<S[K]>;
+  & {
+    -readonly [K in keyof S as IsOptionalGuard<S[K]> extends true ? never : K]: InferShapeField<
+      S[K]
+    >;
+  }
+  & {
+    -readonly [K in keyof S as IsOptionalGuard<S[K]> extends true ? K : never]?: InferShapeField<
+      S[K]
+    >;
   }
 >;
 
@@ -423,9 +407,8 @@ type ShapeFieldFor<T> =
 
 /** Maps an optional property type to a guard that accepts T | undefined with the optional flag */
 type OptionalShapeFieldFor<T> =
-  | (((value: unknown) => value is (T | undefined)) & { _: { optional: true } })
-  | (T extends Record<string, unknown>
-    ? VerifiedShape<T> & { _: { optional: true } }
+  | (((value: unknown) => value is T | undefined) & { _: { optional: true } })
+  | (T extends Record<string, unknown> ? VerifiedShape<T> & { _: { optional: true } }
     : never);
 
 /**
