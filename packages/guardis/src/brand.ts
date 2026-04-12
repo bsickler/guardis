@@ -1,9 +1,6 @@
 import { createTypeGuard } from "./guard.ts";
 import type { Brand, InferShape, Parser, TypeGuard, TypeGuardShape } from "./types.ts";
 
-// Re-export Brand from types.ts for backward compatibility
-export type { Brand } from "./types.ts";
-
 /**
  * Removes the property with the key `brand` from the given type `T`.
  */
