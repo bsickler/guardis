@@ -45,4 +45,5 @@ export const Is = {
   Tuple: g.isTuple,
   Date: g.isDate,
   Exactly: g.isExactly,
+  Enum: g.isEnum,
 } as const;
