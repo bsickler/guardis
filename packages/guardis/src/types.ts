@@ -1,5 +1,4 @@
 import type { StandardSchemaV1 } from "../specs/standard-schema-spec.v1.ts";
-import type { exact, includes, tupleHas } from "./utilities.ts";
 
 /**
  * Creates a nominal type by intersecting a base type `T` with a unique brand `B`.
