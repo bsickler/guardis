@@ -8,9 +8,11 @@ import {
   isCommaDelimitedIntegers as _isCommaDelimitedIntegers,
   isCommaDelimitedNumbers as _isCommaDelimitedNumbers,
   isEmail as _isEmail,
+  isEmoji as _isEmoji,
   isInternationalPhone as _isInternationalPhone,
   isPeriodDelimited as _isPeriodDelimited,
   isPhoneNumber as _isPhoneNumber,
+  isUlid as _isUlid,
   isUSPhone as _isUSPhone,
   isUUIDv4 as _isUUIDv4,
   isUUIDv7 as _isUUIDv7,
@@ -214,3 +216,25 @@ export type CommaDelimitedNumbers = Brand<string, "CommaDelimitedNumbers">;
  * - Invalid: "1,,3", "1, 2, 3", "1 2,3", "", "1..5,2", "1.5.5,2"
  */
 export const isCommaDelimitedNumbers = _isCommaDelimitedNumbers as TypeGuard<CommaDelimitedNumbers>;
+
+/**
+ * Represents a branded type for a ULID string.
+ */
+export type ULID = Brand<string, "ULID">;
+
+/**
+ * Type guard for validating whether a given value is a valid ULID string
+ * (26-character Crockford Base32). Uses a branded type for type safety.
+ */
+export const isUlid = _isUlid as TypeGuard<ULID>;
+
+/**
+ * Represents a branded type for an emoji string.
+ */
+export type Emoji = Brand<string, "Emoji">;
+
+/**
+ * Type guard for validating whether a given value is a single emoji character
+ * or sequence. Uses a branded type for type safety.
+ */
+export const isEmoji = _isEmoji as TypeGuard<Emoji>;

@@ -14,6 +14,7 @@ const EMAIL_REGEX =
  *
  * Uses the `EMAIL_REGEX` to test if the input is a string matching the email format.
  *
+ * @see https://datatracker.ietf.org/doc/html/rfc5321 — RFC 5321: Simple Mail Transfer Protocol
  * @param t - The value to check.
  * @returns Boolean indicating whether the input is a valid email.
  */
@@ -32,6 +33,7 @@ const INT_PHONE_REGEX = /^\+(?:[0-9] ?){6,14}[0-9]$/;
  *
  * Uses the `INT_PHONE_REGEX` to test if the input is a string matching the international phone number format.
  *
+ * @see https://www.itu.int/rec/T-REC-E.164 — ITU-T E.164: International telephone numbering plan
  * @param t - The value to check.
  * @returns Boolean indicating whether the input is a valid international phone number.
  */
@@ -82,6 +84,7 @@ const UUID_4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0
 /**
  * A type guard function that checks if a given value is a valid UUID version 4 string.
  *
+ * @see https://datatracker.ietf.org/doc/html/rfc9562#section-5.4 — RFC 9562: UUID Version 4
  * @param t - The value to be checked.
  * @returns  Boolean indicating whether the input is a valid UUID v4 string.
  */
@@ -96,6 +99,7 @@ const UUID_7_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0
 /**
  * A type guard function that checks if a given value is a valid UUID version 7 string.
  *
+ * @see https://datatracker.ietf.org/doc/html/rfc9562#section-5.7 — RFC 9562: UUID Version 7
  * @param t - The value to be checked.
  * @returns  Boolean indicating whether the input is a valid UUID v7 string.
  */
@@ -171,6 +175,63 @@ const COMMA_DELIMITED_INTEGERS_REGEX = /^-?\d+(?:,-?\d+)*$/;
 export const isCommaDelimitedIntegers: TypeGuard<string> = isString.extend(
   "comma-delimited integers",
   (t) => COMMA_DELIMITED_INTEGERS_REGEX.test(t) ? t : null,
+);
+
+/**
+ * Crockford Base32 alphabet: 0-9, A-H, J-K, M-N, P-T, V-Z (excludes I, L, O, U).
+ * ULIDs are 26 characters long.
+ */
+const ULID_REGEX = /^[0-9A-HJKMNP-TV-Z]{26}$/i;
+
+/**
+ * Type guard that checks if the provided value is a valid ULID string
+ * (26-character Crockford Base32).
+ *
+ * @see https://github.com/ulid/spec — ULID Specification
+ * @param t - The value to check.
+ * @returns Boolean indicating whether the input is a valid ULID.
+ *
+ * @example
+ * ```typescript
+ * isUlid("01ARZ3NDEKTSV4RRFFQ69G5FAV")  // true
+ * isUlid("not-a-ulid")                    // false
+ * ```
+ */
+export const isUlid: TypeGuard<string> = isString.extend(
+  "ULID",
+  (t) => ULID_REGEX.test(t) ? t : null,
+);
+
+/**
+ * Regex for matching a single emoji character or sequence, including:
+ * - Simple emoji (👍)
+ * - Emoji with skin tone modifiers (👍🏽)
+ * - ZWJ sequences (🏳️‍🌈, 👨‍👩‍👧‍👦)
+ * - Flag sequences (🇺🇸)
+ * - Keycap sequences (#️⃣)
+ *
+ * Uses the Unicode `v` flag with the RGI_Emoji sequence property.
+ */
+const EMOJI_REGEX = /^\p{RGI_Emoji}$/v;
+
+/**
+ * Type guard that checks if the provided value is a single emoji character or sequence.
+ *
+ * @see https://www.unicode.org/reports/tr51/ — Unicode Technical Standard #51: Unicode Emoji
+ * @param t - The value to check.
+ * @returns Boolean indicating whether the input is a single emoji.
+ *
+ * @example
+ * ```typescript
+ * isEmoji("👍")    // true
+ * isEmoji("🏳️‍🌈")  // true (multi-codepoint sequence)
+ * isEmoji("hello") // false
+ * isEmoji("")      // false
+ * ```
+ */
+export const isEmoji: TypeGuard<string> = isString.extend(
+  "emoji",
+  (t) => EMOJI_REGEX.test(t) ? t : null,
 );
 
 const COMMA_DELIMITED_NUMBERS_REGEX = /^-?\d+(?:\.\d+)?%?(?:,-?\d+(?:\.\d+)?%?)*$/;
