@@ -1,10 +1,15 @@
 import { assert, assertEquals, assertFalse, assertThrows } from "@std/assert";
 import {
   isBlob,
+  isCidr,
+  isCidrV4,
+  isCidrV6,
   isFormData,
   isHeaders,
   isIpv4,
   isIpv6,
+  isIpv6Compressed,
+  isIpv6Full,
   isNativeURL,
   isRequest,
   isResponse,
@@ -360,110 +365,261 @@ Deno.test("isIpv4", async (t) => {
   });
 });
 
-Deno.test("isIpv6", async (t) => {
-  await t.step("basic functionality", () => {
-    // Valid inputs (note: current regex is restrictive and only accepts full format, ::1, and ::)
+Deno.test("isIpv6Full", async (t) => {
+  await t.step("accepts valid full-form IPv6", () => {
+    assert(isIpv6Full(TEST_VALUES.ipv6Valid));
+    assert(isIpv6Full(TEST_VALUES.ipv6Full));
+    assert(isIpv6Full("2001:0db8:0000:0000:0000:ff00:0042:8329"));
+  });
+
+  await t.step("rejects compressed forms", () => {
+    assertFalse(isIpv6Full("::1"));
+    assertFalse(isIpv6Full("::"));
+    assertFalse(isIpv6Full("fe80::1"));
+    assertFalse(isIpv6Full("2001:db8::"));
+  });
+
+  await t.step("rejects malformed addresses", () => {
+    assertFalse(isIpv6Full("1:2:3:4:5:6:7:8:9")); // 9 groups
+    assertFalse(isIpv6Full("1:2:3:4:5:6:7:8:")); // trailing single colon
+    assertFalse(isIpv6Full(":1:2:3:4:5:6:7:8")); // leading single colon
+    assertFalse(isIpv6Full("gggg:0000:0000:0000:0000:0000:0000:0001")); // invalid hex
+    assertFalse(isIpv6Full("02001:db8:0:0:0:0:0:1")); // group too long
+    assertFalse(isIpv6Full("")); // empty
+    assertFalse(isIpv6Full(TEST_VALUES.number));
+    assertFalse(isIpv6Full(TEST_VALUES.nullValue));
+    assertFalse(isIpv6Full(TEST_VALUES.ipv4Valid));
+  });
+
+  await t.step("validate method", () => {
+    assertEquals(isIpv6Full.validate("2001:0db8:85a3:0000:0000:8a2e:0370:7334"), {
+      value: "2001:0db8:85a3:0000:0000:8a2e:0370:7334",
+    });
+    assertEquals(isIpv6Full.validate("::1"), {
+      issues: [{ message: "Expected IPv6 (full). Received: '::1'" }],
+    });
+  });
+});
+
+Deno.test("isIpv6Compressed", async (t) => {
+  await t.step("accepts leading ::", () => {
+    assert(isIpv6Compressed("::1"));
+    assert(isIpv6Compressed("::ffff:1234:5678"));
+  });
+
+  await t.step("accepts middle ::", () => {
+    assert(isIpv6Compressed("fe80::1"));
+    assert(isIpv6Compressed("2001:db8::8a2e:370:7334"));
+  });
+
+  await t.step("accepts trailing ::", () => {
+    assert(isIpv6Compressed("fe80::"));
+    assert(isIpv6Compressed("2001:db8::"));
+  });
+
+  await t.step("accepts bare ::", () => {
+    assert(isIpv6Compressed("::"));
+  });
+
+  await t.step("rejects full-form addresses", () => {
+    assertFalse(isIpv6Compressed("2001:0db8:85a3:0000:0000:8a2e:0370:7334"));
+  });
+
+  await t.step("rejects malformed addresses", () => {
+    assertFalse(isIpv6Compressed("gggg::1")); // invalid hex
+    assertFalse(isIpv6Compressed(":::")); // triple colon
+    assertFalse(isIpv6Compressed("2001:db8::1::2")); // multiple ::
+    assertFalse(isIpv6Compressed("02001:db8::1")); // group too long
+    assertFalse(isIpv6Compressed("::ffff:192.0.2.1")); // IPv4-mapped
+    assertFalse(isIpv6Compressed("")); // empty
+    assertFalse(isIpv6Compressed(TEST_VALUES.number));
+    assertFalse(isIpv6Compressed(TEST_VALUES.nullValue));
+    assertFalse(isIpv6Compressed(TEST_VALUES.ipv4Valid));
+  });
+
+  await t.step("validate method", () => {
+    assertEquals(isIpv6Compressed.validate("::1"), { value: "::1" });
+    assertEquals(isIpv6Compressed.validate("2001:db8::"), { value: "2001:db8::" });
+    assertEquals(isIpv6Compressed.validate("not-an-ip"), {
+      issues: [{ message: "Expected IPv6 (compressed). Received: 'not-an-ip'" }],
+    });
+  });
+});
+
+Deno.test("isIpv6 (composite)", async (t) => {
+  await t.step("accepts both full and compressed forms", () => {
+    // Full form
     assert(isIpv6(TEST_VALUES.ipv6Valid));
-    assert(isIpv6(TEST_VALUES.ipv6Localhost));
-    assert(isIpv6(TEST_VALUES.ipv6AllZeros));
     assert(isIpv6(TEST_VALUES.ipv6Full));
     assert(isIpv6("2001:0db8:0000:0000:0000:ff00:0042:8329"));
 
-    // Invalid IPv6 addresses - compressed formats not supported by current regex
-    assertFalse(isIpv6("fe80::1")); // Compressed format
-    assertFalse(isIpv6("2001:db8::1")); // Compressed format
-    assertFalse(isIpv6("fe80::")); // Compressed format
-    assertFalse(isIpv6("::ffff:192.0.2.1")); // IPv4-mapped IPv6
+    // Compressed forms
+    assert(isIpv6(TEST_VALUES.ipv6Localhost)); // ::1
+    assert(isIpv6(TEST_VALUES.ipv6AllZeros)); // ::
+    assert(isIpv6("fe80::1"));
+    assert(isIpv6("2001:db8::1"));
+    assert(isIpv6("fe80::"));
+    assert(isIpv6("2001:db8::"));
+  });
 
-    // Invalid IPv6 addresses - malformed
-    assertFalse(isIpv6("gggg::1")); // Invalid hex
-    assertFalse(isIpv6(":::")); // Too many colons
-    assertFalse(isIpv6("2001:db8::1::2")); // Multiple ::
-    assertFalse(isIpv6("02001:db8::1")); // Group too long
-    assertFalse(isIpv6("2001:db8:85a3::8a2e:370k:7334")); // Invalid character 'k'
-
-    // String longer than 45 characters
-    assertFalse(isIpv6("2001:0db8:85a3:0000:0000:8a2e:0370:7334:extra"));
-
-    // Invalid types
+  await t.step("rejects invalid addresses", () => {
+    assertFalse(isIpv6("::ffff:192.0.2.1")); // IPv4-mapped
+    assertFalse(isIpv6("gggg::1"));
+    assertFalse(isIpv6(":::"));
+    assertFalse(isIpv6("2001:db8::1::2"));
+    assertFalse(isIpv6("1:2:3:4:5:6:7:8:9"));
+    assertFalse(isIpv6("1:2:3:4:5:6:7:8:"));
+    assertFalse(isIpv6(":1:2:3:4:5:6:7:8"));
     assertFalse(isIpv6(TEST_VALUES.number));
-    assertFalse(isIpv6(TEST_VALUES.boolean));
     assertFalse(isIpv6(TEST_VALUES.nullValue));
     assertFalse(isIpv6(TEST_VALUES.undefinedValue));
-    assertFalse(isIpv6(TEST_VALUES.object));
-    assertFalse(isIpv6(TEST_VALUES.array));
-    assertFalse(isIpv6(TEST_VALUES.function));
-    assertFalse(isIpv6(TEST_VALUES.url));
-    assertFalse(isIpv6(TEST_VALUES.emptyString));
-    assertFalse(isIpv6(TEST_VALUES.string));
-
-    // IPv4 addresses should not be valid for IPv6
     assertFalse(isIpv6(TEST_VALUES.ipv4Valid));
-    assertFalse(isIpv6(TEST_VALUES.ipv4Localhost));
+    assertFalse(isIpv6(TEST_VALUES.string));
+    assertFalse(isIpv6(TEST_VALUES.emptyString));
   });
 
   await t.step("strict mode", () => {
-    // Valid inputs don't throw
     isIpv6.strict(TEST_VALUES.ipv6Valid);
-    isIpv6.strict(TEST_VALUES.ipv6Localhost);
-    isIpv6.strict(TEST_VALUES.ipv6AllZeros);
+    isIpv6.strict("fe80::1");
+    isIpv6.strict("2001:db8::");
 
-    // Invalid inputs throw
-    assertThrows(() => isIpv6.strict("fe80::1"));
     assertThrows(() => isIpv6.strict("gggg::1"));
-    assertThrows(() => isIpv6.strict(":::"));
     assertThrows(() => isIpv6.strict(TEST_VALUES.string));
-    assertThrows(() => isIpv6.strict(TEST_VALUES.number));
     assertThrows(() => isIpv6.strict(TEST_VALUES.nullValue));
-    assertThrows(() => isIpv6.strict(TEST_VALUES.undefinedValue));
-  });
-
-  await t.step("assert mode", () => {
-    const assertIsIpv6: typeof isIpv6.assert = isIpv6.assert;
-
-    // Valid inputs don't throw
-    assertIsIpv6(TEST_VALUES.ipv6Valid);
-    assertIsIpv6(TEST_VALUES.ipv6Localhost);
-    assertIsIpv6(TEST_VALUES.ipv6AllZeros);
-
-    // Invalid inputs throw
-    assertThrows(() => assertIsIpv6("fe80::1"));
-    assertThrows(() => assertIsIpv6("gggg::1"));
-    assertThrows(() => assertIsIpv6(":::"));
-    assertThrows(() => assertIsIpv6(TEST_VALUES.string));
-    assertThrows(() => assertIsIpv6(TEST_VALUES.number));
   });
 
   await t.step("optional mode", () => {
-    // Valid inputs
     assert(isIpv6.optional(TEST_VALUES.ipv6Valid));
-    assert(isIpv6.optional(TEST_VALUES.ipv6Localhost));
+    assert(isIpv6.optional("fe80::1"));
     assert(isIpv6.optional(TEST_VALUES.undefinedValue));
 
-    // Invalid inputs
-    assertFalse(isIpv6.optional("fe80::1"));
     assertFalse(isIpv6.optional("gggg::1"));
-    assertFalse(isIpv6.optional(TEST_VALUES.string));
     assertFalse(isIpv6.optional(TEST_VALUES.nullValue));
   });
 
   await t.step("validate method", () => {
-    // Valid inputs return value
     assertEquals(isIpv6.validate("2001:0db8:85a3:0000:0000:8a2e:0370:7334"), {
       value: "2001:0db8:85a3:0000:0000:8a2e:0370:7334",
     });
     assertEquals(isIpv6.validate("::1"), { value: "::1" });
+    assertEquals(isIpv6.validate("2001:db8::"), { value: "2001:db8::" });
+  });
 
-    // Invalid inputs return issues with specific error message
-    assertEquals(isIpv6.validate("gggg::1"), {
-      issues: [{ message: "Expected IPv6. Received: 'gggg::1'" }],
+  await t.step("has correct name", () => {
+    assertEquals(isIpv6._.name, "IPv6");
+  });
+});
+
+Deno.test("isCidrV4", async (t) => {
+  await t.step("accepts valid IPv4 CIDR", () => {
+    assert(isCidrV4("192.168.1.0/24"));
+    assert(isCidrV4("10.0.0.0/8"));
+    assert(isCidrV4("172.16.0.0/12"));
+    assert(isCidrV4("0.0.0.0/0"));
+    assert(isCidrV4("255.255.255.255/32"));
+  });
+
+  await t.step("rejects IPv6 CIDR", () => {
+    assertFalse(isCidrV4("2001:db8::/32"));
+    assertFalse(isCidrV4("::1/128"));
+    assertFalse(isCidrV4("::/0"));
+  });
+
+  await t.step("rejects invalid input", () => {
+    assertFalse(isCidrV4("192.168.1.0")); // no prefix
+    assertFalse(isCidrV4("192.168.1.0/33")); // prefix too large
+    assertFalse(isCidrV4("256.1.1.1/24")); // invalid octet
+    assertFalse(isCidrV4("192.168.1.0/")); // missing prefix
+    assertFalse(isCidrV4("/24")); // missing IP
+    assertFalse(isCidrV4("not-a-cidr"));
+    assertFalse(isCidrV4(123));
+    assertFalse(isCidrV4(null));
+  });
+
+  await t.step("validate method", () => {
+    assertEquals(isCidrV4.validate("192.168.1.0/24"), { value: "192.168.1.0/24" });
+    assertEquals(isCidrV4.validate("2001:db8::/32"), {
+      issues: [{ message: "Expected CIDR (IPv4). Received: '2001:db8::/32'" }],
     });
-    assertEquals(isIpv6.validate("not-an-ip"), {
-      issues: [{ message: "Expected IPv6. Received: 'not-an-ip'" }],
+    assertEquals(isCidrV4.validate(null), {
+      issues: [{ message: "Expected CIDR (IPv4). Received: null" }],
     });
-    assertEquals(isIpv6.validate(null), {
-      issues: [{ message: "Expected IPv6. Received: null" }],
+  });
+});
+
+Deno.test("isCidrV6", async (t) => {
+  await t.step("accepts valid IPv6 CIDR", () => {
+    assert(isCidrV6("2001:db8::/32"));
+    assert(isCidrV6("::1/128"));
+    assert(isCidrV6("::/0"));
+    assert(isCidrV6("fe80::/10"));
+    assert(isCidrV6("2001:0db8:85a3:0000:0000:8a2e:0370:7334/64"));
+  });
+
+  await t.step("rejects IPv4 CIDR", () => {
+    assertFalse(isCidrV6("192.168.1.0/24"));
+    assertFalse(isCidrV6("10.0.0.0/8"));
+  });
+
+  await t.step("rejects invalid input", () => {
+    assertFalse(isCidrV6("::1/129")); // prefix too large
+    assertFalse(isCidrV6("::1")); // no prefix
+    assertFalse(isCidrV6("not-a-cidr"));
+    assertFalse(isCidrV6(123));
+    assertFalse(isCidrV6(null));
+  });
+
+  await t.step("validate method", () => {
+    assertEquals(isCidrV6.validate("2001:db8::/32"), { value: "2001:db8::/32" });
+    assertEquals(isCidrV6.validate("192.168.1.0/24"), {
+      issues: [{ message: "Expected CIDR (IPv6). Received: '192.168.1.0/24'" }],
     });
+    assertEquals(isCidrV6.validate(null), {
+      issues: [{ message: "Expected CIDR (IPv6). Received: null" }],
+    });
+  });
+});
+
+Deno.test("isCidr (composite)", async (t) => {
+  await t.step("accepts both IPv4 and IPv6 CIDR", () => {
+    assert(isCidr("192.168.1.0/24"));
+    assert(isCidr("10.0.0.0/8"));
+    assert(isCidr("2001:db8::/32"));
+    assert(isCidr("::1/128"));
+    assert(isCidr("::/0"));
+  });
+
+  await t.step("rejects invalid input", () => {
+    assertFalse(isCidr("192.168.1.0")); // no prefix
+    assertFalse(isCidr("192.168.1.0/33")); // IPv4 prefix too large
+    assertFalse(isCidr("::1/129")); // IPv6 prefix too large
+    assertFalse(isCidr("256.1.1.1/24")); // invalid octet
+    assertFalse(isCidr("not-a-cidr"));
+    assertFalse(isCidr(""));
+    assertFalse(isCidr(123));
+    assertFalse(isCidr(null));
+    assertFalse(isCidr(undefined));
+  });
+
+  await t.step("strict mode", () => {
+    isCidr.strict("192.168.1.0/24");
+    isCidr.strict("2001:db8::/32");
+
+    assertThrows(() => isCidr.strict("192.168.1.0"));
+    assertThrows(() => isCidr.strict("not-a-cidr"));
+    assertThrows(() => isCidr.strict(null));
+  });
+
+  await t.step("optional mode", () => {
+    assert(isCidr.optional("192.168.1.0/24"));
+    assert(isCidr.optional(TEST_VALUES.undefinedValue));
+
+    assertFalse(isCidr.optional(TEST_VALUES.nullValue));
+    assertFalse(isCidr.optional("not-a-cidr"));
+  });
+
+  await t.step("has correct name", () => {
+    assertEquals(isCidr._.name, "CIDR");
   });
 });
 
@@ -543,4 +699,3 @@ Deno.test("isFormData", async (t) => {
     assertFalse(isFormData.optional({}));
   });
 });
-

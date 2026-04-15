@@ -4,8 +4,10 @@ import {
   isCommaDelimitedIntegers,
   isCommaDelimitedNumbers,
   isEmail,
+  isEmoji,
   isInternationalPhone,
   isPeriodDelimited,
+  isUlid,
   isUUIDv4,
   isUUIDv7,
 } from "./strings.ts";
@@ -603,6 +605,74 @@ Deno.test("isCommaDelimitedNumbers", async (t) => {
     });
     assertEquals(isCommaDelimitedNumbers.validate(null), {
       issues: [{ message: "Expected comma-delimited numbers. Received: null" }],
+    });
+  });
+});
+
+Deno.test("isUlid", async (t) => {
+  await t.step("returns true for valid ULIDs", () => {
+    assert(isUlid("01ARZ3NDEKTSV4RRFFQ69G5FAV"));
+    assert(isUlid("01H5K3G4N7J2Q8R9S0T1V2W3X4")); // mixed case is valid
+    assert(isUlid("00000000000000000000000000")); // all zeros
+    assert(isUlid("7ZZZZZZZZZZZZZZZZZZZZZZZZZ")); // max value
+  });
+
+  await t.step("returns false for invalid ULIDs", () => {
+    assertFalse(isUlid("not-a-ulid"));
+    assertFalse(isUlid("01ARZ3NDEKTSV4RRFFQ69G5FA")); // 25 chars (too short)
+    assertFalse(isUlid("01ARZ3NDEKTSV4RRFFQ69G5FAVX")); // 27 chars (too long)
+    assertFalse(isUlid("")); // empty
+    assertFalse(isUlid("01ARZ3NDEKTSV4RRFFQ69G5FAI")); // contains I (invalid Crockford)
+    assertFalse(isUlid("01ARZ3NDEKTSV4RRFFQ69G5FAL")); // contains L (invalid Crockford)
+    assertFalse(isUlid("01ARZ3NDEKTSV4RRFFQ69G5FAO")); // contains O (invalid Crockford)
+    assertFalse(isUlid("01ARZ3NDEKTSV4RRFFQ69G5FAU")); // contains U (invalid Crockford)
+    assertFalse(isUlid(123));
+    assertFalse(isUlid(null));
+    assertFalse(isUlid(undefined));
+  });
+
+  await t.step("validate method", () => {
+    assertEquals(isUlid.validate("01ARZ3NDEKTSV4RRFFQ69G5FAV"), {
+      value: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+    });
+    assertEquals(isUlid.validate("not-a-ulid"), {
+      issues: [{ message: "Expected ULID. Received: 'not-a-ulid'" }],
+    });
+    assertEquals(isUlid.validate(null), {
+      issues: [{ message: "Expected ULID. Received: null" }],
+    });
+  });
+});
+
+Deno.test("isEmoji", async (t) => {
+  await t.step("returns true for valid emoji", () => {
+    assert(isEmoji("👍"));
+    assert(isEmoji("😀"));
+    assert(isEmoji("❤️")); // with variation selector
+    assert(isEmoji("🇺🇸")); // flag sequence
+    assert(isEmoji("👨‍👩‍👧‍👦")); // ZWJ family sequence
+    assert(isEmoji("👍🏽")); // skin tone modifier
+    assert(isEmoji("🏳️‍🌈")); // rainbow flag (ZWJ)
+  });
+
+  await t.step("returns false for non-emoji", () => {
+    assertFalse(isEmoji("hello"));
+    assertFalse(isEmoji("")); // empty
+    assertFalse(isEmoji("a"));
+    assertFalse(isEmoji("123"));
+    assertFalse(isEmoji("👍👍")); // two emoji, not one
+    assertFalse(isEmoji(123));
+    assertFalse(isEmoji(null));
+    assertFalse(isEmoji(undefined));
+  });
+
+  await t.step("validate method", () => {
+    assertEquals(isEmoji.validate("👍"), { value: "👍" });
+    assertEquals(isEmoji.validate("hello"), {
+      issues: [{ message: "Expected emoji. Received: 'hello'" }],
+    });
+    assertEquals(isEmoji.validate(null), {
+      issues: [{ message: "Expected emoji. Received: null" }],
     });
   });
 });

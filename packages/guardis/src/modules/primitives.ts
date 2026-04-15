@@ -86,6 +86,66 @@ export const isBoolean: TypeGuard<boolean> = createTypeGuard(
 );
 
 /**
+ * Passes all values, typed as `any`. Useful as a placeholder in shapes where
+ * the type is intentionally unconstrained.
+ *
+ * @example
+ * ```typescript
+ * const isLooseObj = createTypeGuard({
+ *   id: isNumber,
+ *   metadata: isAny, // don't care what's here
+ * });
+ * ```
+ */
+// deno-lint-ignore no-explicit-any
+export const isAny: TypeGuard<any> = createTypeGuard<any>(
+  "any",
+  // The framework uses `null` as the parser failure sentinel, so return `true`
+  // when the input is actually null — the context function's special case
+  // (`result === true && value === null`) restores the original value.
+  // deno-lint-ignore no-explicit-any
+  (t): any => t === null ? true : t,
+);
+
+/**
+ * Passes all values, typed as `unknown`. Safer alternative to `isAny` when the
+ * consumer must narrow before use.
+ *
+ * @example
+ * ```typescript
+ * const isEnvelope = createTypeGuard({
+ *   type: isString,
+ *   payload: isUnknown, // caller must narrow
+ * });
+ * ```
+ */
+export const isUnknown: TypeGuard<unknown> = createTypeGuard<unknown>(
+  "unknown",
+  // See note on isAny about the null-return workaround.
+  (t): unknown => t === null ? true : t,
+);
+
+/**
+ * Rejects all values, typed as `never`. Useful for exhaustiveness checks and
+ * marking unreachable branches.
+ *
+ * @example
+ * ```typescript
+ * function handleShape(s: Circle | Square) {
+ *   switch (s.kind) {
+ *     case "circle": return area(s);
+ *     case "square": return area(s);
+ *     default: isNever.strict(s); // compile error if a case is missed
+ *   }
+ * }
+ * ```
+ */
+export const isNever: TypeGuard<never> = createTypeGuard<never>(
+  "never",
+  (): never | null => null,
+);
+
+/**
  * Returns true if input satisfies type string.
  * @param {unknown} t
  * @return {boolean}
