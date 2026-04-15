@@ -1,5 +1,6 @@
 import { assert, assertEquals, assertFalse, assertThrows } from "@std/assert";
 import {
+  isAny,
   isArray,
   isBinary,
   isBoolean,
@@ -13,6 +14,7 @@ import {
   isJsonObject,
   isJsonPrimitive,
   isJsonValue,
+  isNever,
   isNil,
   isNumber,
   isNumeric,
@@ -21,6 +23,7 @@ import {
   isString,
   isSymbol,
   isTuple,
+  isUnknown,
 } from "./primitives.ts";
 import { createTypeGuard, isNull } from "../guard.ts";
 import { assertType, type Equals } from "../test-utils.ts";
@@ -134,6 +137,194 @@ Deno.test("isBoolean", async (t) => {
     assertFalse(isBoolean.optional(TEST_VALUES.string));
     assertFalse(isBoolean.optional(TEST_VALUES.nullValue));
     assertFalse(isBoolean.optional(TEST_VALUES.number));
+  });
+});
+
+Deno.test("isAny", async (t) => {
+  await t.step("basic functionality — accepts everything", () => {
+    assert(isAny(TEST_VALUES.string));
+    assert(isAny(TEST_VALUES.emptyString));
+    assert(isAny(TEST_VALUES.number));
+    assert(isAny(TEST_VALUES.zero));
+    assert(isAny(TEST_VALUES.nan));
+    assert(isAny(TEST_VALUES.boolean));
+    assert(isAny(TEST_VALUES.booleanFalse));
+    assert(isAny(TEST_VALUES.nullValue));
+    assert(isAny(TEST_VALUES.undefinedValue));
+    assert(isAny(TEST_VALUES.object));
+    assert(isAny(TEST_VALUES.emptyObject));
+    assert(isAny(TEST_VALUES.array));
+    assert(isAny(TEST_VALUES.emptyArray));
+    assert(isAny(TEST_VALUES.function));
+    assert(isAny(TEST_VALUES.date));
+    assert(isAny(TEST_VALUES.symbol));
+  });
+
+  await t.step("validate method — always succeeds", () => {
+    assertEquals(isAny.validate("hello"), { value: "hello" });
+    assertEquals(isAny.validate(42), { value: 42 });
+    assertEquals(isAny.validate(null), { value: null });
+    assertEquals(isAny.validate(undefined), { value: undefined });
+    assertEquals(isAny.validate({ a: 1 }), { value: { a: 1 } });
+  });
+
+  await t.step("strict mode — never throws", () => {
+    isAny.strict(TEST_VALUES.string);
+    isAny.strict(TEST_VALUES.nullValue);
+    isAny.strict(TEST_VALUES.undefinedValue);
+    isAny.strict(TEST_VALUES.object);
+  });
+
+  await t.step("assert mode — never throws", () => {
+    const assertIsAny: typeof isAny.assert = isAny.assert;
+    assertIsAny(TEST_VALUES.string);
+    assertIsAny(TEST_VALUES.nullValue);
+    assertIsAny(TEST_VALUES.undefinedValue);
+  });
+
+  await t.step("optional mode — accepts everything", () => {
+    assert(isAny.optional(TEST_VALUES.string));
+    assert(isAny.optional(TEST_VALUES.nullValue));
+    assert(isAny.optional(TEST_VALUES.undefinedValue));
+    assert(isAny.optional(TEST_VALUES.object));
+  });
+
+  await t.step("or composition — still accepts everything", () => {
+    const guard = isAny.or(isString);
+    assert(guard(TEST_VALUES.string));
+    assert(guard(TEST_VALUES.number));
+    assert(guard(TEST_VALUES.nullValue));
+  });
+
+  await t.step("_TYPE is any", () => {
+    // deno-lint-ignore no-explicit-any
+    assertType<Equals<typeof isAny._TYPE, any>>();
+  });
+});
+
+Deno.test("isUnknown", async (t) => {
+  await t.step("basic functionality — accepts everything", () => {
+    assert(isUnknown(TEST_VALUES.string));
+    assert(isUnknown(TEST_VALUES.emptyString));
+    assert(isUnknown(TEST_VALUES.number));
+    assert(isUnknown(TEST_VALUES.zero));
+    assert(isUnknown(TEST_VALUES.nan));
+    assert(isUnknown(TEST_VALUES.boolean));
+    assert(isUnknown(TEST_VALUES.booleanFalse));
+    assert(isUnknown(TEST_VALUES.nullValue));
+    assert(isUnknown(TEST_VALUES.undefinedValue));
+    assert(isUnknown(TEST_VALUES.object));
+    assert(isUnknown(TEST_VALUES.emptyObject));
+    assert(isUnknown(TEST_VALUES.array));
+    assert(isUnknown(TEST_VALUES.emptyArray));
+    assert(isUnknown(TEST_VALUES.function));
+    assert(isUnknown(TEST_VALUES.date));
+    assert(isUnknown(TEST_VALUES.symbol));
+  });
+
+  await t.step("validate method — always succeeds", () => {
+    assertEquals(isUnknown.validate("hello"), { value: "hello" });
+    assertEquals(isUnknown.validate(42), { value: 42 });
+    assertEquals(isUnknown.validate(null), { value: null });
+    assertEquals(isUnknown.validate(undefined), { value: undefined });
+    assertEquals(isUnknown.validate({ a: 1 }), { value: { a: 1 } });
+  });
+
+  await t.step("strict mode — never throws", () => {
+    isUnknown.strict(TEST_VALUES.string);
+    isUnknown.strict(TEST_VALUES.nullValue);
+    isUnknown.strict(TEST_VALUES.undefinedValue);
+    isUnknown.strict(TEST_VALUES.object);
+  });
+
+  await t.step("assert mode — never throws", () => {
+    const assertIsUnknown: typeof isUnknown.assert = isUnknown.assert;
+    assertIsUnknown(TEST_VALUES.string);
+    assertIsUnknown(TEST_VALUES.nullValue);
+    assertIsUnknown(TEST_VALUES.undefinedValue);
+  });
+
+  await t.step("optional mode — accepts everything", () => {
+    assert(isUnknown.optional(TEST_VALUES.string));
+    assert(isUnknown.optional(TEST_VALUES.nullValue));
+    assert(isUnknown.optional(TEST_VALUES.undefinedValue));
+    assert(isUnknown.optional(TEST_VALUES.object));
+  });
+
+  await t.step("_TYPE is unknown", () => {
+    assertType<Equals<typeof isUnknown._TYPE, unknown>>();
+  });
+});
+
+Deno.test("isNever", async (t) => {
+  await t.step("basic functionality — rejects everything", () => {
+    assertFalse(isNever(TEST_VALUES.string));
+    assertFalse(isNever(TEST_VALUES.emptyString));
+    assertFalse(isNever(TEST_VALUES.number));
+    assertFalse(isNever(TEST_VALUES.zero));
+    assertFalse(isNever(TEST_VALUES.nan));
+    assertFalse(isNever(TEST_VALUES.boolean));
+    assertFalse(isNever(TEST_VALUES.booleanFalse));
+    assertFalse(isNever(TEST_VALUES.nullValue));
+    assertFalse(isNever(TEST_VALUES.undefinedValue));
+    assertFalse(isNever(TEST_VALUES.object));
+    assertFalse(isNever(TEST_VALUES.emptyObject));
+    assertFalse(isNever(TEST_VALUES.array));
+    assertFalse(isNever(TEST_VALUES.emptyArray));
+    assertFalse(isNever(TEST_VALUES.function));
+    assertFalse(isNever(TEST_VALUES.date));
+    assertFalse(isNever(TEST_VALUES.symbol));
+  });
+
+  await t.step("validate method — always produces issues", () => {
+    assertEquals(isNever.validate("hello"), {
+      issues: [{ message: "Expected never. Received: 'hello'" }],
+    });
+    assertEquals(isNever.validate(42), {
+      issues: [{ message: "Expected never. Received: 42" }],
+    });
+    assertEquals(isNever.validate(null), {
+      issues: [{ message: "Expected never. Received: null" }],
+    });
+    assertEquals(isNever.validate(undefined), {
+      issues: [{ message: "Expected never. Received: undefined" }],
+    });
+  });
+
+  await t.step("strict mode — always throws", () => {
+    assertThrows(() => isNever.strict(TEST_VALUES.string));
+    assertThrows(() => isNever.strict(TEST_VALUES.number));
+    assertThrows(() => isNever.strict(TEST_VALUES.nullValue));
+    assertThrows(() => isNever.strict(TEST_VALUES.undefinedValue));
+    assertThrows(() => isNever.strict(TEST_VALUES.object));
+  });
+
+  await t.step("assert mode — always throws", () => {
+    const assertIsNever: typeof isNever.assert = isNever.assert;
+    assertThrows(() => assertIsNever(TEST_VALUES.string));
+    assertThrows(() => assertIsNever(TEST_VALUES.nullValue));
+    assertThrows(() => assertIsNever(TEST_VALUES.undefinedValue));
+  });
+
+  await t.step("optional mode — accepts only undefined", () => {
+    assert(isNever.optional(TEST_VALUES.undefinedValue));
+
+    assertFalse(isNever.optional(TEST_VALUES.nullValue));
+    assertFalse(isNever.optional(TEST_VALUES.string));
+    assertFalse(isNever.optional(TEST_VALUES.number));
+    assertFalse(isNever.optional(TEST_VALUES.boolean));
+    assertFalse(isNever.optional(TEST_VALUES.object));
+  });
+
+  await t.step("or composition — accepts only the union'd guard's values", () => {
+    const guard = isNever.or(isString);
+    assert(guard(TEST_VALUES.string));
+    assertFalse(guard(TEST_VALUES.number));
+    assertFalse(guard(TEST_VALUES.nullValue));
+  });
+
+  await t.step("_TYPE is never", () => {
+    assertType<Equals<typeof isNever._TYPE, never>>();
   });
 });
 

@@ -7,6 +7,7 @@
  */
 import { isExactly, isNull, isUndefined } from "./src/guard.ts";
 import {
+  isAny,
   isArray,
   isBinary,
   isBoolean,
@@ -20,6 +21,7 @@ import {
   isJsonObject,
   isJsonPrimitive,
   isJsonValue,
+  isNever,
   isNil,
   isNumber,
   isNumeric,
@@ -28,6 +30,7 @@ import {
   isString,
   isSymbol,
   isTuple,
+  isUnknown,
 } from "./src/modules/primitives.ts";
 
 export * from "./src/guard.ts";
@@ -45,28 +48,31 @@ export { unionOf } from "./src/utilities.ts";
  * type guards for their respective types.
  */
 export const Is = {
-  Boolean: isBoolean,
-  String: isString,
-  Number: isNumber,
-  Int: isInt,
-  Binary: isBinary,
-  Numeric: isNumeric,
-  Symbol: isSymbol,
-  Function: isFunction,
-  Object: isObject,
-  PropertyKey: isPropertyKey,
-  Undefined: isUndefined,
+  Any: isAny,
   Array: isArray,
-  JsonPrimitive: isJsonPrimitive,
+  Binary: isBinary,
+  Boolean: isBoolean,
+  Date: isDate,
+  Empty: isEmpty,
+  Enum: isEnum,
+  Exactly: isExactly,
+  Function: isFunction,
+  Int: isInt,
+  Iterable: isIterable,
   JsonArray: isJsonArray,
   JsonObject: isJsonObject,
+  JsonPrimitive: isJsonPrimitive,
   JsonValue: isJsonValue,
-  Null: isNull,
+  Never: isNever,
   Nil: isNil,
-  Empty: isEmpty,
-  Iterable: isIterable,
+  Null: isNull,
+  Number: isNumber,
+  Numeric: isNumeric,
+  Object: isObject,
+  PropertyKey: isPropertyKey,
+  String: isString,
+  Symbol: isSymbol,
   Tuple: isTuple,
-  Date: isDate,
-  Exactly: isExactly,
-  Enum: isEnum,
+  Undefined: isUndefined,
+  Unknown: isUnknown,
 } as const;
