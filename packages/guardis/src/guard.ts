@@ -102,6 +102,66 @@ function createHelpers(ctx?: Context): HelpersWithContext {
     }
   };
 
+  // Fork primitive: or(val, ...branches). Runtime behavior splits on whether a
+  // Context is active (validate/strict vs. boolean mode).
+  const or = <V>(
+    val: V,
+    // deno-lint-ignore no-explicit-any
+    ...branches: ReadonlyArray<(v: V) => any>
+  ): boolean => {
+    if (branches.length === 0) {
+      throw new Error("or() requires at least one branch");
+    }
+
+    // Boolean mode: trivial short-circuit.
+    if (!ctx) {
+      for (const branch of branches) {
+        if (branch(val) === true) return true;
+      }
+      return false;
+    }
+
+    // Ctx-aware mode: speculation stack. Each branch runs with a scoped issue
+    // buffer. A branch "succeeds" only if it returned strict `true` AND wrote
+    // no issues (compensates for has()'s always-true-on-failure contract in
+    // validate mode; see origin doc's "has() and or() interaction").
+    const specCtx = ctx as Context & {
+      _speculative?: StandardSchemaV1.Issue[];
+      _strict?: true;
+    };
+    const collected: StandardSchemaV1.Issue[][] = [];
+
+    for (const branch of branches) {
+      const buf: StandardSchemaV1.Issue[] = [];
+      const prev = specCtx._speculative;
+      specCtx._speculative = buf;
+      let ok: unknown;
+      try {
+        ok = branch(val);
+      } finally {
+        specCtx._speculative = prev;
+      }
+      if (ok === true && buf.length === 0) return true;
+      collected.push(buf);
+    }
+
+    // All branches failed.
+    if (specCtx._strict) {
+      const combined = collected
+        .map((list, i) => {
+          const msgs = list.map((issue) => issue.message).join("; ");
+          return `branch ${i}: ${msgs || "(no issue recorded)"}`;
+        })
+        .join(" | ");
+      throw new TypeError(`or() — no branch matched: ${combined}`);
+    }
+
+    for (const list of collected) {
+      for (const issue of list) ctx.issues.push(issue);
+    }
+    return false;
+  };
+
   return {
     has,
     hasNot,
@@ -115,8 +175,9 @@ function createHelpers(ctx?: Context): HelpersWithContext {
       if (ctx) ctx.addIssue(message);
       return null;
     },
+    or,
     _ctx: ctx,
-  };
+  } as HelpersWithContext;
 }
 
 /** Default helpers for boolean type guard calls (no validation context) */
@@ -157,7 +218,12 @@ type FieldDescriptor =
   | { kind: "nested"; key: string; fields: FieldDescriptor[] }
   | { kind: "typePredicate"; key: string; guard: (value: unknown) => boolean }
   | { kind: "required"; key: string }
-  | { kind: "absent"; key: string };
+  | { kind: "absent"; key: string }
+  // Union of alternative branches (emitted by probe when a parser uses or()).
+  // No `key` — represents a choice across the whole value at this position.
+  // Each branch is a FieldDescriptor[] that must all-pass for that branch to
+  // match; any-branch-matches is sufficient for the union to pass.
+  | { kind: "union"; branches: FieldDescriptor[][] };
 
 /**
  * Compiles a TypeGuardShape into a pre-resolved array of field descriptors.
@@ -202,6 +268,12 @@ function compileShape(shape: TypeGuardShape): FieldDescriptor[] {
 
 /**
  * Validates a single pre-compiled field descriptor against an object value.
+ *
+ * Path handling: `pushPath`/`popPath` is gated on `'key' in desc` so that future
+ * non-keyed variants (e.g. union descriptors from `or()`) skip path tracking —
+ * those are choices across the whole value, not property-scoped. Inside each
+ * `case`, the switch has already narrowed `desc` to the specific variant, so
+ * `desc.key` is type-safe without an extra guard.
  */
 function validateCompiledField(
   obj: Record<string, unknown>,
@@ -210,16 +282,14 @@ function validateCompiledField(
   localIssues: StandardSchemaV1.Issue[],
   result: Record<string, unknown>,
 ): void {
-  const key = desc.key;
-
-  if (ctx) ctx.pushPath(key);
+  if ("key" in desc && ctx) ctx.pushPath(desc.key);
 
   try {
     switch (desc.kind) {
       case "nested": {
-        const r = validateCompiledShape(obj[key], desc.fields, ctx);
+        const r = validateCompiledShape(obj[desc.key], desc.fields, ctx);
         if ("value" in r) {
-          result[key] = r.value;
+          result[desc.key] = r.value;
         } else if (!ctx) {
           localIssues.push(...r.issues);
         }
@@ -228,21 +298,21 @@ function validateCompiledField(
 
       case "typeGuard": {
         if (ctx) {
-          const r = desc.guard._.context(obj[key], ctx);
-          if ("value" in r) result[key] = r.value;
+          const r = desc.guard._.context(obj[desc.key], ctx);
+          if ("value" in r) result[desc.key] = r.value;
 
           // Issues are already in ctx.issues — guards write directly via addIssue.
         } else {
           // No ctx — call without context arg to hit the bypass path (defaultHelpers,
           // no createContext/createHelpers allocation). Prepend the field key to paths.
-          const r = desc.guard._.context(obj[key]);
+          const r = desc.guard._.context(obj[desc.key]);
           if ("value" in r) {
-            result[key] = r.value;
+            result[desc.key] = r.value;
           } else {
             for (const issue of r.issues) {
               localIssues.push({
                 message: issue.message,
-                path: issue.path ? [key, ...issue.path] : [key],
+                path: issue.path ? [desc.key, ...issue.path] : [desc.key],
               });
             }
           }
@@ -251,45 +321,57 @@ function validateCompiledField(
       }
 
       case "typePredicate": {
-        if (desc.guard(obj[key])) {
-          result[key] = obj[key];
+        if (desc.guard(obj[desc.key])) {
+          result[desc.key] = obj[desc.key];
         } else {
-          const message = `Validation failed for property "${String(key)}"`;
+          const message = `Validation failed for property "${String(desc.key)}"`;
           if (ctx) {
             ctx.addIssue(message);
           } else {
-            localIssues.push({ message, path: [key] });
+            localIssues.push({ message, path: [desc.key] });
           }
         }
         break;
       }
       case "required": {
-        if (key in obj) {
-          result[key] = obj[key];
+        if (desc.key in obj) {
+          result[desc.key] = obj[desc.key];
         } else {
-          const message = `Missing required property: ${key}`;
+          const message = `Missing required property: ${desc.key}`;
           if (ctx) {
             ctx.addIssue(message);
           } else {
-            localIssues.push({ message, path: [key] });
+            localIssues.push({ message, path: [desc.key] });
           }
         }
         break;
       }
       case "absent": {
-        if (key in obj) {
-          const message = `Property must not be present: ${key}`;
+        if (desc.key in obj) {
+          const message = `Property must not be present: ${desc.key}`;
           if (ctx) {
             ctx.addIssue(message);
           } else {
-            localIssues.push({ message, path: [key] });
+            localIssues.push({ message, path: [desc.key] });
           }
         }
         break;
       }
+      case "union": {
+        // Unreachable today: tryCompileParser falls back to the original closure
+        // whenever helpers._ctx is set (the validate/slow path), and shape-
+        // compiled guards never produce union descriptors. Loud-fail so that
+        // any future change to either invariant surfaces immediately instead
+        // of silently miscompiling.
+        throw new Error(
+          "Internal: union descriptor reached validateCompiledField — " +
+            "slow-path union handling is not implemented. " +
+            "See docs/plans/2026-04-15-001-feat-or-helper-for-parser-forks-plan.md",
+        );
+      }
     }
   } finally {
-    if (ctx) ctx.popPath();
+    if ("key" in desc && ctx) ctx.popPath();
   }
 }
 
@@ -306,28 +388,41 @@ function validateCompiledShapeBoolean(
 
   for (let i = 0; i < fields.length; i++) {
     const desc = fields[i];
-    const key = desc.key;
 
     switch (desc.kind) {
       case "nested": {
-        if (!validateCompiledShapeBoolean(value[key], desc.fields)) return false;
+        if (!validateCompiledShapeBoolean(value[desc.key], desc.fields)) return false;
         break;
       }
       case "typeGuard": {
         // Call the raw boolean callback directly — no context, no helpers, no issues.
-        if (!desc.guard(value[key])) return false;
+        if (!desc.guard(value[desc.key])) return false;
         break;
       }
       case "typePredicate": {
-        if (!desc.guard(value[key])) return false;
+        if (!desc.guard(value[desc.key])) return false;
         break;
       }
       case "required": {
-        if (!(key in value)) return false;
+        if (!(desc.key in value)) return false;
         break;
       }
       case "absent": {
-        if (key in value) return false;
+        if (desc.key in value) return false;
+        break;
+      }
+      case "union": {
+        // Any-branch-matches wins. Each branch is a FieldDescriptor[] that
+        // must all pass for that branch to match. If no branch matches, the
+        // whole union fails and this field — and thus the outer shape — fails.
+        let matched = false;
+        for (const branch of desc.branches) {
+          if (validateCompiledShapeBoolean(value, branch)) {
+            matched = true;
+            break;
+          }
+        }
+        if (!matched) return false;
         break;
       }
     }
@@ -550,8 +645,13 @@ function classifyGuard(
  * and the caller falls back to the original closure-based parser.
  */
 function tryCompileParser<T1>(parser: Parser<T1>): Parser<T1> | null {
-  const fields: FieldDescriptor[] = [];
-  let failed = false;
+  // `fields` is a mutable holder rather than a closure-local const so that the
+  // probe's `or` entry can swap in a fresh per-branch accumulator, run the
+  // branch, and restore. Every probe helper push site references
+  // `fieldsHolder.current` — not a captured `fields` variable — so swaps are
+  // visible to `has`, `hasOptional`, `hasNot`, and nested `or`.
+  const fieldsHolder: { current: FieldDescriptor[] } = { current: [] };
+  let failed: boolean = false;
 
   const probe = new Proxy({} as Record<string, unknown>, {
     has() {
@@ -580,9 +680,9 @@ function tryCompileParser<T1>(parser: Parser<T1>): Parser<T1> | null {
       if (failed) return true;
 
       if (guard) {
-        fields.push(classifyGuard(String(k), guard));
+        fieldsHolder.current.push(classifyGuard(String(k), guard));
       } else {
-        fields.push({ kind: "required", key: String(k) });
+        fieldsHolder.current.push({ kind: "required", key: String(k) });
       }
       return true;
     }) as HelpersWithContext["has"],
@@ -592,23 +692,23 @@ function tryCompileParser<T1>(parser: Parser<T1>): Parser<T1> | null {
       if (guard && hasContext(guard as Predicate<unknown>)) {
         const g = guard as TypeGuard<unknown>;
         if (g.optional) {
-          fields.push({
+          fieldsHolder.current.push({
             kind: "typeGuard",
             key: String(k),
             guard: g.optional as TypeGuard<unknown>,
           });
         } else {
-          fields.push(classifyGuard(String(k), guard));
+          fieldsHolder.current.push(classifyGuard(String(k), guard));
         }
       } else if (guard) {
-        fields.push({ kind: "typePredicate", key: String(k), guard });
+        fieldsHolder.current.push({ kind: "typePredicate", key: String(k), guard });
       }
       return true;
     }) as HelpersWithContext["hasOptional"],
     hasNot: ((_t: object, k: PropertyKey) => {
       if (failed) return true;
 
-      fields.push({ kind: "absent", key: String(k) });
+      fieldsHolder.current.push({ kind: "absent", key: String(k) });
       return true;
     }) as HelpersWithContext["hasNot"],
     tupleHas: (() => {
@@ -631,15 +731,73 @@ function tryCompileParser<T1>(parser: Parser<T1>): Parser<T1> | null {
       failed = true;
       return null;
     }) as HelpersWithContext["fail"],
+    or: ((
+      _val: unknown,
+      // deno-lint-ignore no-explicit-any
+      ...branches: ReadonlyArray<(v: unknown) => any>
+    ) => {
+      if (failed) return true;
+      if (branches.length === 0) {
+        failed = true;
+        return false;
+      }
+
+      const perBranchFields: FieldDescriptor[][] = [];
+      for (const branch of branches) {
+        // Save outer state.
+        const savedFields: FieldDescriptor[] = fieldsHolder.current;
+        const savedFailed: boolean = failed;
+
+        // Install fresh per-branch accumulator.
+        fieldsHolder.current = [];
+        failed = false;
+
+        try {
+          branch(probe as unknown);
+        } catch {
+          // User branch threw — treat as uncompilable.
+          failed = true;
+        }
+
+        const branchFields = fieldsHolder.current;
+        const branchFailed = failed;
+
+        // Restore outer state, OR'ing the branch's failed flag into outer.
+        fieldsHolder.current = savedFields;
+        failed = savedFailed || branchFailed;
+
+        if (branchFailed) {
+          // Bail the whole `or` — caller will fall back to closure path.
+          return true;
+        }
+        if (branchFields.length === 0) {
+          // Empty branch: the branch called no compile-trackable helpers, so
+          // its compiled semantics would be "matches anything" — which doesn't
+          // match the branch's actual runtime behavior (e.g., a branch that
+          // just returns false/undefined). Bail compilation to preserve
+          // correctness.
+          failed = true;
+          return true;
+        }
+        perBranchFields.push(branchFields);
+      }
+
+      fieldsHolder.current.push({ kind: "union", branches: perBranchFields });
+      return true;
+    }) as unknown as HelpersWithContext["or"],
     _ctx: undefined,
   };
 
   try {
     const result = parser(probe as unknown, probeHelpers);
-    if (result !== probe || failed || fields.length === 0) return null;
+    if (result !== probe || failed || fieldsHolder.current.length === 0) return null;
   } catch {
     return null;
   }
+
+  // Snapshot the fields at compile time — the holder is mutable but compilation
+  // is done, so we freeze a reference to what was accumulated.
+  const fields = fieldsHolder.current;
 
   // Compilation succeeded — use compiled fields for the boolean fast path,
   // but fall back to the original parser for the validate path to preserve

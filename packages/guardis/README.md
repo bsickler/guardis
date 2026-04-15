@@ -296,8 +296,11 @@ The callback in `createTypeGuard` provides these helpers:
 
 - **`has(obj, key, guard)`** — validate a required property
 - **`hasOptional(obj, key, guard)`** — validate an optional property (`T | undefined`)
+- **`hasNot(obj, key)`** — assert a property is absent
 - **`tupleHas(arr, index, guard)`** — validate a tuple element at an index
 - **`includes(array, value)`** — check membership in a `const` array (useful for union types)
+- **`or(val, ...branches)`** — express fork logic: match one of several alternative shapes
+- **`fail(message)`** — add a validation issue and return `null`
 
 ```ts
 type Status = "pending" | "complete" | "failed";
@@ -307,6 +310,45 @@ const isStatus = createTypeGuard<Status>((val, { includes }) => {
   return isString(val) && includes(valid, val) ? val : null;
 });
 ```
+
+### Forking Inside a Parser
+
+When a value can match one of several alternative shapes that share a validation prefix, use `or()`:
+
+```ts
+type OrgMember  = { kind: string; orgId:   string };
+type UserMember = { kind: string; userId:  string };
+
+const isMember = createTypeGuard<OrgMember | UserMember>((val, { has, or }) => {
+  if (!isObject(val) || !has(val, "kind", isString)) return null;
+  return or(
+    val,
+    (v): v is OrgMember  => has(v, "orgId",  isString),
+    (v): v is UserMember => has(v, "userId", isString),
+  ) ? val : null;
+});
+```
+
+Each branch is a predicate that receives `val` as `v` and returns a boolean. If any branch matches, `or()` returns `true` and narrows `val` to the union of branch result types. If all branches fail:
+
+- **Boolean mode**: `or()` returns `false`.
+- **Validate mode**: all branches' issues surface in `result.issues`.
+- **Strict mode**: `or()` throws a `TypeError` with combined branch info.
+
+**Why not `if (has(...))`?** The natural-looking pattern below is a footgun — do not use it for forks:
+
+```ts
+// ❌ Broken: in validate/strict modes, has() is designed to collect errors in
+// && chains. It returns true on failure when a ctx is present, so the first
+// branch always wins and the type assertion lies.
+if (has(val, "orgId",  isString)) return val;
+if (has(val, "userId", isString)) return val;
+```
+
+`has()`'s always-true-on-failure behavior is intentional — it lets
+`has(v,'a') && has(v,'b') && has(v,'c')` in validate mode collect every
+field's error in one pass. That design means `if (has(...))` can't be used
+as a fork condition. `or()` is the correct primitive for branching.
 
 ## Extending Guards
 

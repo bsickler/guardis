@@ -3882,3 +3882,509 @@ Deno.test("Parser auto-compilation safety", async (t) => {
     assertFalse(isPerson({ name: "Alice" }));
   });
 });
+
+// ---------------------------------------------------------------------------
+// or() helper — fork primitive for parser callbacks.
+// ---------------------------------------------------------------------------
+
+Deno.test("or() — boolean mode", async (t) => {
+  type OrgMember = { a: string; orgId: string };
+  type UserMember = { a: string; userId: string };
+  type Member = OrgMember | UserMember;
+
+  const isMember = createTypeGuard<Member>((val, { has, or }) => {
+    if (!isObject(val) || !has(val, "a", isString)) return null;
+    return or(
+      val,
+      (v) => has(v, "orgId", isString),
+      (v) => has(v, "userId", isString),
+    )
+      ? val
+      : null;
+  });
+
+  await t.step("first branch matches", () => {
+    assert(isMember({ a: "x", orgId: "org-1" }));
+  });
+
+  await t.step("second branch matches", () => {
+    assert(isMember({ a: "x", userId: "user-1" }));
+  });
+
+  await t.step("no branch matches", () => {
+    assertFalse(isMember({ a: "x" }));
+    assertFalse(isMember({ a: "x", other: "thing" }));
+  });
+
+  await t.step("prefix fails short-circuits before or", () => {
+    assertFalse(isMember({ orgId: "org-1" })); // no 'a'
+  });
+
+  await t.step("or() with zero branches throws", () => {
+    const guard = createTypeGuard<unknown>((val, { or }) => {
+      // deno-lint-ignore no-explicit-any
+      return (or as any)(val) ? val : null;
+    });
+    assertThrows(() => guard({}), Error, "or() requires at least one branch");
+  });
+
+  await t.step("single-branch or() runs the branch", () => {
+    const guard = createTypeGuard<unknown>((val, { has, or }) => {
+      if (!isObject(val)) return null;
+      return or(val, (v) => has(v, "x", isString)) ? val : null;
+    });
+    assert(guard({ x: "hi" }));
+    assertFalse(guard({ x: 1 }));
+    assertFalse(guard({}));
+  });
+
+  await t.step("branch returning null (via fail) is treated as falsy", () => {
+    const guard = createTypeGuard<unknown>((val, { has, or, fail }) => {
+      if (!isObject(val)) return null;
+      return or(
+        val,
+        (v) => has(v, "x", isString) ? true : fail("no x"),
+        (v) => has(v, "y", isString),
+      )
+        ? val
+        : null;
+    });
+    assert(guard({ x: "ok" }));
+    assert(guard({ y: "ok" }));
+    assertFalse(guard({ z: "no" }));
+  });
+
+  await t.step("branch returning undefined is treated as falsy", () => {
+    const guard = createTypeGuard<unknown>((val, { has, or }) => {
+      if (!isObject(val)) return null;
+      return or(
+        val,
+        () => undefined,
+        (v) => has(v, "y", isString),
+      )
+        ? val
+        : null;
+    });
+    assert(guard({ y: "ok" }));
+    assertFalse(guard({}));
+  });
+
+  await t.step("type narrowing — typed predicate branches narrow val", () => {
+    type Shape = { a: number } | { b: string };
+    const guard = createTypeGuard<Shape>((val, { has, or }) => {
+      if (!isObject(val)) return null;
+      if (
+        or(
+          val,
+          (v): v is { a: number } => has(v, "a", isNumber),
+          (v): v is { b: string } => has(v, "b", isString),
+        )
+      ) {
+        // Compile-time proof that val is narrowed: if `or()` did not narrow,
+        // returning `val` from the parser (whose return type is Shape | null)
+        // would be a type error. This implicit narrowing assertion is the
+        // test — no runtime assertion needed beyond the outer guard behavior.
+        return val;
+      }
+      return null;
+    });
+    assert(guard({ a: 1 }));
+    assert(guard({ b: "hi" }));
+    assertFalse(guard({ c: true }));
+  });
+});
+
+Deno.test("or() — validate mode", async (t) => {
+  const isMember = createTypeGuard<unknown>((val, { has, or }) => {
+    if (!isObject(val) || !has(val, "a", isString)) return null;
+    return or(
+      val,
+      (v) => has(v, "orgId", isString),
+      (v) => has(v, "userId", isString),
+    )
+      ? val
+      : null;
+  });
+
+  await t.step("first branch matches — value returned, no issues", () => {
+    const r = isMember.validate({ a: "x", orgId: "org-1" });
+    assert("value" in r);
+    assertEquals(r.value, { a: "x", orgId: "org-1" });
+  });
+
+  await t.step(
+    "second branch matches — value returned, first branch's speculative issues discarded",
+    () => {
+      const r = isMember.validate({ a: "x", userId: "user-1" });
+      assert("value" in r);
+      assertEquals(r.value, { a: "x", userId: "user-1" });
+    },
+  );
+
+  await t.step("no branch matches — issues from every branch, flat", () => {
+    const r = isMember.validate({ a: "x" });
+    assert("issues" in r && r.issues);
+    // Both branches added "Missing required property: orgId" / "...: userId".
+    assert(r.issues.length >= 2, `expected ≥2 issues, got ${r.issues.length}`);
+    const messages = r.issues.map((i) => i.message).join("|");
+    assert(messages.includes("orgId"));
+    assert(messages.includes("userId"));
+  });
+
+  await t.step(
+    "critical invariant: has() returns true on context-aware guard failure — or() still catches via buffer check",
+    () => {
+      // Branch's `has(v, 'orgId', isString.notEmpty)` uses a context-aware guard
+      // (isString.notEmpty has _.context). On an empty-string value, has()
+      // returns true but the inner guard adds an issue to the speculation buffer.
+      // or() must see buf.length > 0 and treat the branch as failed.
+      const isStrict = createTypeGuard<unknown>((val, { has, or }) => {
+        if (!isObject(val)) return null;
+        return or(
+          val,
+          (v) => has(v, "orgId", isString.notEmpty),
+          (v) => has(v, "orgName", isString),
+        )
+          ? val
+          : null;
+      });
+
+      // orgId is an empty string — first branch's inner guard fails.
+      // orgName is present and valid — second branch matches.
+      const r = isStrict.validate({ orgId: "", orgName: "Acme" });
+      assert(
+        "value" in r,
+        `expected value, got: ${JSON.stringify(r)}`,
+      );
+    },
+  );
+
+  await t.step(
+    "critical invariant: has() errorMessage path — or() catches via buffer check",
+    () => {
+      // Branch uses `has(v, 'k', guard, 'custom err')` — the errorMessage path
+      // in hasProperty writes the custom message and (per existing v0.7
+      // semantics) returns true. or() must catch via buffer check.
+      const guard = createTypeGuard<unknown>((val, { has, or }) => {
+        if (!isObject(val)) return null;
+        return or(
+          val,
+          (v) => has(v, "age", isNumber, "age must be a number"),
+          (v) => has(v, "label", isString),
+        )
+          ? val
+          : null;
+      });
+
+      // age is a string — first branch fails via errorMessage path.
+      // label is present — second branch matches.
+      const r = guard.validate({ age: "not-a-number", label: "ok" });
+      assert("value" in r, `expected value, got: ${JSON.stringify(r)}`);
+    },
+  );
+
+  await t.step("nested context-aware guard inside branch — failure caught by or", () => {
+    const isInner = createTypeGuard<{ x: string }>((val, { has }) => {
+      if (!isObject(val)) return null;
+      return has(val, "x", isString) ? val : null;
+    });
+
+    const guard = createTypeGuard<unknown>((val, { has, or }) => {
+      if (!isObject(val)) return null;
+      return or(
+        val,
+        // inner guard fails — its issues land in the speculation buffer
+        (v) => has(v, "inner", isInner),
+        (v) => has(v, "fallback", isString),
+      )
+        ? val
+        : null;
+    });
+
+    // inner is present but invalid (missing x); fallback is present — or picks it.
+    const r = guard.validate({ inner: { y: 1 }, fallback: "ok" });
+    assert("value" in r, `expected value, got: ${JSON.stringify(r)}`);
+  });
+
+  await t.step("nested or — inner or inside outer or branch composes", () => {
+    const guard = createTypeGuard<unknown>((val, { has, or }) => {
+      if (!isObject(val)) return null;
+      return or(
+        val,
+        (v) =>
+          isObject(v) && has(v, "a", isString) && or(
+            v,
+            (vv) => has(vv, "b", isString),
+            (vv) => has(vv, "c", isString),
+          ),
+        (v) => has(v, "alt", isString),
+      )
+        ? val
+        : null;
+    });
+
+    assert("value" in guard.validate({ a: "x", b: "y" }));
+    assert("value" in guard.validate({ a: "x", c: "y" }));
+    assert("value" in guard.validate({ alt: "z" }));
+    assert("issues" in guard.validate({ a: "x" })); // a present but neither b nor c, nor alt
+    assert("issues" in guard.validate({}));
+  });
+
+  await t.step("speculation buffer restored after each branch", () => {
+    // A ctx.addIssue call OUTSIDE or() after or() runs must not land in a
+    // speculation buffer — proves we restored _speculative to undefined.
+    const guard = createTypeGuard<unknown>((val, { has, or, fail }) => {
+      if (!isObject(val)) return null;
+      // Fork fails, then we emit a top-level issue via fail().
+      or(
+        val,
+        (v) => has(v, "x", isString),
+      );
+      // Regardless of or's result, emit an unrelated issue.
+      return fail("top-level issue after or");
+    });
+
+    const r = guard.validate({});
+    assert("issues" in r && r.issues);
+    const messages = r.issues.map((i) => i.message);
+    assert(
+      messages.includes("top-level issue after or"),
+      `expected top-level issue to appear in ctx.issues, got: ${messages.join(", ")}`,
+    );
+  });
+});
+
+Deno.test("or() — strict mode", async (t) => {
+  const isMember = createTypeGuard<unknown>((val, { has, or }) => {
+    if (!isObject(val) || !has(val, "a", isString)) return null;
+    return or(
+      val,
+      (v) => has(v, "orgId", isString),
+      (v) => has(v, "userId", isString),
+    )
+      ? val
+      : null;
+  });
+
+  await t.step("first branch matches — no throw", () => {
+    isMember.strict({ a: "x", orgId: "org-1" });
+  });
+
+  await t.step("second branch matches — no throw", () => {
+    isMember.strict({ a: "x", userId: "user-1" });
+  });
+
+  await t.step("no branch matches — throws TypeError with combined info", () => {
+    try {
+      isMember.strict({ a: "x" });
+      assert(false, "should have thrown");
+    } catch (e) {
+      assert(e instanceof Error);
+      // Combined message references both branches.
+      assert(
+        e.message.includes("branch 0") && e.message.includes("branch 1"),
+        `expected combined info, got: ${e.message}`,
+      );
+    }
+  });
+
+  await t.step("strict addIssue still throws when called outside or", () => {
+    // Sanity check — the speculation slot must only be set inside or().
+    const guard = createTypeGuard<unknown>((_val, { fail }) => {
+      fail("explicit failure");
+      return null;
+    });
+    assertThrows(() => guard.strict({}), TypeError, "explicit failure");
+  });
+});
+
+Deno.test("or() — compile probe integration", async (t) => {
+  // These tests verify tryCompileParser correctly emits union descriptors for
+  // or()-using parsers, and that the boolean fast-path evaluates any-branch-
+  // matches correctly.
+
+  await t.step("or() parser auto-compiles and matches first branch", () => {
+    const isMember = createTypeGuard<unknown>((val, { has, or }) => {
+      if (!isObject(val) || !has(val, "kind", isString)) return null;
+      return or(
+        val,
+        (v) => has(v, "orgId", isString),
+        (v) => has(v, "userId", isString),
+      )
+        ? val
+        : null;
+    });
+    // Boolean path hits the compiled descriptors; first branch matches.
+    assert(isMember({ kind: "org", orgId: "o-1" }));
+  });
+
+  await t.step("or() parser auto-compiles and matches second branch", () => {
+    const isMember = createTypeGuard<unknown>((val, { has, or }) => {
+      if (!isObject(val) || !has(val, "kind", isString)) return null;
+      return or(
+        val,
+        (v) => has(v, "orgId", isString),
+        (v) => has(v, "userId", isString),
+      )
+        ? val
+        : null;
+    });
+    // Crucial — this is the scenario that broke under the pre-fix linearization
+    // (probe recorded both branches as required, so fast-path needed both).
+    assert(isMember({ kind: "user", userId: "u-1" }));
+  });
+
+  await t.step("or() parser rejects value matching no branch", () => {
+    const isMember = createTypeGuard<unknown>((val, { has, or }) => {
+      if (!isObject(val) || !has(val, "kind", isString)) return null;
+      return or(
+        val,
+        (v) => has(v, "orgId", isString),
+        (v) => has(v, "userId", isString),
+      )
+        ? val
+        : null;
+    });
+    assertFalse(isMember({ kind: "foo", other: "bar" }));
+    assertFalse(isMember({ orgId: "o-1" })); // missing 'kind'
+  });
+
+  await t.step("each probe helper (has/hasOptional/hasNot) writes to per-branch accumulator", () => {
+    // Exercises all three compile-trackable probe helpers inside different branches
+    // to prove per-branch field isolation.
+    const isShape = createTypeGuard<unknown>((val, { has, hasOptional, hasNot, or }) => {
+      if (!isObject(val)) return null;
+      return or(
+        val,
+        (v) => has(v, "a", isString), // branch 0: one required
+        (v) => hasOptional(v, "b", isNumber) && has(v, "c", isString), // branch 1: optional + required
+        (v) => has(v, "d", isString) && hasNot(v, "e"), // branch 2: required + absent
+      )
+        ? val
+        : null;
+    });
+    assert(isShape({ a: "x" }));
+    assert(isShape({ b: 1, c: "y" }));
+    assert(isShape({ c: "y" })); // b is optional
+    assert(isShape({ d: "z" }));
+    assertFalse(isShape({ d: "z", e: "forbidden" })); // branch 2's hasNot rejects
+    assertFalse(isShape({})); // matches no branch
+  });
+
+  await t.step("nested or composes through compilation", () => {
+    const guard = createTypeGuard<unknown>((val, { has, or }) => {
+      if (!isObject(val)) return null;
+      return or(
+        val,
+        (v) => has(v, "wrapper", isString),
+        (v) =>
+          has(v, "kind", isString) && or(
+            v,
+            (vv) => has(vv, "inner1", isString),
+            (vv) => has(vv, "inner2", isString),
+          ),
+      )
+        ? val
+        : null;
+    });
+    assert(guard({ wrapper: "w" }));
+    assert(guard({ kind: "k", inner1: "x" }));
+    assert(guard({ kind: "k", inner2: "y" }));
+    assertFalse(guard({ kind: "k" })); // no inner1/inner2
+    assertFalse(guard({}));
+  });
+
+  await t.step(
+    "branch using non-compile-friendly helper (fail) bails to closure",
+    () => {
+      // Using fail() inside a branch marks the probe as failed, so the parser
+      // falls back to the closure at runtime. The closure path uses the ctx-aware
+      // or() which still gives correct semantics — test that the overall guard
+      // still works.
+      const guard = createTypeGuard<unknown>((val, { has, or, fail }) => {
+        if (!isObject(val)) return null;
+        return or(
+          val,
+          (v) => {
+            // The fail() call makes this branch non-compilable.
+            if (!has(v, "x", isString)) return fail("no x");
+            return true;
+          },
+          (v) => has(v, "y", isString),
+        )
+          ? val
+          : null;
+      });
+      // Boolean mode still works — runs the closure since probe bailed.
+      assert(guard({ x: "ok" }));
+      assert(guard({ y: "ok" }));
+      assertFalse(guard({ z: "nope" }));
+    },
+  );
+
+  await t.step("empty union branch (no probe-tracked helpers) bails compilation", () => {
+    // A branch that doesn't call any compile-trackable helper (e.g. a pure
+    // function like `() => true`) has opaque compile semantics — the probe
+    // correctly bails, falling back to the closure for correct runtime behavior.
+    const guard = createTypeGuard<unknown>((val, { has, or }) => {
+      if (!isObject(val)) return null;
+      return or(
+        val,
+        () => true, // empty-branch — probe bails
+        (v) => has(v, "y", isString),
+      )
+        ? val
+        : null;
+    });
+    // `() => true` wins at runtime for any object; guard accepts any record.
+    assert(guard({ anything: "goes" }));
+    assert(guard({ y: "ok" }));
+    assertFalse(guard(42)); // not an object, isObject check fails
+    assertFalse(guard(null));
+  });
+});
+
+Deno.test("or() — regression: Problem Frame minimal repro", async (t) => {
+  // The exact scenario from the origin doc's Problem Frame:
+  //   if (has(v, 'a', isString)) {
+  //     if (has(v, 'orgId',   isUUIDv7))          return val;
+  //     if (has(v, 'orgName', isString.notEmpty)) return val;
+  //   }
+  //   return null;
+  // This form was broken. The or()-based rewrite:
+  const guard = createTypeGuard<unknown>((val, { has, or }) => {
+    if (!isObject(val) || !has(val, "a", isString)) return null;
+    return or(
+      val,
+      (v) => has(v, "orgId", isString),
+      (v) => has(v, "orgName", isString.notEmpty),
+    )
+      ? val
+      : null;
+  });
+
+  await t.step("boolean mode matches orgName branch (the case that failed)", () => {
+    assert(guard({ a: "x", orgName: "foo" }));
+  });
+
+  await t.step("validate mode matches orgName branch cleanly", () => {
+    const r = guard.validate({ a: "x", orgName: "foo" });
+    assert("value" in r);
+  });
+
+  await t.step("strict mode matches orgName branch without throwing", () => {
+    guard.strict({ a: "x", orgName: "foo" });
+  });
+
+  await t.step("orgId branch also matches in all modes", () => {
+    assert(guard({ a: "x", orgId: "some-id" }));
+    assert("value" in guard.validate({ a: "x", orgId: "some-id" }));
+    guard.strict({ a: "x", orgId: "some-id" });
+  });
+
+  await t.step("value matching neither branch is rejected", () => {
+    assertFalse(guard({ a: "x" }));
+    assert("issues" in guard.validate({ a: "x" }));
+    assertThrows(() => guard.strict({ a: "x" }), TypeError);
+  });
+});
