@@ -4388,3 +4388,184 @@ Deno.test("or() — regression: Problem Frame minimal repro", async (t) => {
     assertThrows(() => guard.strict({ a: "x" }), TypeError);
   });
 });
+
+// ---------------------------------------------------------------------------
+// && chain assertions in parser callbacks — regression coverage.
+// These tests lock down that `hasProperty` and `tupleHas` are intentionally
+// unchanged: has(v,'a') && has(v,'b') && has(v,'c') inside a parser still
+// collects every field's error in validate mode. If this breaks, the "or()
+// handles forks, && handles assertions" division of labor is compromised.
+// ---------------------------------------------------------------------------
+
+Deno.test("&& chain inside parser — multi-error collection (validate mode)", async (t) => {
+  const isShape = createTypeGuard<unknown>((val, { has }) =>
+    isObject(val) &&
+      has(val, "a", isString) &&
+      has(val, "b", isNumber) &&
+      has(val, "c", isBoolean)
+      ? val
+      : null
+  );
+
+  await t.step("all three fields invalid — all three issues reported", () => {
+    const r = isShape.validate({ a: 1, b: "not a number", c: "not a bool" });
+    assert("issues" in r && r.issues, "expected issues result");
+    // The full point of hasProperty's "return true on failure when ctx is set"
+    // contract: && doesn't short-circuit on the first failure, so every has()
+    // in the chain contributes its issue.
+    assertEquals(
+      r.issues.length,
+      3,
+      `expected 3 issues (one per failing field), got ${r.issues.length}: ${
+        r.issues.map((i) => i.message).join(" | ")
+      }`,
+    );
+    const paths = r.issues.map((i) => (i.path ?? []).join("."));
+    assert(paths.includes("a"), `missing 'a' path, got: ${paths.join(", ")}`);
+    assert(paths.includes("b"), `missing 'b' path, got: ${paths.join(", ")}`);
+    assert(paths.includes("c"), `missing 'c' path, got: ${paths.join(", ")}`);
+  });
+
+  await t.step("only middle field invalid — one issue with correct path", () => {
+    const r = isShape.validate({ a: "ok", b: "wrong", c: true });
+    assert("issues" in r && r.issues);
+    assertEquals(r.issues.length, 1);
+    assertEquals((r.issues[0].path ?? []).join("."), "b");
+  });
+
+  await t.step(
+    "missing key short-circuits && chain (missing returns false, not true)",
+    () => {
+      // Design detail worth locking in: hasProperty returns `false` when the
+      // KEY is missing, but `true` when the key exists and only the guard
+      // fails. That asymmetry means && short-circuits on the first missing
+      // key but keeps running past type mismatches. Only one issue here.
+      const r = isShape.validate({ a: "ok" /* missing b and c */ });
+      assert("issues" in r && r.issues);
+      assertEquals(r.issues.length, 1);
+      assertEquals((r.issues[0].path ?? []).join("."), "b");
+    },
+  );
+
+  await t.step(
+    "all present but type-invalid — all issues reported via context-aware path",
+    () => {
+      // With all keys present, guard failures route through the
+      // `hasContext(guard)` branch in hasProperty which returns true and
+      // writes the issue — so the && chain doesn't short-circuit.
+      const r = isShape.validate({ a: 1, b: "nope", c: "nope" });
+      assert("issues" in r && r.issues);
+      assertEquals(r.issues.length, 3);
+    },
+  );
+
+  await t.step("all valid — clean value, no issues", () => {
+    const r = isShape.validate({ a: "ok", b: 1, c: true });
+    assert("value" in r);
+    assertEquals(r.value, { a: "ok", b: 1, c: true });
+  });
+});
+
+Deno.test("&& chain with custom errorMessage — all custom messages collected", async (t) => {
+  // errorMessage path in hasProperty also returns true on failure to keep
+  // the chain running. Verify that design is preserved.
+  const isPerson = createTypeGuard<unknown>((val, { has }) =>
+    isObject(val) &&
+      has(val, "name", isString, "Name is required") &&
+      has(val, "age", isNumber, "Age must be a number") &&
+      has(val, "email", isString, "Email is required")
+      ? val
+      : null
+  );
+
+  await t.step("multiple errorMessage failures all land in ctx.issues", () => {
+    const r = isPerson.validate({ name: 42, age: "old" /* missing email */ });
+    assert("issues" in r && r.issues);
+    assertEquals(r.issues.length, 3, `got ${r.issues.length} issues`);
+    const messages = r.issues.map((i) => i.message);
+    assert(messages.includes("Name is required"));
+    assert(messages.includes("Age must be a number"));
+    assert(messages.includes("Email is required"));
+  });
+});
+
+Deno.test("mixing && chains with or() forks in a single parser", async (t) => {
+  // Real-world pattern: a common prefix validated via && chain, then a fork
+  // via or(). Both mechanisms must work together.
+  const isMember = createTypeGuard<unknown>((val, { has, or }) => {
+    if (
+      !isObject(val) ||
+      !has(val, "createdAt", isString) ||
+      !has(val, "kind", isString)
+    ) {
+      return null;
+    }
+    return or(
+      val,
+      (v) => has(v, "orgId", isString),
+      (v) => has(v, "userId", isString),
+    )
+      ? val
+      : null;
+  });
+
+  await t.step("valid prefix + matching branch — value returned", () => {
+    const r = isMember.validate({
+      createdAt: "2026-01-01",
+      kind: "org",
+      orgId: "o-1",
+    });
+    assert("value" in r);
+  });
+
+  await t.step("prefix fails — or() never runs, prefix issue reported", () => {
+    // Prefix && chain fails because `createdAt` is missing.
+    // The parser short-circuits before or(), so or() doesn't contribute issues.
+    const r = isMember.validate({ kind: "org", orgId: "o-1" });
+    assert("issues" in r && r.issues);
+    const messages = r.issues.map((i) => i.message).join(" | ");
+    assert(messages.includes("createdAt"), `expected createdAt issue, got: ${messages}`);
+    // Critically: no "Missing orgId / userId" issues from or() branches —
+    // the fork never executed.
+    assert(!messages.includes("orgId"), `or() should not have run: ${messages}`);
+    assert(!messages.includes("userId"), `or() should not have run: ${messages}`);
+  });
+
+  await t.step("prefix valid but no branch matches — prefix clean, or() issues replay", () => {
+    const r = isMember.validate({ createdAt: "2026-01-01", kind: "org" });
+    assert("issues" in r && r.issues);
+    const messages = r.issues.map((i) => i.message).join(" | ");
+    // Both or() branches failed — their speculative issues replay.
+    assert(messages.includes("orgId"), `expected orgId issue, got: ${messages}`);
+    assert(messages.includes("userId"), `expected userId issue, got: ${messages}`);
+    // Prefix fields were valid — no spurious createdAt/kind issues.
+    assert(!messages.includes("createdAt"));
+  });
+
+  await t.step("&& chain inside a branch still collects branch-scoped errors", () => {
+    // A branch that uses && inside: if the branch's first has() fails, the
+    // second has() still runs (preserving chain semantics). Both issues land
+    // in the speculation buffer, proving speculation doesn't break && chains.
+    const guard = createTypeGuard<unknown>((val, { has, or }) => {
+      if (!isObject(val)) return null;
+      return or(
+        val,
+        (v) => has(v, "a", isNumber) && has(v, "b", isNumber), // compound branch
+        (v) => has(v, "fallback", isString),
+      )
+        ? val
+        : null;
+    });
+
+    // First branch: both a and b invalid — both issues land in speculation buffer.
+    // Second branch: fallback missing. Everything fails.
+    const r = guard.validate({ a: "no", b: "no" });
+    assert("issues" in r && r.issues);
+    const messages = r.issues.map((i) => i.message).join(" | ");
+    // First branch's speculation buffer captured both a and b issues, plus
+    // the second branch's fallback issue — all three replay flat.
+    assert(messages.includes("a"), `expected 'a' issue: ${messages}`);
+    assert(messages.includes("b"), `expected 'b' issue: ${messages}`);
+    assert(messages.includes("fallback"), `expected 'fallback' issue: ${messages}`);
+  });
+});
