@@ -6,13 +6,16 @@ import {
   doesNotHaveProperty,
   exact,
   formatErrorMessage,
+  guardNameOrParens,
   hasOptionalProperty,
   hasProperty,
   includes,
   keyOf,
   tupleHas,
   unionOf,
+  validateElement,
 } from "./utilities.ts";
+import { createContext } from "./context.ts";
 
 Deno.test("hasProperty", async (t) => {
   await t.step("property existence check", () => {
@@ -459,5 +462,68 @@ Deno.test("unionOf", async (t) => {
       Error,
       "unionOf requires at least one type guard",
     );
+  });
+});
+
+Deno.test("guardNameOrParens", async (t) => {
+  await t.step("returns the raw name for simple guards", () => {
+    assertEquals(guardNameOrParens(isString), "string");
+    assertEquals(guardNameOrParens(isNumber), "number");
+    assertEquals(guardNameOrParens(isBoolean), "boolean");
+  });
+
+  await t.step("wraps union names in parentheses", () => {
+    const isStringOrNumber = isString.or(isNumber);
+    assertEquals(guardNameOrParens(isStringOrNumber), "(string | number)");
+  });
+
+  await t.step("returns undefined for anonymous guards", () => {
+    const anonymous = createTypeGuard<string>((v) => typeof v === "string" ? v : null);
+    assertEquals(guardNameOrParens(anonymous), undefined);
+  });
+
+  await t.step("handles composite names from other factories (e.g. array-of)", () => {
+    const isStringArray = isArray.of(isString) as unknown as TypeGuard<unknown>;
+    assertEquals(guardNameOrParens(isStringArray), "string[]");
+  });
+});
+
+Deno.test("validateElement", async (t) => {
+  await t.step("returns true when guard passes (no context)", () => {
+    assertEquals(validateElement(isString, "hello", undefined, 0), true);
+  });
+
+  await t.step("returns false when guard fails (no context)", () => {
+    assertEquals(validateElement(isString, 42, undefined, 0), false);
+  });
+
+  await t.step("pushes path onto context on failure", () => {
+    const ctx = createContext();
+    const ok = validateElement(isNumber, "not-a-number", ctx, "field");
+    assertFalse(ok);
+    assert(ctx.issues.length > 0);
+    // The issue should have been recorded at the pushed path
+    assertEquals(ctx.issues[0].path, ["field"]);
+  });
+
+  await t.step("does not add issues on success", () => {
+    const ctx = createContext();
+    const ok = validateElement(isNumber, 42, ctx, "field");
+    assert(ok);
+    assertEquals(ctx.issues.length, 0);
+  });
+
+  await t.step("pops path even when guard fails", () => {
+    const ctx = createContext();
+    ctx.pushPath("outer");
+    validateElement(isNumber, "nope", ctx, "inner");
+    // After validateElement returns, only "outer" should remain on the path
+    assertEquals(ctx.path, ["outer"]);
+  });
+
+  await t.step("accepts numeric index as segment", () => {
+    const ctx = createContext();
+    validateElement(isString, 42, ctx, 3);
+    assertEquals(ctx.issues[0].path, [3]);
   });
 });

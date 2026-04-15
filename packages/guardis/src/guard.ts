@@ -26,6 +26,7 @@ import {
   doesNotHaveProperty,
   exact,
   formatErrorMessage,
+  guardNameOrParens,
   hasOptionalProperty,
   hasProperty,
   includes,
@@ -493,7 +494,8 @@ const createOptionalTypeGuard = <T>(
  */
 const createNotEmptyTypeGuard = <T>(guard: Predicate<T>) => {
   const notEmpty = (value: unknown): value is T => !isEmptyValue(value) && guard(value);
-  const name = hasName(guard) ? `non-empty ${guard._.name}` : undefined;
+  const innerName = guardNameOrParens(guard as TypeGuard<T>);
+  const name = innerName ? `non-empty ${innerName}` : undefined;
   const notEmptyParser = (value: unknown) => notEmpty(value) && guard(value) ? value : null;
 
   const context = (value: unknown, ctx?: Context): StandardSchemaV1.Result<T> => {
@@ -972,4 +974,33 @@ export function isExactly<const T>(expected: T): TypeGuard<T> {
         (t): T | null => exact(expected, t) ? expected : null,
       );
   }
+}
+
+/**
+ * Factory that returns a TypeGuard for `instanceof` checks against a
+ * class constructor. Generalizes the pattern behind `isDate`, `isNativeURL`,
+ * etc. so consumers can build guards for their own classes without writing
+ * a custom parser.
+ *
+ * @example
+ * ```typescript
+ * class MyService {}
+ * const isMyService = isInstanceOf(MyService);
+ * isMyService(new MyService()); // true, narrows to MyService
+ * isMyService({});               // false
+ *
+ * class CustomError extends Error {}
+ * const isCustomError = isInstanceOf(CustomError);
+ * ```
+ *
+ * @param ctor The class constructor to check against.
+ * @param name Optional name for error messages. Defaults to `ctor.name`.
+ * @returns A TypeGuard<T> where T is the constructor's instance type.
+ */
+// deno-lint-ignore no-explicit-any
+export function isInstanceOf<T>(ctor: new (...args: any[]) => T, name?: string): TypeGuard<T> {
+  return createTypeGuard(
+    name ?? ctor.name ?? "instance",
+    (t): T | null => t instanceof ctor ? t : null,
+  );
 }

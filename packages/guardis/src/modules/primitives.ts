@@ -3,22 +3,22 @@
  * @module
  */
 
-import { createTypeGuard, isExactly, isNull, isUndefined } from "../guard.ts";
+import { createTypeGuard, isNull, isUndefined } from "../guard.ts";
 import type {
   ArrayTypeGuard,
-  CanBeEmpty,
   JsonArray,
   JsonObject,
   JsonPrimitive,
   JsonValue,
+  MapTypeGuard,
   NumberTypeGuard,
+  SetTypeGuard,
   Simplify,
   StringTypeGuard,
   TupleOfLength,
   TypeGuard,
 } from "../types.ts";
-import { hasContext, hasName } from "../introspect.ts";
-import { unionOf } from "../utilities.ts";
+import { guardNameOrParens, unionOf, validateElement } from "../utilities.ts";
 import type { HelpersWithContext } from "../types.ts";
 
 /**
@@ -234,14 +234,15 @@ export const isFunction: TypeGuard<(...args: unknown[]) => unknown> = createType
 );
 
 /**
- * Returns true if input is a JSON-able primitive date type
+ * Returns true if input is a JSON-able primitive data type
+ *
  * @param {unknown} t
  * @return {boolean}
  */
 export const isJsonPrimitive: TypeGuard<JsonPrimitive> = unionOf(
   isBoolean,
   isString,
-  isNumber,
+  isNumber.finite,
   isNull,
 );
 
@@ -304,39 +305,17 @@ export const isArray: ArrayTypeGuard = withArrayMethods(Object.assign(
   _isArray,
   {
     of: <T>(guard: TypeGuard<T>): ArrayTypeGuard<T> => {
-      const guardName = hasName(guard) ? guard._.name : undefined;
+      const inner = guardNameOrParens(guard);
+      const name = inner ? `${inner}[]` : "array";
 
-      let name = "array";
-
-      if (guardName) {
-        name = guardName?.includes(" | ") ? `(${guardName})[]` : `${guardName}[]`;
-      }
-
-      return withArrayMethods(createTypeGuard(
-        name,
-        (v, helpers) => {
-          if (!isArray(v)) return null;
-
-          const ctx = (helpers as HelpersWithContext)._ctx;
-
-          // If we have a context, use index-aware validation
-          if (ctx && hasContext(guard)) {
-            for (let i = 0; i < v.length; i++) {
-              ctx.pushPath(i);
-              try {
-                const result = guard._.context(v[i], ctx);
-                if (result.issues) return null; // issues already added to parent ctx
-              } finally {
-                ctx.popPath();
-              }
-            }
-            return v as T[];
-          }
-
-          // Otherwise, use simple boolean check
-          return v.every((item) => guard(item)) ? v as T[] : null;
-        },
-      ));
+      return withArrayMethods(createTypeGuard(name, (v, helpers) => {
+        if (!isArray(v)) return null;
+        const ctx = (helpers as HelpersWithContext)._ctx;
+        for (let i = 0; i < v.length; i++) {
+          if (!validateElement(guard, v[i], ctx, i)) return null;
+        }
+        return v as T[];
+      }));
     },
   },
 ));
@@ -348,7 +327,14 @@ export const isArray: ArrayTypeGuard = withArrayMethods(Object.assign(
  */
 export const isJsonArray: TypeGuard<JsonValue[] | readonly JsonValue[]> = createTypeGuard(
   "JsonArray",
-  (t): JsonArray | null => Array.isArray(t) ? t : null,
+  (t, helpers): JsonArray | null => {
+    if (!Array.isArray(t)) return null;
+    const ctx = (helpers as HelpersWithContext)._ctx;
+    for (let i = 0; i < t.length; i++) {
+      if (!validateElement(isJsonValue, t[i], ctx, i)) return null;
+    }
+    return t;
+  },
 );
 
 /**
@@ -394,6 +380,90 @@ export const isJsonValue: TypeGuard<JsonValue> = unionOf(
  * ```
  */
 export const isDate: TypeGuard<Date> = createTypeGuard("Date", (t) => t instanceof Date ? t : null);
+
+/** Precursor to full isMap guard */
+const _isMap = createTypeGuard(
+  "Map",
+  (t): Map<unknown, unknown> | null => t instanceof Map ? t : null,
+);
+
+/**
+ * Type guard that checks if a value is a Map instance, with optional key/value
+ * type checking via `.of(keyGuard, valueGuard)`.
+ *
+ * @example
+ * ```typescript
+ * isMap(new Map())                       // true
+ * isMap({})                              // false
+ *
+ * const isStringToNumber = isMap.of(isString, isNumber);
+ * isStringToNumber(new Map([["a", 1]]))  // true
+ * isStringToNumber(new Map([[1, 1]]))    // false (key is not string)
+ * ```
+ */
+export const isMap: MapTypeGuard = Object.assign(
+  _isMap,
+  {
+    of: <K, V>(keyGuard: TypeGuard<K>, valueGuard: TypeGuard<V>): TypeGuard<Map<K, V>> => {
+      const k = guardNameOrParens(keyGuard);
+      const v = guardNameOrParens(valueGuard);
+      const name = k && v ? `Map<${k}, ${v}>` : "Map";
+
+      return createTypeGuard(name, (val, helpers) => {
+        if (!_isMap(val)) return null;
+        const ctx = (helpers as HelpersWithContext)._ctx;
+        let idx = 0;
+        for (const [key, value] of val) {
+          if (!validateElement(keyGuard, key, ctx, `key[${idx}]`)) return null;
+          if (!validateElement(valueGuard, value, ctx, `value[${idx}]`)) return null;
+          idx++;
+        }
+        return val as Map<K, V>;
+      });
+    },
+  },
+) as MapTypeGuard;
+
+/** Precursor to full isSet guard */
+const _isSet = createTypeGuard(
+  "Set",
+  (t): Set<unknown> | null => t instanceof Set ? t : null,
+);
+
+/**
+ * Type guard that checks if a value is a Set instance, with optional element
+ * type checking via `.of(guard)`.
+ *
+ * @example
+ * ```typescript
+ * isSet(new Set())                    // true
+ * isSet([1, 2, 3])                    // false
+ *
+ * const isStringSet = isSet.of(isString);
+ * isStringSet(new Set(["a", "b"]))    // true
+ * isStringSet(new Set([1, 2]))        // false
+ * ```
+ */
+export const isSet: SetTypeGuard = Object.assign(
+  _isSet,
+  {
+    of: <T>(guard: TypeGuard<T>): TypeGuard<Set<T>> => {
+      const g = guardNameOrParens(guard);
+      const name = g ? `Set<${g}>` : "Set";
+
+      return createTypeGuard(name, (val, helpers) => {
+        if (!_isSet(val)) return null;
+        const ctx = (helpers as HelpersWithContext)._ctx;
+        let idx = 0;
+        for (const item of val) {
+          if (!validateElement(guard, item, ctx, idx)) return null;
+          idx++;
+        }
+        return val as Set<T>;
+      });
+    },
+  },
+) as SetTypeGuard;
 
 /**
  * Returns true if input satisfies type null or undefined.

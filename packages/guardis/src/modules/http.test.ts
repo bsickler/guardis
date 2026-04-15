@@ -1,8 +1,11 @@
 import { assert, assertEquals, assertFalse, assertThrows } from "@std/assert";
 import {
+  isBlob,
   isCidr,
   isCidrV4,
   isCidrV6,
+  isFormData,
+  isHeaders,
   isIpv4,
   isIpv6,
   isIpv6Compressed,
@@ -617,5 +620,82 @@ Deno.test("isCidr (composite)", async (t) => {
 
   await t.step("has correct name", () => {
     assertEquals(isCidr._.name, "CIDR");
+  });
+});
+
+Deno.test("isHeaders", async (t) => {
+  await t.step("accepts Headers instances", () => {
+    assert(isHeaders(new Headers()));
+    assert(isHeaders(new Headers({ "Content-Type": "application/json" })));
+  });
+
+  await t.step("rejects non-Headers values", () => {
+    assertFalse(isHeaders({}));
+    assertFalse(isHeaders({ "Content-Type": "application/json" }));
+    assertFalse(isHeaders(new Map()));
+    assertFalse(isHeaders("headers"));
+    assertFalse(isHeaders(null));
+    assertFalse(isHeaders(undefined));
+  });
+
+  await t.step("supports the full guard API", () => {
+    isHeaders.strict(new Headers());
+    assertThrows(() => isHeaders.strict({}));
+    assert(isHeaders.optional(undefined));
+    assertFalse(isHeaders.optional({}));
+    assertEquals(isHeaders.validate({}), {
+      issues: [{ message: "Expected Headers. Received: {}" }],
+    });
+  });
+});
+
+Deno.test("isBlob", async (t) => {
+  await t.step("accepts Blob instances", () => {
+    assert(isBlob(new Blob(["hello"])));
+    assert(isBlob(new Blob([], { type: "image/png" })));
+  });
+
+  await t.step("accepts File instances (File extends Blob)", () => {
+    assert(isBlob(new File([""], "test.txt")));
+  });
+
+  await t.step("rejects non-Blob values", () => {
+    assertFalse(isBlob({}));
+    assertFalse(isBlob("not a blob"));
+    assertFalse(isBlob(new ArrayBuffer(8)));
+    assertFalse(isBlob(null));
+    assertFalse(isBlob(undefined));
+  });
+
+  await t.step("supports the full guard API", () => {
+    isBlob.strict(new Blob(["x"]));
+    assertThrows(() => isBlob.strict("not a blob"));
+    assert(isBlob.optional(undefined));
+    assertFalse(isBlob.optional({}));
+  });
+});
+
+Deno.test("isFormData", async (t) => {
+  await t.step("accepts FormData instances", () => {
+    assert(isFormData(new FormData()));
+    const fd = new FormData();
+    fd.append("key", "value");
+    assert(isFormData(fd));
+  });
+
+  await t.step("rejects non-FormData values", () => {
+    assertFalse(isFormData({}));
+    assertFalse(isFormData(new URLSearchParams()));
+    assertFalse(isFormData(new Map()));
+    assertFalse(isFormData("formdata"));
+    assertFalse(isFormData(null));
+    assertFalse(isFormData(undefined));
+  });
+
+  await t.step("supports the full guard API", () => {
+    isFormData.strict(new FormData());
+    assertThrows(() => isFormData.strict({}));
+    assert(isFormData.optional(undefined));
+    assertFalse(isFormData.optional({}));
   });
 });

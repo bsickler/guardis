@@ -1270,6 +1270,43 @@ Deno.test("Guard name edge cases", async (t) => {
       issues: [{ message: "Expected non-empty string. Received: ''" }],
     });
   });
+
+  await t.step("notEmpty wraps union names in parens for clarity", () => {
+    // Without parens: "non-empty string | number" is ambiguous (could read as
+    // "(non-empty string) | number"). With parens: "non-empty (string | number)"
+    // clearly applies the modifier to the whole union.
+    const result = isString.or(isNumber).notEmpty.validate("");
+    assertEquals(result, {
+      issues: [{ message: "Expected non-empty (string | number). Received: ''" }],
+    });
+  });
+
+  await t.step("notEmpty guard stores name directly on metadata (_.name)", () => {
+    // Direct check: the name is persisted on _.name, not just synthesized
+    // in error messages. createNotEmptyTypeGuard casts its `guard: Predicate<T>`
+    // arg to TypeGuard<T> when reading the inner name — this test guards
+    // against that cast silently losing the name.
+    // Note: the notEmpty public interface hides `_`, but at runtime the
+    // metadata is present (guard.ts:513); cast through TypeGuard to read it.
+    assertEquals((isString.notEmpty as unknown as TypeGuard<string>)._.name, "non-empty string");
+    assertEquals((isNumber.notEmpty as unknown as TypeGuard<number>)._.name, "non-empty number");
+    assertEquals(
+      (isString.or(isNumber).notEmpty as unknown as TypeGuard<string | number>)._.name,
+      "non-empty (string | number)",
+    );
+  });
+
+  await t.step("notEmpty of unnamed guard has undefined name on metadata", () => {
+    // The cast in createNotEmptyTypeGuard must still yield an undefined name
+    // when the inner guard has no name — not a stringified "undefined".
+    const anonymous = createTypeGuard((v): string | null =>
+      typeof v === "string" ? v : null
+    );
+    assertEquals(
+      (anonymous.notEmpty as unknown as TypeGuard<string>)._.name,
+      undefined,
+    );
+  });
 });
 
 // === Validation Path Tracking ===

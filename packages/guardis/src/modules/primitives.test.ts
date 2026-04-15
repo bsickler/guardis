@@ -14,18 +14,20 @@ import {
   isJsonObject,
   isJsonPrimitive,
   isJsonValue,
+  isMap,
   isNever,
   isNil,
   isNumber,
   isNumeric,
   isObject,
   isPropertyKey,
+  isSet,
   isString,
   isSymbol,
   isTuple,
   isUnknown,
 } from "./primitives.ts";
-import { createTypeGuard, isNull } from "../guard.ts";
+import { createTypeGuard, isInstanceOf, isNull } from "../guard.ts";
 import { assertType, type Equals } from "../test-utils.ts";
 
 // Standard test values for consistency across all type guard tests
@@ -1677,6 +1679,14 @@ Deno.test("isJsonPrimitive", async (t) => {
     assertFalse(isJsonPrimitive(TEST_VALUES.date));
   });
 
+  await t.step("rejects non-finite numbers (Infinity, -Infinity, NaN)", () => {
+    // JSON does not represent non-finite numbers — JSON.stringify serializes
+    // them as `null`, so they do not round-trip.
+    assertFalse(isJsonPrimitive(Infinity));
+    assertFalse(isJsonPrimitive(-Infinity));
+    assertFalse(isJsonPrimitive(NaN));
+  });
+
   await t.step("strict mode", () => {
     // Valid inputs don't throw
     isJsonPrimitive.strict(TEST_VALUES.boolean);
@@ -1722,12 +1732,14 @@ Deno.test("isJsonPrimitive", async (t) => {
     assertEquals(isJsonPrimitive.validate(true), { value: true });
     assertEquals(isJsonPrimitive.validate(null), { value: null });
 
-    // Invalid inputs return issues with specific error message (union type name)
+    // Invalid inputs return issues with specific error message (union type name).
+    // Note: the number branch uses `isNumber.finite`, which is named "finite" by
+    // the .extend() rename — so the union reads "boolean | string | finite | null".
     assertEquals(isJsonPrimitive.validate({ a: 1 }), {
-      issues: [{ message: 'Expected boolean | string | number | null. Received: {"a":1}' }],
+      issues: [{ message: 'Expected boolean | string | finite | null. Received: {"a":1}' }],
     });
     assertEquals(isJsonPrimitive.validate(undefined), {
-      issues: [{ message: "Expected boolean | string | number | null. Received: undefined" }],
+      issues: [{ message: "Expected boolean | string | finite | null. Received: undefined" }],
     });
   });
 });
@@ -1887,6 +1899,31 @@ Deno.test("isJsonArray", async (t) => {
     assertEquals(isJsonArray.validate(null), {
       issues: [{ message: "Expected JsonArray. Received: null" }],
     });
+  });
+
+  await t.step("rejects arrays containing non-JSON values", () => {
+    // Per the JsonValue type, elements must be string | number | boolean | null
+    // | JsonArray | JsonObject. These should NOT pass:
+    assertFalse(isJsonArray([() => {}])); // function
+    assertFalse(isJsonArray([Symbol("x")])); // symbol
+    assertFalse(isJsonArray([undefined])); // undefined is not JSON
+    assertFalse(isJsonArray([1n])); // BigInt
+    assertFalse(isJsonArray([new Date()])); // Date
+    assertFalse(isJsonArray([new Map()])); // Map
+    assertFalse(isJsonArray([new Set()])); // Set
+    assertFalse(isJsonArray([/regex/])); // RegExp
+    assertFalse(isJsonArray([new Error("boom")])); // Error
+    assertFalse(isJsonArray([1, 2, () => {}])); // mixed: one invalid element
+    assertFalse(isJsonArray([NaN])); // NaN is not representable in JSON
+    assertFalse(isJsonArray([Infinity])); // Infinity is not representable in JSON
+    assertFalse(isJsonArray([-Infinity])); // -Infinity is not representable in JSON
+  });
+
+  await t.step("accepts nested JSON structures", () => {
+    assert(isJsonArray([[1, 2], [3, 4]])); // nested arrays
+    assert(isJsonArray([{ a: 1 }, { b: 2 }])); // array of objects
+    assert(isJsonArray([1, "x", true, null, [], {}])); // all JSON primitives
+    assert(isJsonArray([{ nested: { deep: [1, 2, 3] } }])); // deeply nested
   });
 });
 
@@ -2388,5 +2425,174 @@ Deno.test("isEnum", async (t) => {
   await t.step("inferred type matches the original enum", () => {
     assertType<Equals<typeof isColor._TYPE, typeof Color[keyof typeof Color]>>();
     assertType<Equals<typeof isDirection._TYPE, typeof Direction[keyof typeof Direction]>>();
+  });
+});
+
+Deno.test("isInstanceOf", async (t) => {
+  class Foo {
+    constructor(public x: number) {}
+  }
+  class Bar extends Foo {}
+  class Unrelated {}
+
+  await t.step("accepts instances of the given class", () => {
+    const isFoo = isInstanceOf(Foo);
+    assert(isFoo(new Foo(1)));
+    assert(isFoo(new Bar(2))); // subclass
+  });
+
+  await t.step("rejects unrelated instances and non-objects", () => {
+    const isFoo = isInstanceOf(Foo);
+    assertFalse(isFoo(new Unrelated()));
+    assertFalse(isFoo({}));
+    assertFalse(isFoo("Foo"));
+    assertFalse(isFoo(null));
+    assertFalse(isFoo(undefined));
+  });
+
+  await t.step("uses constructor name in error messages by default", () => {
+    const isFoo = isInstanceOf(Foo);
+    assertEquals(isFoo.validate({}), {
+      issues: [{ message: "Expected Foo. Received: {}" }],
+    });
+  });
+
+  await t.step("allows a custom name", () => {
+    const isThing = isInstanceOf(Foo, "Thing");
+    assertEquals(isThing.validate({}), {
+      issues: [{ message: "Expected Thing. Received: {}" }],
+    });
+  });
+
+  await t.step("supports the full guard API", () => {
+    const isFoo = isInstanceOf(Foo);
+
+    // strict
+    isFoo.strict(new Foo(1));
+    assertThrows(() => isFoo.strict({}));
+
+    // optional
+    assert(isFoo.optional(new Foo(1)));
+    assert(isFoo.optional(undefined));
+    assertFalse(isFoo.optional({}));
+
+    // or
+    const isFooOrString = isFoo.or(isString);
+    assert(isFooOrString(new Foo(1)));
+    assert(isFooOrString("hello"));
+    assertFalse(isFooOrString({}));
+  });
+
+  await t.step("works with built-in classes", () => {
+    const isError = isInstanceOf(Error);
+    assert(isError(new Error("boom")));
+    assert(isError(new TypeError("boom"))); // subclass
+    assertFalse(isError({ message: "boom" }));
+
+    const isRegExp = isInstanceOf(RegExp);
+    assert(isRegExp(/abc/));
+    assertFalse(isRegExp("abc"));
+  });
+});
+
+Deno.test("isMap", async (t) => {
+  await t.step("accepts Map instances", () => {
+    assert(isMap(new Map()));
+    assert(isMap(new Map([["a", 1]])));
+    assert(isMap(new Map<number, string>([[1, "a"]])));
+  });
+
+  await t.step("rejects non-Map values", () => {
+    assertFalse(isMap({}));
+    assertFalse(isMap([]));
+    assertFalse(isMap(new Set()));
+    assertFalse(isMap("map"));
+    assertFalse(isMap(null));
+    assertFalse(isMap(undefined));
+  });
+
+  await t.step(".of() validates key and value types", () => {
+    const isStrToNum = isMap.of(isString, isNumber);
+    assert(isStrToNum(new Map([["a", 1], ["b", 2]])));
+    assertFalse(isStrToNum(new Map<unknown, unknown>([[1, 1]]))); // bad key
+    assertFalse(isStrToNum(new Map<unknown, unknown>([["a", "b"]]))); // bad value
+    assert(isStrToNum(new Map())); // empty matches
+  });
+
+  await t.step(".of() produces descriptive name", () => {
+    const isStrToNum = isMap.of(isString, isNumber);
+    assertEquals(isStrToNum._.name, "Map<string, number>");
+  });
+
+  await t.step("validate() with .of reports path for bad entries", () => {
+    const isStrToNum = isMap.of(isString, isNumber);
+    const result = isStrToNum.validate(new Map<unknown, unknown>([["a", 1], ["b", "nope"]]));
+    assert("issues" in result);
+    assert(result.issues!.length > 0);
+  });
+
+  await t.step("supports the full guard API", () => {
+    isMap.strict(new Map());
+    assertThrows(() => isMap.strict({}));
+    assert(isMap.optional(undefined));
+    assertFalse(isMap.optional({}));
+  });
+
+  await t.step(".of() returns a plain TypeGuard (no further .of chaining)", () => {
+    const typed = isMap.of(isString, isNumber);
+    // Runtime check: the returned guard does not carry .of forward
+    assertFalse("of" in typed);
+  });
+
+  await t.step(".of() wraps union key/value names in parens", () => {
+    const isUnionKey = isString.or(isNumber);
+    const guard = isMap.of(isUnionKey, isBoolean);
+    assertEquals(guard._.name, "Map<(string | number), boolean>");
+  });
+});
+
+Deno.test("isSet", async (t) => {
+  await t.step("accepts Set instances", () => {
+    assert(isSet(new Set()));
+    assert(isSet(new Set([1, 2, 3])));
+  });
+
+  await t.step("rejects non-Set values", () => {
+    assertFalse(isSet([1, 2, 3]));
+    assertFalse(isSet({}));
+    assertFalse(isSet(new Map()));
+    assertFalse(isSet(null));
+    assertFalse(isSet(undefined));
+  });
+
+  await t.step(".of() validates element types", () => {
+    const isStringSet = isSet.of(isString);
+    assert(isStringSet(new Set(["a", "b"])));
+    assertFalse(isStringSet(new Set([1, 2])));
+    assertFalse(isStringSet(new Set<unknown>(["a", 1])));
+    assert(isStringSet(new Set())); // empty matches
+  });
+
+  await t.step(".of() produces descriptive name", () => {
+    const isStringSet = isSet.of(isString);
+    assertEquals(isStringSet._.name, "Set<string>");
+  });
+
+  await t.step("supports the full guard API", () => {
+    isSet.strict(new Set());
+    assertThrows(() => isSet.strict({}));
+    assert(isSet.optional(undefined));
+    assertFalse(isSet.optional({}));
+  });
+
+  await t.step(".of() returns a plain TypeGuard (no further .of chaining)", () => {
+    const typed = isSet.of(isString);
+    // Runtime check: the returned guard does not carry .of forward
+    assertFalse("of" in typed);
+  });
+
+  await t.step(".of() wraps union element names in parens", () => {
+    const guard = isSet.of(isString.or(isNumber));
+    assertEquals(guard._.name, "Set<(string | number)>");
   });
 });
