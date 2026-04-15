@@ -20,15 +20,30 @@ import {
   isJsonObject,
   isJsonPrimitive,
   isJsonValue,
+  isMap,
   isNil,
   isNumber,
   isNumeric,
   isObject,
   isPropertyKey,
+  isSet,
   isString,
   isSymbol,
   isTuple,
 } from "./src/modules/primitives.ts";
+import {
+  isBlob,
+  isFormData,
+  isHeaders,
+  isNativeURL,
+  isRequest,
+  isResponse,
+} from "./src/modules/http.ts";
+import {
+  isReadableStream,
+  isTransformStream,
+  isWritableStream,
+} from "./src/modules/streams.ts";
 
 export * from "./src/guard.ts";
 export * from "./src/modules/primitives.ts";
@@ -69,4 +84,15 @@ export const Is = {
   Date: isDate,
   Exactly: isExactly,
   Enum: isEnum,
+  Map: isMap,
+  Set: isSet,
+  Blob: isBlob,
+  FormData: isFormData,
+  Headers: isHeaders,
+  ReadableStream: isReadableStream,
+  WritableStream: isWritableStream,
+  TransformStream: isTransformStream,
+  Request: isRequest,
+  Response: isResponse,
+  URL: isNativeURL,
 } as const;

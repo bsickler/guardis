@@ -8,6 +8,8 @@
     "./async": "./src/modules/async.ts",
     "./http": "./src/modules/http.ts",
     "./http-branded": "./src/modules/http.branded.ts",
+    "./node-streams": "./src/modules/node-streams.ts",
+    "./streams": "./src/modules/streams.ts",
     "./strings": "./src/modules/strings.ts",
     "./strings-branded": "./src/modules/strings.branded.ts"
   },

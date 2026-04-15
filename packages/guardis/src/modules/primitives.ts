@@ -11,7 +11,9 @@ import type {
   JsonObject,
   JsonPrimitive,
   JsonValue,
+  MapTypeGuard,
   NumberTypeGuard,
+  SetTypeGuard,
   Simplify,
   StringTypeGuard,
   TupleOfLength,
@@ -334,6 +336,157 @@ export const isJsonValue: TypeGuard<JsonValue> = unionOf(
  * ```
  */
 export const isDate: TypeGuard<Date> = createTypeGuard("Date", (t) => t instanceof Date ? t : null);
+
+/** Precursor to full isMap guard */
+const _isMap = createTypeGuard(
+  "Map",
+  (t): Map<unknown, unknown> | null => t instanceof Map ? t : null,
+);
+
+/**
+ * Type guard that checks if a value is a Map instance, with optional key/value
+ * type checking via `.of(keyGuard, valueGuard)`.
+ *
+ * @example
+ * ```typescript
+ * isMap(new Map())                       // true
+ * isMap({})                              // false
+ *
+ * const isStringToNumber = isMap.of(isString, isNumber);
+ * isStringToNumber(new Map([["a", 1]]))  // true
+ * isStringToNumber(new Map([[1, 1]]))    // false (key is not string)
+ * ```
+ */
+export const isMap: MapTypeGuard = Object.assign(_isMap, {
+  of: <K, V>(keyGuard: TypeGuard<K>, valueGuard: TypeGuard<V>): MapTypeGuard<K, V> => {
+    const keyName = hasName(keyGuard) ? keyGuard._.name : undefined;
+    const valueName = hasName(valueGuard) ? valueGuard._.name : undefined;
+
+    let name = "Map";
+    if (keyName && valueName) {
+      const k = keyName.includes(" | ") ? `(${keyName})` : keyName;
+      const v = valueName.includes(" | ") ? `(${valueName})` : valueName;
+      name = `Map<${k}, ${v}>`;
+    }
+
+    return Object.assign(
+      createTypeGuard(
+        name,
+        (val, helpers) => {
+          if (!(val instanceof Map)) return null;
+
+          const ctx = (helpers as HelpersWithContext)._ctx;
+
+          // Context-aware validation with path tracking
+          if (ctx && (hasContext(keyGuard) || hasContext(valueGuard))) {
+            let idx = 0;
+            for (const [key, value] of val) {
+              ctx.pushPath(`key[${idx}]`);
+              try {
+                if (hasContext(keyGuard)) {
+                  const result = keyGuard._.context(key, ctx);
+                  if (result.issues) return null;
+                } else if (!(keyGuard as TypeGuard<K>)(key)) {
+                  return null;
+                }
+              } finally {
+                ctx.popPath();
+              }
+
+              ctx.pushPath(`value[${idx}]`);
+              try {
+                if (hasContext(valueGuard)) {
+                  const result = valueGuard._.context(value, ctx);
+                  if (result.issues) return null;
+                } else if (!(valueGuard as TypeGuard<V>)(value)) {
+                  return null;
+                }
+              } finally {
+                ctx.popPath();
+              }
+              idx++;
+            }
+            return val as Map<K, V>;
+          }
+
+          // Boolean mode
+          for (const [key, value] of val) {
+            if (!keyGuard(key) || !valueGuard(value)) return null;
+          }
+          return val as Map<K, V>;
+        },
+      ),
+      {
+        of: isMap.of,
+      },
+    ) as MapTypeGuard<K, V>;
+  },
+}) as MapTypeGuard;
+
+/** Precursor to full isSet guard */
+const _isSet = createTypeGuard(
+  "Set",
+  (t): Set<unknown> | null => t instanceof Set ? t : null,
+);
+
+/**
+ * Type guard that checks if a value is a Set instance, with optional element
+ * type checking via `.of(guard)`.
+ *
+ * @example
+ * ```typescript
+ * isSet(new Set())                    // true
+ * isSet([1, 2, 3])                    // false
+ *
+ * const isStringSet = isSet.of(isString);
+ * isStringSet(new Set(["a", "b"]))    // true
+ * isStringSet(new Set([1, 2]))        // false
+ * ```
+ */
+export const isSet: SetTypeGuard = Object.assign(_isSet, {
+  of: <T>(guard: TypeGuard<T>): SetTypeGuard<T> => {
+    const guardName = hasName(guard) ? guard._.name : undefined;
+
+    let name = "Set";
+    if (guardName) {
+      name = guardName.includes(" | ") ? `Set<(${guardName})>` : `Set<${guardName}>`;
+    }
+
+    return Object.assign(
+      createTypeGuard(
+        name,
+        (val, helpers) => {
+          if (!(val instanceof Set)) return null;
+
+          const ctx = (helpers as HelpersWithContext)._ctx;
+
+          if (ctx && hasContext(guard)) {
+            let idx = 0;
+            for (const item of val) {
+              ctx.pushPath(idx);
+              try {
+                const result = guard._.context(item, ctx);
+                if (result.issues) return null;
+              } finally {
+                ctx.popPath();
+              }
+              idx++;
+            }
+            return val as Set<T>;
+          }
+
+          for (const item of val) {
+            if (!guard(item)) return null;
+          }
+          return val as Set<T>;
+        },
+      ),
+      {
+        of: isSet.of,
+      },
+    ) as SetTypeGuard<T>;
+  },
+}) as SetTypeGuard;
 
 /**
  * Returns true if input satisfies type null or undefined.

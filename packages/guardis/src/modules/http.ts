@@ -36,6 +36,38 @@ export const isResponse: TypeGuard<Response> = createTypeGuard(
 );
 
 /**
+ * Returns true if input is an instance of the native Headers class.
+ * Completes the Fetch API triad with isRequest and isResponse.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/Headers
+ */
+export const isHeaders: TypeGuard<Headers> = createTypeGuard(
+  "Headers",
+  (t: unknown) => t instanceof Headers ? t : null,
+);
+
+/**
+ * Returns true if input is an instance of the native Blob class.
+ * Note: File extends Blob, so File instances also pass.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/Blob
+ */
+export const isBlob: TypeGuard<Blob> = createTypeGuard(
+  "Blob",
+  (t: unknown) => t instanceof Blob ? t : null,
+);
+
+/**
+ * Returns true if input is an instance of the native FormData class.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/FormData
+ */
+export const isFormData: TypeGuard<FormData> = createTypeGuard(
+  "FormData",
+  (t: unknown) => t instanceof FormData ? t : null,
+);
+
+/**
  * Determines if a given string is a valid IPv4 address.
  *
  * This function extends the `isString` validator to include additional checks

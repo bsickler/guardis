@@ -369,6 +369,18 @@ export interface ArrayTypeGuard<T = unknown> extends TypeGuard<T[]> {
   range(min: number, max: number): ArrayTypeGuard<T>;
 }
 
+/** A Map type guard with chainable key/value validation */
+export interface MapTypeGuard<K = unknown, V = unknown> extends TypeGuard<Map<K, V>> {
+  /** Returns a typed Map guard that validates key and value types */
+  of<UK, UV>(keyGuard: TypeGuard<UK>, valueGuard: TypeGuard<UV>): MapTypeGuard<UK, UV>;
+}
+
+/** A Set type guard with chainable element validation */
+export interface SetTypeGuard<T = unknown> extends TypeGuard<Set<T>> {
+  /** Returns a typed Set guard that validates element types */
+  of<U>(guard: TypeGuard<U>): SetTypeGuard<U>;
+}
+
 /** An optional type guard that accepts undefined in addition to the base type */
 export interface OptionalTypeGuard<T1> {
   /** Internal metadata with optional flag for shape type inference */

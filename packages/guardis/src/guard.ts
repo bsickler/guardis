@@ -973,3 +973,32 @@ export function isExactly<const T>(expected: T): TypeGuard<T> {
       );
   }
 }
+
+/**
+ * Factory that returns a TypeGuard for `instanceof` checks against a
+ * class constructor. Generalizes the pattern behind `isDate`, `isNativeURL`,
+ * etc. so consumers can build guards for their own classes without writing
+ * a custom parser.
+ *
+ * @example
+ * ```typescript
+ * class MyService {}
+ * const isMyService = isInstanceOf(MyService);
+ * isMyService(new MyService()); // true, narrows to MyService
+ * isMyService({});               // false
+ *
+ * class CustomError extends Error {}
+ * const isCustomError = isInstanceOf(CustomError);
+ * ```
+ *
+ * @param ctor The class constructor to check against.
+ * @param name Optional name for error messages. Defaults to `ctor.name`.
+ * @returns A TypeGuard<T> where T is the constructor's instance type.
+ */
+// deno-lint-ignore no-explicit-any
+export function isInstanceOf<T>(ctor: new (...args: any[]) => T, name?: string): TypeGuard<T> {
+  return createTypeGuard(
+    name ?? ctor.name ?? "instance",
+    (t): T | null => t instanceof ctor ? t : null,
+  );
+}
