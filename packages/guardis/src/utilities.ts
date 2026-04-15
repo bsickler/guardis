@@ -286,6 +286,44 @@ export function isEmptyValue(value: unknown): boolean {
   return false;
 }
 
+/**
+ * Returns a guard's display name, wrapping union names in parens so it
+ * composes cleanly inside generic-style names like `Map<K, V>` or `T[]`.
+ * Returns `undefined` for anonymous guards.
+ */
+export function guardNameOrParens(guard: TypeGuard<unknown>): string | undefined {
+  if (!hasName(guard)) return undefined;
+
+  const n = guard._.name;
+
+  return n?.includes(" | ") ? `(${n})` : n;
+}
+
+/**
+ * Validate a single value against a guard. When a validation context is
+ * active and the guard supports it, pushes `segment` onto the path before
+ * delegating so that issues carry accurate paths; otherwise falls back to a
+ * plain boolean check.
+ *
+ * Useful for building collection guards (arrays, maps, sets) that need to
+ * validate each element with correct path reporting.
+ */
+export function validateElement<T>(
+  guard: TypeGuard<T>,
+  val: unknown,
+  ctx: Context | undefined,
+  segment: PropertyKey,
+): boolean {
+  if (!ctx || !hasContext(guard)) return guard(val);
+  ctx.pushPath(segment);
+
+  try {
+    return !guard._.context(val, ctx).issues;
+  } finally {
+    ctx.popPath();
+  }
+}
+
 export const unionOf = <G extends readonly [TypeGuard<unknown>, ...TypeGuard<unknown>[]]>(
   ...guards: G
 ): TypeGuard<GuardedType<G[number]>> => {

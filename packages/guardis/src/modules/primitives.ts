@@ -3,10 +3,9 @@
  * @module
  */
 
-import { createTypeGuard, isExactly, isNull, isUndefined } from "../guard.ts";
+import { createTypeGuard, isNull, isUndefined } from "../guard.ts";
 import type {
   ArrayTypeGuard,
-  CanBeEmpty,
   JsonArray,
   JsonObject,
   JsonPrimitive,
@@ -19,8 +18,7 @@ import type {
   TupleOfLength,
   TypeGuard,
 } from "../types.ts";
-import { hasContext, hasName } from "../introspect.ts";
-import { unionOf } from "../utilities.ts";
+import { guardNameOrParens, unionOf, validateElement } from "../utilities.ts";
 import type { HelpersWithContext } from "../types.ts";
 
 /**
@@ -176,14 +174,15 @@ export const isFunction: TypeGuard<(...args: unknown[]) => unknown> = createType
 );
 
 /**
- * Returns true if input is a JSON-able primitive date type
+ * Returns true if input is a JSON-able primitive data type
+ *
  * @param {unknown} t
  * @return {boolean}
  */
 export const isJsonPrimitive: TypeGuard<JsonPrimitive> = unionOf(
   isBoolean,
   isString,
-  isNumber,
+  isNumber.finite,
   isNull,
 );
 
@@ -246,39 +245,17 @@ export const isArray: ArrayTypeGuard = withArrayMethods(Object.assign(
   _isArray,
   {
     of: <T>(guard: TypeGuard<T>): ArrayTypeGuard<T> => {
-      const guardName = hasName(guard) ? guard._.name : undefined;
+      const inner = guardNameOrParens(guard);
+      const name = inner ? `${inner}[]` : "array";
 
-      let name = "array";
-
-      if (guardName) {
-        name = guardName?.includes(" | ") ? `(${guardName})[]` : `${guardName}[]`;
-      }
-
-      return withArrayMethods(createTypeGuard(
-        name,
-        (v, helpers) => {
-          if (!isArray(v)) return null;
-
-          const ctx = (helpers as HelpersWithContext)._ctx;
-
-          // If we have a context, use index-aware validation
-          if (ctx && hasContext(guard)) {
-            for (let i = 0; i < v.length; i++) {
-              ctx.pushPath(i);
-              try {
-                const result = guard._.context(v[i], ctx);
-                if (result.issues) return null; // issues already added to parent ctx
-              } finally {
-                ctx.popPath();
-              }
-            }
-            return v as T[];
-          }
-
-          // Otherwise, use simple boolean check
-          return v.every((item) => guard(item)) ? v as T[] : null;
-        },
-      ));
+      return withArrayMethods(createTypeGuard(name, (v, helpers) => {
+        if (!isArray(v)) return null;
+        const ctx = (helpers as HelpersWithContext)._ctx;
+        for (let i = 0; i < v.length; i++) {
+          if (!validateElement(guard, v[i], ctx, i)) return null;
+        }
+        return v as T[];
+      }));
     },
   },
 ));
@@ -290,7 +267,14 @@ export const isArray: ArrayTypeGuard = withArrayMethods(Object.assign(
  */
 export const isJsonArray: TypeGuard<JsonValue[] | readonly JsonValue[]> = createTypeGuard(
   "JsonArray",
-  (t): JsonArray | null => Array.isArray(t) ? t : null,
+  (t, helpers): JsonArray | null => {
+    if (!Array.isArray(t)) return null;
+    const ctx = (helpers as HelpersWithContext)._ctx;
+    for (let i = 0; i < t.length; i++) {
+      if (!validateElement(isJsonValue, t[i], ctx, i)) return null;
+    }
+    return t;
+  },
 );
 
 /**
@@ -357,71 +341,28 @@ const _isMap = createTypeGuard(
  * isStringToNumber(new Map([[1, 1]]))    // false (key is not string)
  * ```
  */
-export const isMap: MapTypeGuard = Object.assign(_isMap, {
-  of: <K, V>(keyGuard: TypeGuard<K>, valueGuard: TypeGuard<V>): MapTypeGuard<K, V> => {
-    const keyName = hasName(keyGuard) ? keyGuard._.name : undefined;
-    const valueName = hasName(valueGuard) ? valueGuard._.name : undefined;
+export const isMap: MapTypeGuard = Object.assign(
+  _isMap,
+  {
+    of: <K, V>(keyGuard: TypeGuard<K>, valueGuard: TypeGuard<V>): TypeGuard<Map<K, V>> => {
+      const k = guardNameOrParens(keyGuard);
+      const v = guardNameOrParens(valueGuard);
+      const name = k && v ? `Map<${k}, ${v}>` : "Map";
 
-    let name = "Map";
-    if (keyName && valueName) {
-      const k = keyName.includes(" | ") ? `(${keyName})` : keyName;
-      const v = valueName.includes(" | ") ? `(${valueName})` : valueName;
-      name = `Map<${k}, ${v}>`;
-    }
-
-    return Object.assign(
-      createTypeGuard(
-        name,
-        (val, helpers) => {
-          if (!(val instanceof Map)) return null;
-
-          const ctx = (helpers as HelpersWithContext)._ctx;
-
-          // Context-aware validation with path tracking
-          if (ctx && (hasContext(keyGuard) || hasContext(valueGuard))) {
-            let idx = 0;
-            for (const [key, value] of val) {
-              ctx.pushPath(`key[${idx}]`);
-              try {
-                if (hasContext(keyGuard)) {
-                  const result = keyGuard._.context(key, ctx);
-                  if (result.issues) return null;
-                } else if (!(keyGuard as TypeGuard<K>)(key)) {
-                  return null;
-                }
-              } finally {
-                ctx.popPath();
-              }
-
-              ctx.pushPath(`value[${idx}]`);
-              try {
-                if (hasContext(valueGuard)) {
-                  const result = valueGuard._.context(value, ctx);
-                  if (result.issues) return null;
-                } else if (!(valueGuard as TypeGuard<V>)(value)) {
-                  return null;
-                }
-              } finally {
-                ctx.popPath();
-              }
-              idx++;
-            }
-            return val as Map<K, V>;
-          }
-
-          // Boolean mode
-          for (const [key, value] of val) {
-            if (!keyGuard(key) || !valueGuard(value)) return null;
-          }
-          return val as Map<K, V>;
-        },
-      ),
-      {
-        of: isMap.of,
-      },
-    ) as MapTypeGuard<K, V>;
+      return createTypeGuard(name, (val, helpers) => {
+        if (!_isMap(val)) return null;
+        const ctx = (helpers as HelpersWithContext)._ctx;
+        let idx = 0;
+        for (const [key, value] of val) {
+          if (!validateElement(keyGuard, key, ctx, `key[${idx}]`)) return null;
+          if (!validateElement(valueGuard, value, ctx, `value[${idx}]`)) return null;
+          idx++;
+        }
+        return val as Map<K, V>;
+      });
+    },
   },
-}) as MapTypeGuard;
+) as MapTypeGuard;
 
 /** Precursor to full isSet guard */
 const _isSet = createTypeGuard(
@@ -443,50 +384,26 @@ const _isSet = createTypeGuard(
  * isStringSet(new Set([1, 2]))        // false
  * ```
  */
-export const isSet: SetTypeGuard = Object.assign(_isSet, {
-  of: <T>(guard: TypeGuard<T>): SetTypeGuard<T> => {
-    const guardName = hasName(guard) ? guard._.name : undefined;
+export const isSet: SetTypeGuard = Object.assign(
+  _isSet,
+  {
+    of: <T>(guard: TypeGuard<T>): TypeGuard<Set<T>> => {
+      const g = guardNameOrParens(guard);
+      const name = g ? `Set<${g}>` : "Set";
 
-    let name = "Set";
-    if (guardName) {
-      name = guardName.includes(" | ") ? `Set<(${guardName})>` : `Set<${guardName}>`;
-    }
-
-    return Object.assign(
-      createTypeGuard(
-        name,
-        (val, helpers) => {
-          if (!(val instanceof Set)) return null;
-
-          const ctx = (helpers as HelpersWithContext)._ctx;
-
-          if (ctx && hasContext(guard)) {
-            let idx = 0;
-            for (const item of val) {
-              ctx.pushPath(idx);
-              try {
-                const result = guard._.context(item, ctx);
-                if (result.issues) return null;
-              } finally {
-                ctx.popPath();
-              }
-              idx++;
-            }
-            return val as Set<T>;
-          }
-
-          for (const item of val) {
-            if (!guard(item)) return null;
-          }
-          return val as Set<T>;
-        },
-      ),
-      {
-        of: isSet.of,
-      },
-    ) as SetTypeGuard<T>;
+      return createTypeGuard(name, (val, helpers) => {
+        if (!_isSet(val)) return null;
+        const ctx = (helpers as HelpersWithContext)._ctx;
+        let idx = 0;
+        for (const item of val) {
+          if (!validateElement(guard, item, ctx, idx)) return null;
+          idx++;
+        }
+        return val as Set<T>;
+      });
+    },
   },
-}) as SetTypeGuard;
+) as SetTypeGuard;
 
 /**
  * Returns true if input satisfies type null or undefined.

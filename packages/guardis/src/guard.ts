@@ -26,6 +26,7 @@ import {
   doesNotHaveProperty,
   exact,
   formatErrorMessage,
+  guardNameOrParens,
   hasOptionalProperty,
   hasProperty,
   includes,
@@ -493,7 +494,8 @@ const createOptionalTypeGuard = <T>(
  */
 const createNotEmptyTypeGuard = <T>(guard: Predicate<T>) => {
   const notEmpty = (value: unknown): value is T => !isEmptyValue(value) && guard(value);
-  const name = hasName(guard) ? `non-empty ${guard._.name}` : undefined;
+  const innerName = guardNameOrParens(guard as TypeGuard<T>);
+  const name = innerName ? `non-empty ${innerName}` : undefined;
   const notEmptyParser = (value: unknown) => notEmpty(value) && guard(value) ? value : null;
 
   const context = (value: unknown, ctx?: Context): StandardSchemaV1.Result<T> => {
