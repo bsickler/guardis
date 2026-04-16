@@ -109,7 +109,7 @@ function createHelpers(ctx?: Context): HelpersWithContext {
     // deno-lint-ignore no-explicit-any
     ...branches: ReadonlyArray<(v: V) => any>
   ): boolean => {
-    if (branches.length === 0) {
+    if (!branches.length) {
       throw new Error("or() requires at least one branch");
     }
 
@@ -118,6 +118,7 @@ function createHelpers(ctx?: Context): HelpersWithContext {
       for (const branch of branches) {
         if (branch(val) === true) return true;
       }
+
       return false;
     }
 
@@ -134,14 +135,19 @@ function createHelpers(ctx?: Context): HelpersWithContext {
     for (const branch of branches) {
       const buf: StandardSchemaV1.Issue[] = [];
       const prev = specCtx._speculative;
-      specCtx._speculative = buf;
+
       let ok: unknown;
+
+      specCtx._speculative = buf;
+
       try {
         ok = branch(val);
       } finally {
         specCtx._speculative = prev;
       }
+
       if (ok === true && buf.length === 0) return true;
+
       collected.push(buf);
     }
 
