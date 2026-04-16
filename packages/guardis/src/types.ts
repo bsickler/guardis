@@ -28,6 +28,17 @@ export interface Context {
   addIssue(message: string): void;
 }
 
+// Non-exported local aliases for `or()` — they exist solely to express its
+// signature and are not part of the public API. Do not export.
+type BranchPredicate<V> = (v: V) => boolean | null | undefined;
+// Using `(v: any)` in the conditional lets TS match any type predicate without
+// the "R could be unrelated to V" constraint error. The intersection `V & R`
+// yields the narrowed type at the `or` callsite when a branch is a typed predicate.
+type BranchNarrowing<V, P extends readonly BranchPredicate<V>[]> = {
+  // deno-lint-ignore no-explicit-any
+  [K in keyof P]: P[K] extends (v: any) => v is infer R ? V & R : V;
+}[number];
+
 type Helpers = {
   /** Check for required property with optional custom error message */
   has: <K extends PropertyKey, G = unknown>(
@@ -61,6 +72,33 @@ type Helpers = {
   exact: <const T>(expected: T, v: unknown) => v is T;
   /** Returns null and adds custom error message to context if during validation */
   fail: (message: string) => null;
+  /**
+   * Fork primitive: evaluates alternative branch predicates against `val`, narrowing
+   * `val` to the union of branch result types on success.
+   *
+   * Signature: `or(val, branch1, branch2, ...)`. Branches receive `v: V` and either
+   * return a plain `boolean` or are typed as `(v: V) => v is SubType` (narrows at
+   * the `or` callsite on success). TS 5.5+ infers the predicate return type from
+   * single-expression branch bodies that call another type predicate (including
+   * `has`).
+   *
+   * Use `or()` instead of `if (has(...)) ... if (has(...))` patterns — the latter
+   * is broken for forks in validate/strict modes because `has()` intentionally
+   * returns `true` on failure to support `&&`-chain multi-error collection.
+   *
+   * @example
+   * ```ts
+   * return or(
+   *   val,
+   *   (v) => has(v, "orgId",   isUUIDv7),
+   *   (v) => has(v, "orgName", isString.notEmpty),
+   * ) ? val : null;
+   * ```
+   */
+  or: <V, P extends readonly BranchPredicate<V>[]>(
+    val: V,
+    ...branches: P
+  ) => val is V & BranchNarrowing<V, P>;
 };
 
 /** Helpers extended with internal context access for validation */
