@@ -26,8 +26,6 @@ await build({
     license,
     peerDependencies: {
       hono: "^4.10.0",
-    },
-    dependencies: {
       [guardisConfig.name]: `^${guardisConfig.version}`,
     },
     keywords: [
@@ -48,9 +46,15 @@ await build({
   },
   postBuild() {
     Deno.copyFileSync("README.md", "npm/README.md");
-    // Remove hono from dependencies — it should only be a peerDependency
+    // dnt duplicates peerDependencies into dependencies so its ESM/CJS output
+    // can resolve them at build time. Strip the duplicates back out so hono
+    // and @spudlabs/guardis are peers only.
     const pkg = JSON.parse(Deno.readTextFileSync("npm/package.json"));
-    delete pkg.dependencies.hono;
+    if (pkg.dependencies) {
+      delete pkg.dependencies.hono;
+      delete pkg.dependencies[guardisConfig.name];
+      if (Object.keys(pkg.dependencies).length === 0) delete pkg.dependencies;
+    }
     Deno.writeTextFileSync("npm/package.json", JSON.stringify(pkg, null, 2) + "\n");
   },
 });
