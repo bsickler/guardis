@@ -34,19 +34,6 @@ import {
   isTuple,
   isUnknown,
 } from "./src/modules/primitives.ts";
-import {
-  isBlob,
-  isFormData,
-  isHeaders,
-  isNativeURL,
-  isRequest,
-  isResponse,
-} from "./src/modules/http.ts";
-import {
-  isReadableStream,
-  isTransformStream,
-  isWritableStream,
-} from "./src/modules/streams.ts";
 
 export * from "./src/guard.ts";
 export * from "./src/modules/primitives.ts";
@@ -66,15 +53,12 @@ export const Is = {
   Any: isAny,
   Array: isArray,
   Binary: isBinary,
-  Blob: isBlob,
   Boolean: isBoolean,
   Date: isDate,
   Empty: isEmpty,
   Enum: isEnum,
   Exactly: isExactly,
-  FormData: isFormData,
   Function: isFunction,
-  Headers: isHeaders,
   Int: isInt,
   Iterable: isIterable,
   JsonArray: isJsonArray,
@@ -89,16 +73,10 @@ export const Is = {
   Numeric: isNumeric,
   Object: isObject,
   PropertyKey: isPropertyKey,
-  ReadableStream: isReadableStream,
-  Request: isRequest,
-  Response: isResponse,
   Set: isSet,
   String: isString,
   Symbol: isSymbol,
-  TransformStream: isTransformStream,
   Tuple: isTuple,
   Undefined: isUndefined,
   Unknown: isUnknown,
-  URL: isNativeURL,
-  WritableStream: isWritableStream,
 } as const;
