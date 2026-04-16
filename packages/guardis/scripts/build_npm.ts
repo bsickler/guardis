@@ -18,7 +18,9 @@ await build({
   },
   test: false,
   compilerOptions: {
-    lib: ["ES2022", "DOM"],
+    lib: ["ES2024", "DOM"],
+    target: "Latest",
+    types: ["node"],
   },
   package: {
     name,
@@ -49,6 +51,9 @@ await build({
       url: "git+https://github.com/bsickler/guardis.git",
     },
     sideEffects: false,
+    devDependencies: {
+      "@types/node": "^20",
+    },
   },
   postBuild() {
     Deno.copyFileSync("README.md", "npm/README.md");
