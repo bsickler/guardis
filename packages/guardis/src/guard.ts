@@ -5,26 +5,17 @@
 
 import type { StandardSchemaV1 } from "../specs/standard-schema-spec.v1.ts";
 import type {
-  ArrayTypeGuard,
   CanBeEmpty,
   Context,
   ExtendedParser,
   HelpersWithContext,
   InferShape,
   IsExtensible,
-  JsonArray,
-  JsonObject,
-  JsonPrimitive,
-  JsonValue,
   NamedParser,
-  NumberTypeGuard,
   Parser,
   ParserEntry,
   Predicate,
-  Simplify,
   StrictTypeGuard,
-  StringTypeGuard,
-  TupleOfLength,
   TypeGuard,
   TypeGuardShape,
   VerifiedShape,
@@ -35,13 +26,14 @@ import {
   doesNotHaveProperty,
   exact,
   formatErrorMessage,
+  guardNameOrParens,
   hasOptionalProperty,
   hasProperty,
   includes,
+  isEmptyValue,
   keyOf,
   safeStringify,
   tupleHas,
-  unionOf,
 } from "./utilities.ts";
 
 /**
@@ -110,6 +102,72 @@ function createHelpers(ctx?: Context): HelpersWithContext {
     }
   };
 
+  // Fork primitive: or(val, ...branches). Runtime behavior splits on whether a
+  // Context is active (validate/strict vs. boolean mode).
+  const or = <V>(
+    val: V,
+    // deno-lint-ignore no-explicit-any
+    ...branches: ReadonlyArray<(v: V) => any>
+  ): boolean => {
+    if (!branches.length) {
+      throw new Error("or() requires at least one branch");
+    }
+
+    // Boolean mode: trivial short-circuit.
+    if (!ctx) {
+      for (const branch of branches) {
+        if (branch(val) === true) return true;
+      }
+
+      return false;
+    }
+
+    // Ctx-aware mode: speculation stack. Each branch runs with a scoped issue
+    // buffer. A branch "succeeds" only if it returned strict `true` AND wrote
+    // no issues (compensates for has()'s always-true-on-failure contract in
+    // validate mode; see origin doc's "has() and or() interaction").
+    const specCtx = ctx as Context & {
+      _speculative?: StandardSchemaV1.Issue[];
+      _strict?: true;
+    };
+    const collected: StandardSchemaV1.Issue[][] = [];
+
+    for (const branch of branches) {
+      const buf: StandardSchemaV1.Issue[] = [];
+      const prev = specCtx._speculative;
+
+      let ok: unknown;
+
+      specCtx._speculative = buf;
+
+      try {
+        ok = branch(val);
+      } finally {
+        specCtx._speculative = prev;
+      }
+
+      if (ok === true && buf.length === 0) return true;
+
+      collected.push(buf);
+    }
+
+    // All branches failed.
+    if (specCtx._strict) {
+      const combined = collected
+        .map((list, i) => {
+          const msgs = list.map((issue) => issue.message).join("; ");
+          return `branch ${i}: ${msgs || "(no issue recorded)"}`;
+        })
+        .join(" | ");
+      throw new TypeError(`or() — no branch matched: ${combined}`);
+    }
+
+    for (const list of collected) {
+      for (const issue of list) ctx.issues.push(issue);
+    }
+    return false;
+  };
+
   return {
     has,
     hasNot,
@@ -123,8 +181,9 @@ function createHelpers(ctx?: Context): HelpersWithContext {
       if (ctx) ctx.addIssue(message);
       return null;
     },
+    or,
     _ctx: ctx,
-  };
+  } as HelpersWithContext;
 }
 
 /** Default helpers for boolean type guard calls (no validation context) */
@@ -165,7 +224,12 @@ type FieldDescriptor =
   | { kind: "nested"; key: string; fields: FieldDescriptor[] }
   | { kind: "typePredicate"; key: string; guard: (value: unknown) => boolean }
   | { kind: "required"; key: string }
-  | { kind: "absent"; key: string };
+  | { kind: "absent"; key: string }
+  // Union of alternative branches (emitted by probe when a parser uses or()).
+  // No `key` — represents a choice across the whole value at this position.
+  // Each branch is a FieldDescriptor[] that must all-pass for that branch to
+  // match; any-branch-matches is sufficient for the union to pass.
+  | { kind: "union"; branches: FieldDescriptor[][] };
 
 /**
  * Compiles a TypeGuardShape into a pre-resolved array of field descriptors.
@@ -210,6 +274,12 @@ function compileShape(shape: TypeGuardShape): FieldDescriptor[] {
 
 /**
  * Validates a single pre-compiled field descriptor against an object value.
+ *
+ * Path handling: `pushPath`/`popPath` is gated on `'key' in desc` so that future
+ * non-keyed variants (e.g. union descriptors from `or()`) skip path tracking —
+ * those are choices across the whole value, not property-scoped. Inside each
+ * `case`, the switch has already narrowed `desc` to the specific variant, so
+ * `desc.key` is type-safe without an extra guard.
  */
 function validateCompiledField(
   obj: Record<string, unknown>,
@@ -218,16 +288,14 @@ function validateCompiledField(
   localIssues: StandardSchemaV1.Issue[],
   result: Record<string, unknown>,
 ): void {
-  const key = desc.key;
-
-  if (ctx) ctx.pushPath(key);
+  if ("key" in desc && ctx) ctx.pushPath(desc.key);
 
   try {
     switch (desc.kind) {
       case "nested": {
-        const r = validateCompiledShape(obj[key], desc.fields, ctx);
+        const r = validateCompiledShape(obj[desc.key], desc.fields, ctx);
         if ("value" in r) {
-          result[key] = r.value;
+          result[desc.key] = r.value;
         } else if (!ctx) {
           localIssues.push(...r.issues);
         }
@@ -236,21 +304,21 @@ function validateCompiledField(
 
       case "typeGuard": {
         if (ctx) {
-          const r = desc.guard._.context(obj[key], ctx);
-          if ("value" in r) result[key] = r.value;
+          const r = desc.guard._.context(obj[desc.key], ctx);
+          if ("value" in r) result[desc.key] = r.value;
 
           // Issues are already in ctx.issues — guards write directly via addIssue.
         } else {
           // No ctx — call without context arg to hit the bypass path (defaultHelpers,
           // no createContext/createHelpers allocation). Prepend the field key to paths.
-          const r = desc.guard._.context(obj[key]);
+          const r = desc.guard._.context(obj[desc.key]);
           if ("value" in r) {
-            result[key] = r.value;
+            result[desc.key] = r.value;
           } else {
             for (const issue of r.issues) {
               localIssues.push({
                 message: issue.message,
-                path: issue.path ? [key, ...issue.path] : [key],
+                path: issue.path ? [desc.key, ...issue.path] : [desc.key],
               });
             }
           }
@@ -259,45 +327,57 @@ function validateCompiledField(
       }
 
       case "typePredicate": {
-        if (desc.guard(obj[key])) {
-          result[key] = obj[key];
+        if (desc.guard(obj[desc.key])) {
+          result[desc.key] = obj[desc.key];
         } else {
-          const message = `Validation failed for property "${String(key)}"`;
+          const message = `Validation failed for property "${String(desc.key)}"`;
           if (ctx) {
             ctx.addIssue(message);
           } else {
-            localIssues.push({ message, path: [key] });
+            localIssues.push({ message, path: [desc.key] });
           }
         }
         break;
       }
       case "required": {
-        if (key in obj) {
-          result[key] = obj[key];
+        if (desc.key in obj) {
+          result[desc.key] = obj[desc.key];
         } else {
-          const message = `Missing required property: ${key}`;
+          const message = `Missing required property: ${desc.key}`;
           if (ctx) {
             ctx.addIssue(message);
           } else {
-            localIssues.push({ message, path: [key] });
+            localIssues.push({ message, path: [desc.key] });
           }
         }
         break;
       }
       case "absent": {
-        if (key in obj) {
-          const message = `Property must not be present: ${key}`;
+        if (desc.key in obj) {
+          const message = `Property must not be present: ${desc.key}`;
           if (ctx) {
             ctx.addIssue(message);
           } else {
-            localIssues.push({ message, path: [key] });
+            localIssues.push({ message, path: [desc.key] });
           }
         }
         break;
       }
+      case "union": {
+        // Unreachable today: tryCompileParser falls back to the original closure
+        // whenever helpers._ctx is set (the validate/slow path), and shape-
+        // compiled guards never produce union descriptors. Loud-fail so that
+        // any future change to either invariant surfaces immediately instead
+        // of silently miscompiling.
+        throw new Error(
+          "Internal: union descriptor reached validateCompiledField — " +
+            "slow-path union handling is not implemented. " +
+            "See docs/plans/2026-04-15-001-feat-or-helper-for-parser-forks-plan.md",
+        );
+      }
     }
   } finally {
-    if (ctx) ctx.popPath();
+    if ("key" in desc && ctx) ctx.popPath();
   }
 }
 
@@ -314,28 +394,41 @@ function validateCompiledShapeBoolean(
 
   for (let i = 0; i < fields.length; i++) {
     const desc = fields[i];
-    const key = desc.key;
 
     switch (desc.kind) {
       case "nested": {
-        if (!validateCompiledShapeBoolean(value[key], desc.fields)) return false;
+        if (!validateCompiledShapeBoolean(value[desc.key], desc.fields)) return false;
         break;
       }
       case "typeGuard": {
         // Call the raw boolean callback directly — no context, no helpers, no issues.
-        if (!desc.guard(value[key])) return false;
+        if (!desc.guard(value[desc.key])) return false;
         break;
       }
       case "typePredicate": {
-        if (!desc.guard(value[key])) return false;
+        if (!desc.guard(value[desc.key])) return false;
         break;
       }
       case "required": {
-        if (!(key in value)) return false;
+        if (!(desc.key in value)) return false;
         break;
       }
       case "absent": {
-        if (key in value) return false;
+        if (desc.key in value) return false;
+        break;
+      }
+      case "union": {
+        // Any-branch-matches wins. Each branch is a FieldDescriptor[] that
+        // must all pass for that branch to match. If no branch matches, the
+        // whole union fails and this field — and thus the outer shape — fails.
+        let matched = false;
+        for (const branch of desc.branches) {
+          if (validateCompiledShapeBoolean(value, branch)) {
+            matched = true;
+            break;
+          }
+        }
+        if (!matched) return false;
         break;
       }
     }
@@ -501,8 +594,9 @@ const createOptionalTypeGuard = <T>(
  * (null, undefined, empty string, empty array, empty object).
  */
 const createNotEmptyTypeGuard = <T>(guard: Predicate<T>) => {
-  const notEmpty = (value: unknown): value is T => !isEmpty(value) && guard(value);
-  const name = hasName(guard) ? `non-empty ${guard._.name}` : undefined;
+  const notEmpty = (value: unknown): value is T => !isEmptyValue(value) && guard(value);
+  const innerName = guardNameOrParens(guard as TypeGuard<T>);
+  const name = innerName ? `non-empty ${innerName}` : undefined;
   const notEmptyParser = (value: unknown) => notEmpty(value) && guard(value) ? value : null;
 
   const context = (value: unknown, ctx?: Context): StandardSchemaV1.Result<T> => {
@@ -557,8 +651,13 @@ function classifyGuard(
  * and the caller falls back to the original closure-based parser.
  */
 function tryCompileParser<T1>(parser: Parser<T1>): Parser<T1> | null {
-  const fields: FieldDescriptor[] = [];
-  let failed = false;
+  // `fields` is a mutable holder rather than a closure-local const so that the
+  // probe's `or` entry can swap in a fresh per-branch accumulator, run the
+  // branch, and restore. Every probe helper push site references
+  // `fieldsHolder.current` — not a captured `fields` variable — so swaps are
+  // visible to `has`, `hasOptional`, `hasNot`, and nested `or`.
+  const fieldsHolder: { current: FieldDescriptor[] } = { current: [] };
+  let failed: boolean = false;
 
   const probe = new Proxy({} as Record<string, unknown>, {
     has() {
@@ -587,9 +686,9 @@ function tryCompileParser<T1>(parser: Parser<T1>): Parser<T1> | null {
       if (failed) return true;
 
       if (guard) {
-        fields.push(classifyGuard(String(k), guard));
+        fieldsHolder.current.push(classifyGuard(String(k), guard));
       } else {
-        fields.push({ kind: "required", key: String(k) });
+        fieldsHolder.current.push({ kind: "required", key: String(k) });
       }
       return true;
     }) as HelpersWithContext["has"],
@@ -599,23 +698,23 @@ function tryCompileParser<T1>(parser: Parser<T1>): Parser<T1> | null {
       if (guard && hasContext(guard as Predicate<unknown>)) {
         const g = guard as TypeGuard<unknown>;
         if (g.optional) {
-          fields.push({
+          fieldsHolder.current.push({
             kind: "typeGuard",
             key: String(k),
             guard: g.optional as TypeGuard<unknown>,
           });
         } else {
-          fields.push(classifyGuard(String(k), guard));
+          fieldsHolder.current.push(classifyGuard(String(k), guard));
         }
       } else if (guard) {
-        fields.push({ kind: "typePredicate", key: String(k), guard });
+        fieldsHolder.current.push({ kind: "typePredicate", key: String(k), guard });
       }
       return true;
     }) as HelpersWithContext["hasOptional"],
     hasNot: ((_t: object, k: PropertyKey) => {
       if (failed) return true;
 
-      fields.push({ kind: "absent", key: String(k) });
+      fieldsHolder.current.push({ kind: "absent", key: String(k) });
       return true;
     }) as HelpersWithContext["hasNot"],
     tupleHas: (() => {
@@ -638,15 +737,73 @@ function tryCompileParser<T1>(parser: Parser<T1>): Parser<T1> | null {
       failed = true;
       return null;
     }) as HelpersWithContext["fail"],
+    or: ((
+      _val: unknown,
+      // deno-lint-ignore no-explicit-any
+      ...branches: ReadonlyArray<(v: unknown) => any>
+    ) => {
+      if (failed) return true;
+      if (branches.length === 0) {
+        failed = true;
+        return false;
+      }
+
+      const perBranchFields: FieldDescriptor[][] = [];
+      for (const branch of branches) {
+        // Save outer state.
+        const savedFields: FieldDescriptor[] = fieldsHolder.current;
+        const savedFailed: boolean = failed;
+
+        // Install fresh per-branch accumulator.
+        fieldsHolder.current = [];
+        failed = false;
+
+        try {
+          branch(probe as unknown);
+        } catch {
+          // User branch threw — treat as uncompilable.
+          failed = true;
+        }
+
+        const branchFields = fieldsHolder.current;
+        const branchFailed = failed;
+
+        // Restore outer state, OR'ing the branch's failed flag into outer.
+        fieldsHolder.current = savedFields;
+        failed = savedFailed || branchFailed;
+
+        if (branchFailed) {
+          // Bail the whole `or` — caller will fall back to closure path.
+          return true;
+        }
+        if (branchFields.length === 0) {
+          // Empty branch: the branch called no compile-trackable helpers, so
+          // its compiled semantics would be "matches anything" — which doesn't
+          // match the branch's actual runtime behavior (e.g., a branch that
+          // just returns false/undefined). Bail compilation to preserve
+          // correctness.
+          failed = true;
+          return true;
+        }
+        perBranchFields.push(branchFields);
+      }
+
+      fieldsHolder.current.push({ kind: "union", branches: perBranchFields });
+      return true;
+    }) as unknown as HelpersWithContext["or"],
     _ctx: undefined,
   };
 
   try {
     const result = parser(probe as unknown, probeHelpers);
-    if (result !== probe || failed || fields.length === 0) return null;
+    if (result !== probe || failed || fieldsHolder.current.length === 0) return null;
   } catch {
     return null;
   }
+
+  // Snapshot the fields at compile time — the holder is mutable but compilation
+  // is done, so we freeze a reference to what was accumulated.
+  const fields = fieldsHolder.current;
 
   // Compilation succeeded — use compiled fields for the boolean fast path,
   // but fall back to the original parser for the validate path to preserve
@@ -939,105 +1096,23 @@ export function entryToGuard(entry: ParserEntry): TypeGuard<unknown> {
 }
 
 /**
- * Returns true if input satisfies type boolean.
+ * Returns true if input satisfies type undefined.
  * @param {unknown} t
  * @return {boolean}
  */
-export const isBoolean: TypeGuard<boolean> = createTypeGuard(
-  "boolean",
-  (t): boolean | null => typeof t === "boolean" ? t : null,
+export const isUndefined: TypeGuard<undefined> = createTypeGuard(
+  "undefined",
+  (t): undefined | null => t === undefined ? t : null,
 );
 
 /**
- * Wraps a string TypeGuard with chainable length validation methods.
- * Each method delegates to .extend() and wraps the result for further chaining.
- */
-function withStringMethods(guard: TypeGuard<string>): TypeGuard<string> & StringTypeGuard {
-  return Object.assign(guard, {
-    ofLength: (n: number) => guard.extend(`length == ${n}`, (v) => v.length === n ? v : null),
-    range: (min: number, max: number) =>
-      guard.extend(`length ${min}..${max}`, (v) => v.length >= min && v.length <= max ? v : null),
-    min: (n: number) =>
-      withStringMethods(guard.extend(`length >= ${n}`, (v) => v.length >= n ? v : null)),
-    max: (n: number) =>
-      withStringMethods(guard.extend(`length <= ${n}`, (v) => v.length <= n ? v : null)),
-  }) as TypeGuard<string> & StringTypeGuard;
-}
-
-/**
- * Returns true if input satisfies type string.
+ * Returns true if input satisfies type null.
  * @param {unknown} t
  * @return {boolean}
  */
-export const isString: TypeGuard<string> & Simplify<StringTypeGuard> = withStringMethods(
-  createTypeGuard(
-    "string",
-    (t): string | null => typeof t === "string" ? t : null,
-  ),
-);
-
-/**
- * Wraps a TypeGuard<number> with chainable comparison methods (gt, gte, lt, lte, eq).
- * Each method delegates to .extend() and wraps the result for further chaining.
- */
-function withComparisons(guard: TypeGuard<number>): TypeGuard<number> & NumberTypeGuard {
-  const numeric = guard as TypeGuard<number> & NumberTypeGuard;
-  numeric.gt = (n) => withComparisons(guard.extend(`> ${n}`, (v) => v > n ? v : null));
-  numeric.gte = (n) => withComparisons(guard.extend(`>= ${n}`, (v) => v >= n ? v : null));
-  numeric.lt = (n) => withComparisons(guard.extend(`< ${n}`, (v) => v < n ? v : null));
-  numeric.lte = (n) => withComparisons(guard.extend(`<= ${n}`, (v) => v <= n ? v : null));
-  numeric.eq = (n) => guard.extend(`== ${n}`, (v) => v === n ? v : null);
-  Object.defineProperty(numeric, "finite", {
-    get: () => withComparisons(guard.extend("finite", (v) => Number.isFinite(v) ? v : null)),
-    enumerable: true,
-    configurable: true,
-  });
-  return numeric;
-}
-
-/**
- * Returns true if input satisfies type number. Returns false if `NaN` is passed.
- *
- * While `NaN` is technically a number in JavaScript, it is not a valid value for many applications
- * and will fail if used with common numeric operations.
- *
- * @param {unknown} t
- * @return {boolean}
- */
-export const isNumber: TypeGuard<number> & NumberTypeGuard = withComparisons(createTypeGuard(
-  "number",
-  (t): number | null => typeof t === "number" && !Number.isNaN(t) ? t : null,
-));
-
-/**
- * Returns true if input is an integer. Rejects NaN, Infinity, and non-integer numbers.
- *
- * @param {unknown} t
- * @return {boolean}
- */
-export const isInt: TypeGuard<number> & NumberTypeGuard = withComparisons(createTypeGuard(
-  "integer",
-  (t): number | null => typeof t === "number" && Number.isInteger(t) ? t : null,
-));
-
-/**
- * Returns true if input satisfies type symbol.
- * @param {unknown} t
- * @return {boolean}
- */
-export const isSymbol: TypeGuard<symbol> = createTypeGuard(
-  "symbol",
-  (t): symbol | null => typeof t === "symbol" ? t : null,
-);
-
-/**
- * Returns true if input satisfies type binary.
- * @param {unknown} t
- * @return {boolean}
- */
-export const isBinary: TypeGuard<0 | 1> = createTypeGuard(
-  "binary",
-  (t): 0 | 1 | null => t === 1 || t === 0 ? t : null,
+export const isNull: TypeGuard<null> = createTypeGuard<null>(
+  "null",
+  (t: unknown) => (t === null ? true : null) as null,
 );
 
 /**
@@ -1066,448 +1141,30 @@ export function isExactly<const T>(expected: T): TypeGuard<T> {
 }
 
 /**
- * Returns true if input satisfies type numeric.
- * @param {unknown} t
- * @return {boolean}
- */
-const NUMERIC_RE = /^-?\d*\.?\d+$/;
-
-export const isNumeric: TypeGuard<number> & NumberTypeGuard = withComparisons(createTypeGuard(
-  "numeric",
-  (t): number | null => {
-    if (isNumber(t)) return t as number;
-
-    if (!NUMERIC_RE.test(t as string)) return null;
-
-    const _t = parseInt(t as string) || parseFloat(t as string);
-
-    return (!isNaN(_t) && isNumber(_t)) ? t as number : null;
-  },
-));
-
-/**
- * Returns true if input satisfies type Function.
- * @param {unknown} t
- * @return {boolean}
- */
-export const isFunction: TypeGuard<(...args: unknown[]) => unknown> = createTypeGuard(
-  "function",
-  (t): ((...args: unknown[]) => unknown) | null =>
-    typeof t === "function" ? (t as (...args: unknown[]) => unknown) : null,
-);
-
-/**
- * Returns true if input satisfies type undefined.
- * @param {unknown} t
- * @return {boolean}
- */
-export const isUndefined: TypeGuard<undefined> = createTypeGuard(
-  "undefined",
-  (t): undefined | null => t === undefined ? t : null,
-);
-
-/**
- * Returns true if input satisfies type null.
- * @param {unknown} t
- * @return {boolean}
- */
-const isNull: TypeGuard<null> = createTypeGuard<null>(
-  "null",
-  (t: unknown) => (t === null ? true : null) as null,
-);
-
-/**
- * Returns true if input is a JSON-able primitive date type
- * @param {unknown} t
- * @return {boolean}
- */
-export const isJsonPrimitive: TypeGuard<JsonPrimitive> = unionOf(
-  isBoolean,
-  isString,
-  isNumber,
-  isNull,
-);
-
-/**
- * Returns true if input satisfies type object. _BEWARE_ object
- * can apply to many different types, including arrays. This
- * is not as type safe as you might think.
- * @param {unknown} t
- * @return {boolean}
- */
-export const isObject: TypeGuard<object> = createTypeGuard(
-  "object",
-  (t): object | null => t && typeof t === "object" && !Array.isArray(t) ? t : null,
-);
-
-/** Returns true if input satisfies type PropertyKey.
- * @param {unknown} t
- * @return {boolean}
- */
-export const isPropertyKey: TypeGuard<PropertyKey> = unionOf(
-  isString as TypeGuard<string>,
-  isNumber,
-  isSymbol,
-);
-
-/**
- * Returns true if input satisfies type object. _BEWARE_ object
- * can apply to many different types, including arrays. This
- * is not as type safe as you might think.
- * @param {unknown} t
- * @return {boolean}
- */
-export const isJsonObject: TypeGuard<JsonObject> = createTypeGuard(
-  "JsonObject",
-  (t): JsonObject | null => {
-    if (
-      t && typeof t === "object" &&
-      Object.getPrototypeOf(t) === Object.prototype
-    ) {
-      for (const v of Object.values(t)) {
-        if (!isJsonValue(v)) return null;
-      }
-
-      return t as JsonObject;
-    }
-
-    return null;
-  },
-);
-
-/** Precursor to full isArray guard */
-const _isArray = createTypeGuard("array", (t): unknown[] | null => Array.isArray(t) ? t : null);
-
-/**
- * Wraps a TypeGuard<T[]> with chainable length validation methods.
- * Each method delegates to .extend() and wraps the result for further chaining.
- */
-function withArrayMethods<T>(guard: TypeGuard<T[]>): ArrayTypeGuard<T> {
-  const arr = guard as ArrayTypeGuard<T>;
-  arr.ofLength = (n) =>
-    withArrayMethods(guard.extend(`length == ${n}`, (v) => v.length === n ? v : null));
-  arr.min = (n) =>
-    withArrayMethods(guard.extend(`length >= ${n}`, (v) => v.length >= n ? v : null));
-  arr.max = (n) =>
-    withArrayMethods(guard.extend(`length <= ${n}`, (v) => v.length <= n ? v : null));
-  arr.range = (min, max) =>
-    withArrayMethods(
-      guard.extend(`length ${min}..${max}`, (v) => v.length >= min && v.length <= max ? v : null),
-    );
-  return arr;
-}
-
-/**
- * Returns true if input satisfies type array.
- * @param {unknown} t
- * @return {boolean}
- */
-export const isArray: ArrayTypeGuard = withArrayMethods(Object.assign(
-  _isArray,
-  {
-    of: <T>(guard: TypeGuard<T>): ArrayTypeGuard<T> => {
-      const guardName = hasName(guard) ? guard._.name : undefined;
-
-      let name = "array";
-
-      if (guardName) {
-        name = guardName?.includes(" | ") ? `(${guardName})[]` : `${guardName}[]`;
-      }
-
-      return withArrayMethods(createTypeGuard(
-        name,
-        (v, helpers) => {
-          if (!isArray(v)) return null;
-
-          const ctx = (helpers as HelpersWithContext)._ctx;
-
-          // If we have a context, use index-aware validation
-          if (ctx && hasContext(guard)) {
-            for (let i = 0; i < v.length; i++) {
-              ctx.pushPath(i);
-              try {
-                const result = guard._.context(v[i], ctx);
-                if (result.issues) return null; // issues already added to parent ctx
-              } finally {
-                ctx.popPath();
-              }
-            }
-            return v as T[];
-          }
-
-          // Otherwise, use simple boolean check
-          return v.every((item) => guard(item)) ? v as T[] : null;
-        },
-      ));
-    },
-  },
-));
-
-/**
- * Returns true if input satisfies type array.
- * @param {unknown} t
- * @return {boolean}
- */
-export const isJsonArray: TypeGuard<JsonValue[] | readonly JsonValue[]> = createTypeGuard(
-  "JsonArray",
-  (t): JsonArray | null => Array.isArray(t) ? t : null,
-);
-
-/**
- * Checks if a given value is a valid JSON value.
- *
- * This type guard leverages helper functions to determine if the provided value is a valid JSON
- * primitive, JSON array, or JSON object. If the value satisfies any of these conditions, it is
- * considered a valid JSON value.
- *
- * @param t - The value to be checked.
- * @returns The value itself if it is a valid JSON value; otherwise, returns null.
- *
- * @remarks
- * - For primitive types, arrays, and objects, the guard confirms conformance with the JSON value standards.
- *
- * @example
- * const value: unknown = getValue();
- * const jsonValue = isJsonValue(value);
- * if (jsonValue !== null) {
- *   // Work with the confirmed JSON value.
- * }
- */
-export const isJsonValue: TypeGuard<JsonValue> = unionOf(
-  isJsonPrimitive,
-  isJsonArray,
-  isJsonObject,
-);
-
-/**
- * A type guard function that checks if a value is a Date object.
- *
- * @param t - The value to check
- * @returns The original Date object if the value is a Date, otherwise null
+ * Factory that returns a TypeGuard for `instanceof` checks against a
+ * class constructor. Generalizes the pattern behind `isDate`, `isNativeURL`,
+ * etc. so consumers can build guards for their own classes without writing
+ * a custom parser.
  *
  * @example
  * ```typescript
- * const maybeDate: unknown = new Date();
+ * class MyService {}
+ * const isMyService = isInstanceOf(MyService);
+ * isMyService(new MyService()); // true, narrows to MyService
+ * isMyService({});               // false
  *
- * if (isDate(maybeDate)) {
- *   // maybeDate is now typed as Date
- *   console.log(maybeDate.toISOString());
- * }
+ * class CustomError extends Error {}
+ * const isCustomError = isInstanceOf(CustomError);
  * ```
- */
-export const isDate: TypeGuard<Date> = createTypeGuard("Date", (t) => t instanceof Date ? t : null);
-
-/**
- * Returns true if input satisfies type null or undefined.
- * @param {unknown} t
- * @return {boolean}
- */
-const isNil: TypeGuard<null | undefined> = isNull.or(isUndefined);
-
-const isEmptyRecord: TypeGuard<Record<string, never>> = createTypeGuard<Record<string, never>>(
-  "{}",
-  (t): Record<string, never> | null => {
-    if (
-      t && typeof t === "object" && Object.getPrototypeOf(t) === Object.prototype &&
-      Object.keys(t).length === 0
-    ) {
-      return t as Record<string, never>;
-    }
-    return null;
-  },
-);
-
-const isEmptyArray: TypeGuard<[]> = createTypeGuard<[]>(
-  "[]",
-  (t): [] | null => Array.isArray(t) && (t as unknown[]).length === 0 ? t as [] : null,
-);
-
-const isEmptyString: TypeGuard<""> = createTypeGuard<"">(
-  '""',
-  (t): "" | null =>
-    typeof t === "string" ? t === "" ? t : t?.trim?.() === "" ? t as "" : null : null,
-);
-
-/**
- * Returns true if input is undefined, null, empty string, object with length
- * of 0 or object without enumerable keys.
  *
- * Strings are trimmed when evaluated.
- * @param {unknown} t
- * @return {boolean}
+ * @param ctor The class constructor to check against.
+ * @param name Optional name for error messages. Defaults to `ctor.name`.
+ * @returns A TypeGuard<T> where T is the constructor's instance type.
  */
-const isEmpty: TypeGuard<null | undefined | "" | [] | Record<string, never>> = isNull
-  .or(isUndefined)
-  .or(isEmptyString)
-  .or(isEmptyArray)
-  .or(isEmptyRecord);
-
-/**
- * Returns true if the value is iterable (has Symbol.iterator). Does not
- * check the type contained within the iterable.
- * @param t
- * @returns
- */
-const isIterable: TypeGuard<Iterable<unknown>> = createTypeGuard<Iterable<unknown>>(
-  "Iterable",
-  (t) => {
-    if (
-      typeof t === "object" &&
-      !isNil(t) &&
-      Symbol.iterator in t &&
-      isFunction(t[Symbol.iterator])
-    ) {
-      return t as Iterable<unknown>;
-    }
-    return null;
-  },
-);
-
-/**
- * Type guard that checks if a value is a tuple (array) of a specific length.
- *
- * A tuple is an array with a fixed number of elements. This function validates
- * that the input is an array and has exactly the specified length.
- *
- * @typeParam N - The expected length of the tuple
- * @param t - The value to check
- * @param length - The expected length of the tuple
- * @returns Type predicate indicating if the value is a tuple of length N
- *
- * @example
- * ```typescript
- * const value: unknown = [1, 2, 3];
- *
- * if (isTuple(value, 3)) {
- *   // value is now typed as [unknown, unknown, unknown]
- *   console.log(value.length); // 3
- * }
- *
- * // Check for empty tuple
- * if (isTuple([], 0)) {
- *   console.log("Empty tuple");
- * }
- * ```
- */
-const isTuple = <N extends number>(t: unknown, length: N): t is TupleOfLength<N> => {
-  return Array.isArray(t) && t.length === length;
-};
-
-/**
- * Strict version of isTuple that throws a TypeError if the value is not a tuple of the specified length.
- * @typeParam N - The expected length of the tuple
- * @param t - The value to check
- * @param length - The expected length of the tuple
- * @param errorMsg - Optional custom error message
- * @returns true if the value is a tuple of the specified length
- * @throws {TypeError} If the value is not a tuple of the specified length
- */
-isTuple.strict = <N extends number>(
-  t: unknown,
-  length: N,
-  errorMsg?: string,
-): t is TupleOfLength<N> => {
-  if (!isTuple(t, length)) {
-    throw TypeError(errorMsg ?? `Type guard failed. Value is not a tuple of length ${length}.`);
-  }
-
-  return true;
-};
-
-/**
- * Assertion function that throws an error if the value is not a tuple of the specified length.
- * TypeScript will narrow the type to TupleOfLength<N> after this assertion.
- * @typeParam N - The expected length of the tuple
- * @param t - The value to check
- * @param length - The expected length of the tuple
- * @param errorMsg - Optional custom error message
- * @throws {TypeError} If the value is not a tuple of the specified length
- */
-isTuple.assert = isTuple.strict as <N extends number>(
-  t: unknown,
-  length: N,
-  errorMsg?: string,
-) => asserts t is TupleOfLength<N>;
-
-/**
- * Creates a union type guard that checks if a value is a tuple of specified length OR matches another type.
- * @param length - The expected length of the tuple
- * @param guard - The type guard to combine with isTuple
- * @returns A new type guard for TupleOfLength<N> | T2
- */
-isTuple.or = <N extends number, T2>(
-  length: N,
-  guard: TypeGuard<T2>,
-): TypeGuard<TupleOfLength<N> | T2> => {
-  return createTypeGuard<TupleOfLength<N> | T2>((v: unknown) =>
-    isTuple(v, length) ? v : guard._.parser(v, defaultHelpers)
-  );
-};
-
-// Define the optional methods for isTuple
-const isTupleOptional = <N extends number>(
-  t: unknown,
-  length: N,
-): t is TupleOfLength<N> | undefined => isUndefined(t) || isTuple(t, length);
-
-isTupleOptional.strict = <N extends number>(
-  t: unknown,
-  length: N,
-  errorMsg?: string,
-): t is TupleOfLength<N> | undefined => {
-  if (!isTupleOptional(t, length)) {
-    throw TypeError(
-      errorMsg ?? `Type guard failed. Value is not a tuple of length ${length} or undefined.`,
-    );
-  }
-  return true;
-};
-
-isTupleOptional.assert = isTupleOptional.strict;
-
-/**
- * Optional variant of isTuple that accepts undefined or a tuple of the specified length.
- * @typeParam N - The expected length of the tuple
- * @param t - The value to check
- * @param length - The expected length of the tuple
- * @returns true if the value is undefined or a tuple of the specified length, otherwise false
- */
-isTuple.optional = isTupleOptional;
-
-/**
- * Creates a type guard from a TypeScript enum object.
- * Validates that a value is a member of the enum.
- *
- * Handles both string and numeric enums. TypeScript compiles numeric enums
- * with reverse mappings — for `enum Dir { Up = 0, Down = 1 }`, the compiled
- * object is `{ Up: 0, Down: 1, 0: "Up", 1: "Down" }`. The stringified-number
- * keys (`"0"`, `"1"`) are the reverse mappings and must be filtered out so
- * that only the real enum values (`0`, `1`) are treated as valid members.
- * String enums (`enum Color { Red = "red" }`) produce no reverse mappings,
- * so the filter is a no-op for them.
- *
- * Note: TypeScript does not support exact type-level equality checks for enum
- * types. The inferred `_TYPE` is the enum's value union (e.g. `Color.Red |
- * Color.Green | Color.Blue`) rather than the branded `Color` type itself.
- * Both are mutually assignable — `const c: Color = x` compiles after narrowing
- * — but they are not identical under strict type-equality checks like
- * `Equals<A, B>`. This is a known TypeScript limitation, not a Guardis bug.
- * See: https://github.com/microsoft/TypeScript/issues/49497
- */
-export function isEnum<const T extends Record<string, string | number>>(
-  enumObj: T,
-): TypeGuard<T[keyof T]> {
-  // Keep only entries whose key is not a stringified number (filters reverse mappings).
-  const values = Object.entries(enumObj)
-    .filter(([key]) => isNaN(Number(key)))
-    .map(([, value]) => value);
-  const memberSet = new Set(values);
-  const name = `enum(${values.join(" | ")})`;
-
+// deno-lint-ignore no-explicit-any
+export function isInstanceOf<T>(ctor: new (...args: any[]) => T, name?: string): TypeGuard<T> {
   return createTypeGuard(
-    name,
-    (t) => memberSet.has(t as T[keyof T]) ? t as T[keyof T] : null,
+    name ?? ctor.name ?? "instance",
+    (t): T | null => t instanceof ctor ? t : null,
   );
 }
-
-export { isEmpty, isIterable, isNil, isNull, isTuple };

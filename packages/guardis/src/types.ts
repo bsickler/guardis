@@ -1,5 +1,4 @@
 import type { StandardSchemaV1 } from "../specs/standard-schema-spec.v1.ts";
-import type { exact, includes, tupleHas } from "./utilities.ts";
 
 /**
  * Creates a nominal type by intersecting a base type `T` with a unique brand `B`.
@@ -29,6 +28,17 @@ export interface Context {
   addIssue(message: string): void;
 }
 
+// Non-exported local aliases for `or()` — they exist solely to express its
+// signature and are not part of the public API. Do not export.
+type BranchPredicate<V> = (v: V) => boolean | null | undefined;
+// Using `(v: any)` in the conditional lets TS match any type predicate without
+// the "R could be unrelated to V" constraint error. The intersection `V & R`
+// yields the narrowed type at the `or` callsite when a branch is a typed predicate.
+type BranchNarrowing<V, P extends readonly BranchPredicate<V>[]> = {
+  // deno-lint-ignore no-explicit-any
+  [K in keyof P]: P[K] extends (v: any) => v is infer R ? V & R : V;
+}[number];
+
 type Helpers = {
   /** Check for required property with optional custom error message */
   has: <K extends PropertyKey, G = unknown>(
@@ -50,13 +60,45 @@ type Helpers = {
     guard?: (v: unknown) => v is G,
     errorMessage?: string,
   ) => t is { [K2 in K]+?: G };
-  tupleHas: typeof tupleHas;
-  includes: typeof includes;
+  tupleHas: <T extends readonly unknown[], I extends number, G = unknown>(
+    t: T,
+    i: I,
+    guard: (v: unknown) => v is G,
+    ctx?: Context,
+  ) => t is T & { [K in I]: G };
+  includes: <T extends readonly unknown[]>(t: T, v: unknown) => v is T[number];
   /** Check if a key exists in an object with optional custom error message */
   keyOf: <T extends object>(k: unknown, t: T, errorMessage?: string) => k is keyof T;
-  exact: typeof exact;
+  exact: <const T>(expected: T, v: unknown) => v is T;
   /** Returns null and adds custom error message to context if during validation */
   fail: (message: string) => null;
+  /**
+   * Fork primitive: evaluates alternative branch predicates against `val`, narrowing
+   * `val` to the union of branch result types on success.
+   *
+   * Signature: `or(val, branch1, branch2, ...)`. Branches receive `v: V` and either
+   * return a plain `boolean` or are typed as `(v: V) => v is SubType` (narrows at
+   * the `or` callsite on success). TS 5.5+ infers the predicate return type from
+   * single-expression branch bodies that call another type predicate (including
+   * `has`).
+   *
+   * Use `or()` instead of `if (has(...)) ... if (has(...))` patterns — the latter
+   * is broken for forks in validate/strict modes because `has()` intentionally
+   * returns `true` on failure to support `&&`-chain multi-error collection.
+   *
+   * @example
+   * ```ts
+   * return or(
+   *   val,
+   *   (v) => has(v, "orgId",   isUUIDv7),
+   *   (v) => has(v, "orgName", isString.notEmpty),
+   * ) ? val : null;
+   * ```
+   */
+  or: <V, P extends readonly BranchPredicate<V>[]>(
+    val: V,
+    ...branches: P
+  ) => val is V & BranchNarrowing<V, P>;
 };
 
 /** Helpers extended with internal context access for validation */
@@ -363,6 +405,20 @@ export interface ArrayTypeGuard<T = unknown> extends TypeGuard<T[]> {
   max(length: number): ArrayTypeGuard<T>;
   /** Checks array length is between min and max (inclusive) */
   range(min: number, max: number): ArrayTypeGuard<T>;
+}
+
+/** A Map type guard factory. The base guard accepts any Map; `.of()` returns
+ * a plain TypeGuard<Map<K, V>> with no further `.of()` chaining. */
+export interface MapTypeGuard extends TypeGuard<Map<unknown, unknown>> {
+  /** Returns a typed Map guard that validates key and value types */
+  of<K, V>(keyGuard: TypeGuard<K>, valueGuard: TypeGuard<V>): TypeGuard<Map<K, V>>;
+}
+
+/** A Set type guard factory. The base guard accepts any Set; `.of()` returns
+ * a plain TypeGuard<Set<T>> with no further `.of()` chaining. */
+export interface SetTypeGuard extends TypeGuard<Set<unknown>> {
+  /** Returns a typed Set guard that validates element types */
+  of<T>(guard: TypeGuard<T>): TypeGuard<Set<T>>;
 }
 
 /** An optional type guard that accepts undefined in addition to the base type */

@@ -1,6 +1,6 @@
 import { assert, assertEquals, assertFalse, assertThrows } from "@std/assert";
 import { batch } from "./batch.ts";
-import { isArray, isNumber, isString } from "./guard.ts";
+import { isArray, isNumber, isString } from "./modules/primitives.ts";
 
 // Standard test values for consistency across all type guard tests
 const TEST_VALUES = {
