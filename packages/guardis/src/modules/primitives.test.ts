@@ -2098,8 +2098,144 @@ Deno.test("numeric comparison methods", async (t) => {
   await t.step("isNumeric has comparison methods", () => {
     assert(isNumeric.gt(0)(5));
     assert(isNumeric.gt(0)("5"));
+    assert(isNumeric.lt(10)("5"));
     assertFalse(isNumeric.gt(0)(-1));
     assertFalse(isNumeric.gt(0)("abc"));
+    assertFalse(isNumeric.lt(10)("11"));
+  });
+
+  await t.step("isNumeric.gt covers numbers and numeric strings", () => {
+    assert(isNumeric.gt(0)(5));
+    assert(isNumeric.gt(0)("5"));
+    assert(isNumeric.gt(0)(0.1));
+    assertFalse(isNumeric.gt(0)(0));
+    assertFalse(isNumeric.gt(0)("0"));
+    assertFalse(isNumeric.gt(0)(-1));
+    assertFalse(isNumeric.gt(0)("abc"));
+  });
+
+  await t.step("isNumeric.gte covers numbers and numeric strings", () => {
+    assert(isNumeric.gte(0)(0));
+    assert(isNumeric.gte(0)("0"));
+    assert(isNumeric.gte(0)(1));
+    assert(isNumeric.gte(0)("1"));
+    assertFalse(isNumeric.gte(0)(-1));
+    assertFalse(isNumeric.gte(0)("-1"));
+    assertFalse(isNumeric.gte(0)("abc"));
+  });
+
+  await t.step("isNumeric.lt covers numbers and numeric strings", () => {
+    assert(isNumeric.lt(10)(5));
+    assert(isNumeric.lt(10)("5"));
+    assert(isNumeric.lt(10)(9.9));
+    assertFalse(isNumeric.lt(10)(10));
+    assertFalse(isNumeric.lt(10)("10"));
+    assertFalse(isNumeric.lt(10)("11"));
+    assertFalse(isNumeric.lt(10)("abc"));
+  });
+
+  await t.step("isNumeric.lte covers numbers and numeric strings", () => {
+    assert(isNumeric.lte(10)(10));
+    assert(isNumeric.lte(10)("10"));
+    assert(isNumeric.lte(10)(5));
+    assert(isNumeric.lte(10)("5"));
+    assertFalse(isNumeric.lte(10)(11));
+    assertFalse(isNumeric.lte(10)("11"));
+    assertFalse(isNumeric.lte(10)("abc"));
+  });
+
+  await t.step("isNumeric.eq matches numbers only (strict equality)", () => {
+    // isNumeric preserves the original value; eq uses === so strings never match
+    assert(isNumeric.eq(42)(42));
+    assertFalse(isNumeric.eq(42)("42"));
+    assertFalse(isNumeric.eq(42)(43));
+    assertFalse(isNumeric.eq(42)("abc"));
+  });
+
+  await t.step("isNumeric.finite accepts finite numbers only", () => {
+    // isNumeric preserves the original value; Number.isFinite rejects strings
+    assert(isNumeric.finite(5));
+    assert(isNumeric.finite(0));
+    assertFalse(isNumeric.finite("5"));
+    assertFalse(isNumeric.finite(Infinity));
+    assertFalse(isNumeric.finite(-Infinity));
+    assertFalse(isNumeric.finite(NaN));
+    assertFalse(isNumeric.finite("abc"));
+  });
+
+  await t.step("isNumeric chaining gt and lt", () => {
+    const between = isNumeric.gt(-1).lt(1);
+    assert(between(0));
+    assert(between("0"));
+    assert(between(0.5));
+    assert(between("0.5"));
+    assertFalse(between(-1));
+    assertFalse(between("-1"));
+    assertFalse(between(1));
+    assertFalse(between("1"));
+  });
+
+  await t.step("isNumeric chaining gte and lte for range", () => {
+    const isPercentage = isNumeric.gte(0).lte(100);
+    assert(isPercentage(0));
+    assert(isPercentage("0"));
+    assert(isPercentage(50));
+    assert(isPercentage("50"));
+    assert(isPercentage(100));
+    assert(isPercentage("100"));
+    assertFalse(isPercentage(-1));
+    assertFalse(isPercentage("-1"));
+    assertFalse(isPercentage(101));
+    assertFalse(isPercentage("101"));
+  });
+
+  await t.step("isNumeric.validate returns structured results", () => {
+    assertEquals(isNumeric.gt(0).validate(5), { value: 5 });
+    assertEquals(isNumeric.gt(0).validate("5"), { value: "5" as unknown as number });
+    assertEquals(isNumeric.gt(0).validate(-1), {
+      issues: [{ message: "Expected > 0. Received: -1" }],
+    });
+    assertEquals(isNumeric.lt(10).validate("11"), {
+      issues: [{ message: "Expected < 10. Received: '11'" }],
+    });
+  });
+
+  await t.step("isNumeric.strict throws on failure", () => {
+    isNumeric.gt(0).strict(5);
+    isNumeric.gt(0).strict("5");
+    assertThrows(() => isNumeric.gt(0).strict(-1));
+    assertThrows(() => isNumeric.lt(10).strict("11"));
+  });
+
+  await t.step("isNumeric.or after comparison", () => {
+    const guard = isNumeric.gt(0).or(isNull);
+    assert(guard(5));
+    assert(guard("5"));
+    assert(guard(null));
+    assertFalse(guard(0));
+    assertFalse(guard(-1));
+    assertFalse(guard("abc"));
+  });
+
+  await t.step("isInt has comparison methods", () => {
+    assert(isInt.gt(0)(5));
+    assertFalse(isInt.gt(0)(5.5));
+    assertFalse(isInt.gt(0)("5"));
+    assert(isInt.gte(0)(0));
+    assert(isInt.lt(10)(5));
+    assert(isInt.lte(10)(10));
+    assert(isInt.eq(42)(42));
+    assertFalse(isInt.eq(42)(42.5));
+  });
+
+  await t.step("isInt chaining for range", () => {
+    const between = isInt.gte(1).lte(10);
+    assert(between(1));
+    assert(between(5));
+    assert(between(10));
+    assertFalse(between(0));
+    assertFalse(between(11));
+    assertFalse(between(5.5));
   });
 });
 
