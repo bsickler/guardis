@@ -3723,6 +3723,42 @@ Deno.test("createTypeGuard with verified shape (explicit type parameter)", async
     assertFalse(isPositive(-1));
     assertType<Equals<typeof isPositive._TYPE, number>>();
   });
+
+  await t.step("typed shape inside a generic function with a parameterized type", () => {
+    // Reproduces the bug: when T1 is itself generic (e.g. PaginatedRequest<T>),
+    // TS cannot prove T1 extends Record<string, unknown>, so the VerifiedShape
+    // overloads are rejected and TS falls back to the Parser overload, which
+    // then reports a misleading "'search' does not exist in type 'Parser<…>'".
+    type PaginatedRequest<T extends readonly string[]> = {
+      id: number;
+      search?: string;
+      page?: number;
+      sortBy?: T[number];
+    };
+
+    function buildPaginatedGuard<T extends readonly string[]>(sortByKeys: T) {
+      const isSortByKey = createTypeGuard<T[number]>((v) =>
+        typeof v === "string" && (sortByKeys as readonly string[]).includes(v)
+          ? (v as T[number])
+          : null
+      );
+
+      return createTypeGuard<PaginatedRequest<T>>("PaginatedQuery", {
+        id: isNumber,
+        search: isString.notEmpty.optional,
+        page: isNumber.optional,
+        sortBy: isSortByKey.optional,
+      });
+    }
+
+    const isPaginated = buildPaginatedGuard(["name", "createdAt"]);
+
+    assertFalse(isPaginated({}));                                             // id required, missing
+    assert(isPaginated({ id: 1 }));                                           // minimal valid
+    assert(isPaginated({ id: 1, search: "hi", page: 2, sortBy: "name" }));   // all fields valid
+    assertFalse(isPaginated({ id: 1, sortBy: "unknown" }));                   // sortBy not in keys
+    assertFalse(isPaginated({ id: 1, page: "2" }));                           // page wrong type
+  });
 });
 
 Deno.test("Parser auto-compilation safety", async (t) => {
