@@ -1,19 +1,7 @@
 import { assert, assertEquals, assertFalse, assertThrows } from "@std/assert";
 import type { StandardSchemaV1 } from "../specs/standard-schema-spec.v1.ts";
-import {
-  createTypeGuard,
-  isExactly,
-  isNull,
-  isUndefined,
-} from "./guard.ts";
-import {
-  isArray,
-  isBoolean,
-  isNil,
-  isNumber,
-  isObject,
-  isString,
-} from "./modules/primitives.ts";
+import { createTypeGuard, isExactly, isNull, isUndefined } from "./guard.ts";
+import { isArray, isBoolean, isNil, isNumber, isObject, isString } from "./modules/primitives.ts";
 import type { GuardedType, TypeGuard } from "./types.ts";
 import { assertType, type Equals } from "./test-utils.ts";
 
@@ -1299,9 +1287,7 @@ Deno.test("Guard name edge cases", async (t) => {
   await t.step("notEmpty of unnamed guard has undefined name on metadata", () => {
     // The cast in createNotEmptyTypeGuard must still yield an undefined name
     // when the inner guard has no name — not a stringified "undefined".
-    const anonymous = createTypeGuard((v): string | null =>
-      typeof v === "string" ? v : null
-    );
+    const anonymous = createTypeGuard((v): string | null => typeof v === "string" ? v : null);
     assertEquals(
       (anonymous.notEmpty as unknown as TypeGuard<string>)._.name,
       undefined,
@@ -3723,6 +3709,42 @@ Deno.test("createTypeGuard with verified shape (explicit type parameter)", async
     assertFalse(isPositive(-1));
     assertType<Equals<typeof isPositive._TYPE, number>>();
   });
+
+  await t.step("typed shape inside a generic function with a parameterized type", () => {
+    // Reproduces the bug: when T1 is itself generic (e.g. PaginatedRequest<T>),
+    // TS cannot prove T1 extends Record<string, unknown>, so the VerifiedShape
+    // overloads are rejected and TS falls back to the Parser overload, which
+    // then reports a misleading "'search' does not exist in type 'Parser<…>'".
+    type PaginatedRequest<T extends readonly string[]> = {
+      id: number;
+      search?: string;
+      page?: number;
+      sortBy?: T[number];
+    };
+
+    function buildPaginatedGuard<T extends readonly string[]>(sortByKeys: T) {
+      const isSortByKey = createTypeGuard<T[number]>((v) =>
+        typeof v === "string" && (sortByKeys as readonly string[]).includes(v)
+          ? (v as T[number])
+          : null
+      );
+
+      return createTypeGuard<PaginatedRequest<T>>("PaginatedQuery", {
+        id: isNumber,
+        search: isString.notEmpty.optional,
+        page: isNumber.optional,
+        sortBy: isSortByKey.optional,
+      });
+    }
+
+    const isPaginated = buildPaginatedGuard(["name", "createdAt"]);
+
+    assertFalse(isPaginated({})); // id required, missing
+    assert(isPaginated({ id: 1 })); // minimal valid
+    assert(isPaginated({ id: 1, search: "hi", page: 2, sortBy: "name" })); // all fields valid
+    assertFalse(isPaginated({ id: 1, sortBy: "unknown" })); // sortBy not in keys
+    assertFalse(isPaginated({ id: 1, page: "2" })); // page wrong type
+  });
 });
 
 Deno.test("Parser auto-compilation safety", async (t) => {
@@ -3895,10 +3917,10 @@ Deno.test("or() — boolean mode", async (t) => {
   const isMember = createTypeGuard<Member>((val, { has, or }) => {
     if (!isObject(val) || !has(val, "a", isString)) return null;
     return or(
-      val,
-      (v) => has(v, "orgId", isString),
-      (v) => has(v, "userId", isString),
-    )
+        val,
+        (v) => has(v, "orgId", isString),
+        (v) => has(v, "userId", isString),
+      )
       ? val
       : null;
   });
@@ -3942,10 +3964,10 @@ Deno.test("or() — boolean mode", async (t) => {
     const guard = createTypeGuard<unknown>((val, { has, or, fail }) => {
       if (!isObject(val)) return null;
       return or(
-        val,
-        (v) => has(v, "x", isString) ? true : fail("no x"),
-        (v) => has(v, "y", isString),
-      )
+          val,
+          (v) => has(v, "x", isString) ? true : fail("no x"),
+          (v) => has(v, "y", isString),
+        )
         ? val
         : null;
     });
@@ -3958,10 +3980,10 @@ Deno.test("or() — boolean mode", async (t) => {
     const guard = createTypeGuard<unknown>((val, { has, or }) => {
       if (!isObject(val)) return null;
       return or(
-        val,
-        () => undefined,
-        (v) => has(v, "y", isString),
-      )
+          val,
+          () => undefined,
+          (v) => has(v, "y", isString),
+        )
         ? val
         : null;
     });
@@ -3998,10 +4020,10 @@ Deno.test("or() — validate mode", async (t) => {
   const isMember = createTypeGuard<unknown>((val, { has, or }) => {
     if (!isObject(val) || !has(val, "a", isString)) return null;
     return or(
-      val,
-      (v) => has(v, "orgId", isString),
-      (v) => has(v, "userId", isString),
-    )
+        val,
+        (v) => has(v, "orgId", isString),
+        (v) => has(v, "userId", isString),
+      )
       ? val
       : null;
   });
@@ -4041,10 +4063,10 @@ Deno.test("or() — validate mode", async (t) => {
       const isStrict = createTypeGuard<unknown>((val, { has, or }) => {
         if (!isObject(val)) return null;
         return or(
-          val,
-          (v) => has(v, "orgId", isString.notEmpty),
-          (v) => has(v, "orgName", isString),
-        )
+            val,
+            (v) => has(v, "orgId", isString.notEmpty),
+            (v) => has(v, "orgName", isString),
+          )
           ? val
           : null;
       });
@@ -4068,10 +4090,10 @@ Deno.test("or() — validate mode", async (t) => {
       const guard = createTypeGuard<unknown>((val, { has, or }) => {
         if (!isObject(val)) return null;
         return or(
-          val,
-          (v) => has(v, "age", isNumber, "age must be a number"),
-          (v) => has(v, "label", isString),
-        )
+            val,
+            (v) => has(v, "age", isNumber, "age must be a number"),
+            (v) => has(v, "label", isString),
+          )
           ? val
           : null;
       });
@@ -4092,11 +4114,11 @@ Deno.test("or() — validate mode", async (t) => {
     const guard = createTypeGuard<unknown>((val, { has, or }) => {
       if (!isObject(val)) return null;
       return or(
-        val,
-        // inner guard fails — its issues land in the speculation buffer
-        (v) => has(v, "inner", isInner),
-        (v) => has(v, "fallback", isString),
-      )
+          val,
+          // inner guard fails — its issues land in the speculation buffer
+          (v) => has(v, "inner", isInner),
+          (v) => has(v, "fallback", isString),
+        )
         ? val
         : null;
     });
@@ -4110,15 +4132,15 @@ Deno.test("or() — validate mode", async (t) => {
     const guard = createTypeGuard<unknown>((val, { has, or }) => {
       if (!isObject(val)) return null;
       return or(
-        val,
-        (v) =>
-          isObject(v) && has(v, "a", isString) && or(
-            v,
-            (vv) => has(vv, "b", isString),
-            (vv) => has(vv, "c", isString),
-          ),
-        (v) => has(v, "alt", isString),
-      )
+          val,
+          (v) =>
+            isObject(v) && has(v, "a", isString) && or(
+              v,
+              (vv) => has(vv, "b", isString),
+              (vv) => has(vv, "c", isString),
+            ),
+          (v) => has(v, "alt", isString),
+        )
         ? val
         : null;
     });
@@ -4158,10 +4180,10 @@ Deno.test("or() — strict mode", async (t) => {
   const isMember = createTypeGuard<unknown>((val, { has, or }) => {
     if (!isObject(val) || !has(val, "a", isString)) return null;
     return or(
-      val,
-      (v) => has(v, "orgId", isString),
-      (v) => has(v, "userId", isString),
-    )
+        val,
+        (v) => has(v, "orgId", isString),
+        (v) => has(v, "userId", isString),
+      )
       ? val
       : null;
   });
@@ -4207,10 +4229,10 @@ Deno.test("or() — compile probe integration", async (t) => {
     const isMember = createTypeGuard<unknown>((val, { has, or }) => {
       if (!isObject(val) || !has(val, "kind", isString)) return null;
       return or(
-        val,
-        (v) => has(v, "orgId", isString),
-        (v) => has(v, "userId", isString),
-      )
+          val,
+          (v) => has(v, "orgId", isString),
+          (v) => has(v, "userId", isString),
+        )
         ? val
         : null;
     });
@@ -4222,10 +4244,10 @@ Deno.test("or() — compile probe integration", async (t) => {
     const isMember = createTypeGuard<unknown>((val, { has, or }) => {
       if (!isObject(val) || !has(val, "kind", isString)) return null;
       return or(
-        val,
-        (v) => has(v, "orgId", isString),
-        (v) => has(v, "userId", isString),
-      )
+          val,
+          (v) => has(v, "orgId", isString),
+          (v) => has(v, "userId", isString),
+        )
         ? val
         : null;
     });
@@ -4238,10 +4260,10 @@ Deno.test("or() — compile probe integration", async (t) => {
     const isMember = createTypeGuard<unknown>((val, { has, or }) => {
       if (!isObject(val) || !has(val, "kind", isString)) return null;
       return or(
-        val,
-        (v) => has(v, "orgId", isString),
-        (v) => has(v, "userId", isString),
-      )
+          val,
+          (v) => has(v, "orgId", isString),
+          (v) => has(v, "userId", isString),
+        )
         ? val
         : null;
     });
@@ -4249,41 +4271,44 @@ Deno.test("or() — compile probe integration", async (t) => {
     assertFalse(isMember({ orgId: "o-1" })); // missing 'kind'
   });
 
-  await t.step("each probe helper (has/hasOptional/hasNot) writes to per-branch accumulator", () => {
-    // Exercises all three compile-trackable probe helpers inside different branches
-    // to prove per-branch field isolation.
-    const isShape = createTypeGuard<unknown>((val, { has, hasOptional, hasNot, or }) => {
-      if (!isObject(val)) return null;
-      return or(
-        val,
-        (v) => has(v, "a", isString), // branch 0: one required
-        (v) => hasOptional(v, "b", isNumber) && has(v, "c", isString), // branch 1: optional + required
-        (v) => has(v, "d", isString) && hasNot(v, "e"), // branch 2: required + absent
-      )
-        ? val
-        : null;
-    });
-    assert(isShape({ a: "x" }));
-    assert(isShape({ b: 1, c: "y" }));
-    assert(isShape({ c: "y" })); // b is optional
-    assert(isShape({ d: "z" }));
-    assertFalse(isShape({ d: "z", e: "forbidden" })); // branch 2's hasNot rejects
-    assertFalse(isShape({})); // matches no branch
-  });
+  await t.step(
+    "each probe helper (has/hasOptional/hasNot) writes to per-branch accumulator",
+    () => {
+      // Exercises all three compile-trackable probe helpers inside different branches
+      // to prove per-branch field isolation.
+      const isShape = createTypeGuard<unknown>((val, { has, hasOptional, hasNot, or }) => {
+        if (!isObject(val)) return null;
+        return or(
+            val,
+            (v) => has(v, "a", isString), // branch 0: one required
+            (v) => hasOptional(v, "b", isNumber) && has(v, "c", isString), // branch 1: optional + required
+            (v) => has(v, "d", isString) && hasNot(v, "e"), // branch 2: required + absent
+          )
+          ? val
+          : null;
+      });
+      assert(isShape({ a: "x" }));
+      assert(isShape({ b: 1, c: "y" }));
+      assert(isShape({ c: "y" })); // b is optional
+      assert(isShape({ d: "z" }));
+      assertFalse(isShape({ d: "z", e: "forbidden" })); // branch 2's hasNot rejects
+      assertFalse(isShape({})); // matches no branch
+    },
+  );
 
   await t.step("nested or composes through compilation", () => {
     const guard = createTypeGuard<unknown>((val, { has, or }) => {
       if (!isObject(val)) return null;
       return or(
-        val,
-        (v) => has(v, "wrapper", isString),
-        (v) =>
-          has(v, "kind", isString) && or(
-            v,
-            (vv) => has(vv, "inner1", isString),
-            (vv) => has(vv, "inner2", isString),
-          ),
-      )
+          val,
+          (v) => has(v, "wrapper", isString),
+          (v) =>
+            has(v, "kind", isString) && or(
+              v,
+              (vv) => has(vv, "inner1", isString),
+              (vv) => has(vv, "inner2", isString),
+            ),
+        )
         ? val
         : null;
     });
@@ -4304,14 +4329,14 @@ Deno.test("or() — compile probe integration", async (t) => {
       const guard = createTypeGuard<unknown>((val, { has, or, fail }) => {
         if (!isObject(val)) return null;
         return or(
-          val,
-          (v) => {
-            // The fail() call makes this branch non-compilable.
-            if (!has(v, "x", isString)) return fail("no x");
-            return true;
-          },
-          (v) => has(v, "y", isString),
-        )
+            val,
+            (v) => {
+              // The fail() call makes this branch non-compilable.
+              if (!has(v, "x", isString)) return fail("no x");
+              return true;
+            },
+            (v) => has(v, "y", isString),
+          )
           ? val
           : null;
       });
@@ -4329,10 +4354,10 @@ Deno.test("or() — compile probe integration", async (t) => {
     const guard = createTypeGuard<unknown>((val, { has, or }) => {
       if (!isObject(val)) return null;
       return or(
-        val,
-        () => true, // empty-branch — probe bails
-        (v) => has(v, "y", isString),
-      )
+          val,
+          () => true, // empty-branch — probe bails
+          (v) => has(v, "y", isString),
+        )
         ? val
         : null;
     });
@@ -4355,10 +4380,10 @@ Deno.test("or() — regression: Problem Frame minimal repro", async (t) => {
   const guard = createTypeGuard<unknown>((val, { has, or }) => {
     if (!isObject(val) || !has(val, "a", isString)) return null;
     return or(
-      val,
-      (v) => has(v, "orgId", isString),
-      (v) => has(v, "orgName", isString.notEmpty),
-    )
+        val,
+        (v) => has(v, "orgId", isString),
+        (v) => has(v, "orgName", isString.notEmpty),
+      )
       ? val
       : null;
   });
@@ -4501,10 +4526,10 @@ Deno.test("mixing && chains with or() forks in a single parser", async (t) => {
       return null;
     }
     return or(
-      val,
-      (v) => has(v, "orgId", isString),
-      (v) => has(v, "userId", isString),
-    )
+        val,
+        (v) => has(v, "orgId", isString),
+        (v) => has(v, "userId", isString),
+      )
       ? val
       : null;
   });
@@ -4549,10 +4574,10 @@ Deno.test("mixing && chains with or() forks in a single parser", async (t) => {
     const guard = createTypeGuard<unknown>((val, { has, or }) => {
       if (!isObject(val)) return null;
       return or(
-        val,
-        (v) => has(v, "a", isNumber) && has(v, "b", isNumber), // compound branch
-        (v) => has(v, "fallback", isString),
-      )
+          val,
+          (v) => has(v, "a", isNumber) && has(v, "b", isNumber), // compound branch
+          (v) => has(v, "fallback", isString),
+        )
         ? val
         : null;
     });

@@ -18,6 +18,9 @@ Deno.test("isEmail", async (t) => {
     assert(isEmail("user.name+tag+sorting@example.com"));
     assert(isEmail("user_name@example.co.uk"));
     assert(isEmail("user-name@sub.domain.com"));
+    assert(isEmail("o'brien@example.com"));
+    assert(isEmail("mary.o'neil@company.org"));
+    assert(isEmail("d'arcy@domain.co.uk"));
   });
 
   await t.step("returns false for invalid emails", () => {
@@ -34,6 +37,7 @@ Deno.test("isEmail", async (t) => {
   await t.step("validate method", () => {
     // Valid inputs return value
     assertEquals(isEmail.validate("test@example.com"), { value: "test@example.com" });
+    assertEquals(isEmail.validate("o'brien@example.com"), { value: "o'brien@example.com" });
 
     // Invalid inputs return issues with specific error message
     assertEquals(isEmail.validate("plainaddress"), {
