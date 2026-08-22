@@ -1,6 +1,10 @@
 import type { StandardSchemaV1 } from "../specs/standard-schema-spec.v1.ts";
 import type { Context } from "./types.ts";
 
+interface InnerContext extends Context {
+  _speculative: StandardSchemaV1.Issue[] | undefined;
+}
+
 /**
  * Creates a validation context for tracking paths and collecting issues during validation.
  *
@@ -30,10 +34,10 @@ export function createContext(
 ): Context {
   const issues = rootIssues ?? [];
 
-  const ctx = {
+  const ctx: InnerContext = {
     path,
     issues,
-    _speculative: undefined as StandardSchemaV1.Issue[] | undefined,
+    _speculative: undefined,
     pushPath(segment: PropertyKey): void {
       path.push(segment);
     },
@@ -41,11 +45,12 @@ export function createContext(
       path.pop();
     },
     addIssue(message: string): void {
-      const target = (ctx as { _speculative?: StandardSchemaV1.Issue[] })._speculative ?? issues;
+      const target = ctx._speculative ?? issues;
       // Defensive path copy — path keeps mutating after this issue is captured.
       target.push(path.length > 0 ? { message, path: [...path] } : { message });
     },
-  } as Context;
+  };
+
   return ctx;
 }
 
@@ -72,8 +77,8 @@ export function createStrictContext(path: PropertyKey[] = []): Context {
   const ctx = {
     path,
     issues: [],
-    _strict: true as const,
-    _speculative: undefined as StandardSchemaV1.Issue[] | undefined,
+    _strict: true,
+    _speculative: undefined,
     pushPath(segment: PropertyKey): void {
       path.push(segment);
     },
@@ -81,15 +86,18 @@ export function createStrictContext(path: PropertyKey[] = []): Context {
       path.pop();
     },
     addIssue(message: string): void {
-      const speculative = (ctx as { _speculative?: StandardSchemaV1.Issue[] })._speculative;
-      if (speculative) {
-        // Defensive path copy — matches non-strict addIssue.
-        speculative.push(path.length > 0 ? { message, path: [...path] } : { message });
-        return;
+      const speculative = ctx._speculative;
+
+      if (!speculative) {
+        const pathStr = path.length > 0 ? ` at path: ${path.join(".")}` : "";
+        throw new TypeError(`${message}${pathStr}`);
       }
-      const pathStr = path.length > 0 ? ` at path: ${path.join(".")}` : "";
-      throw new TypeError(`${message}${pathStr}`);
+
+      // Defensive path copy — matches non-strict addIssue.
+      speculative.push(path.length > 0 ? { message, path: [...path] } : { message });
+      return;
     },
-  } as Context;
+  } as InnerContext;
+
   return ctx;
 }
