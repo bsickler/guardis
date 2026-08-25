@@ -146,16 +146,20 @@ export type GuardMeta<T> = {
   shape?: TypeGuardShape;
 };
 
-export interface TypeGuard<T1> extends StandardSchemaV1<T1> {
-  /** Internal metadata for guard introspection */
-  _: GuardMeta<T1>;
-
+/**
+ * The plugin-facing shape every constructed guard actually carries at
+ * runtime -- the GUARDIS_EXT bag and GUARDIS_PARENT pointer that
+ * `TypeGuard<T>` itself doesn't declare, since ordinary consumers never
+ * need them. Plugin code reaches these by casting through this type, e.g.
+ * `(guard as unknown as GuardisPluginCarrier<T>)[GUARDIS_EXT]`.
+ */
+export interface GuardisPluginCarrier<T> {
   /**
    * Reserved plugin data bag. Empty by default — guardis itself never
    * writes to it. Plugins augment `GuardisPlugins<T>` via declaration
    * merging and read/write their own named slot on this object.
    */
-  [GUARDIS_EXT]: GuardisPlugins<T1>;
+  [GUARDIS_EXT]: GuardisPlugins<T>;
 
   /**
    * Reserved reference to the guard this one was derived from (set by
@@ -165,6 +169,11 @@ export interface TypeGuard<T1> extends StandardSchemaV1<T1> {
    * unless overridden" semantics for their own bag data.
    */
   [GUARDIS_PARENT]?: TypeGuard<unknown>;
+}
+
+export interface TypeGuard<T1> extends StandardSchemaV1<T1> {
+  /** Internal metadata for guard introspection */
+  _: GuardMeta<T1>;
 
   /**
    * A utility to gain access to the type being guarded. Can be used
@@ -266,10 +275,6 @@ export interface TypeGuard<T1> extends StandardSchemaV1<T1> {
     };
   optional: OptionalTypeGuard<T1>;
   notEmpty: CanBeEmpty<T1> extends false ? never : {
-    /** Reserved plugin data bag — see `TypeGuard[GUARDIS_EXT]`. */
-    [GUARDIS_EXT]: GuardisPlugins<T1>;
-    /** Reserved derivation-parent reference — see `TypeGuard[GUARDIS_PARENT]`. */
-    [GUARDIS_PARENT]?: TypeGuard<unknown>;
     /**
      * A type guard that checks if the value is not empty and of type T.
      * An empty value is defined as null, undefined, an empty string, an empty array,
@@ -365,10 +370,6 @@ export type InferEntry<P> = P extends Parser<infer T> ? T
 export interface OptionalTypeGuard<T1> {
   /** Internal metadata with optional flag for shape type inference */
   _: Omit<GuardMeta<T1 | undefined>, "optional"> & { optional: true };
-  /** Reserved plugin data bag — see `TypeGuard[GUARDIS_EXT]`. */
-  [GUARDIS_EXT]: GuardisPlugins<T1 | undefined>;
-  /** Reserved derivation-parent reference — see `TypeGuard[GUARDIS_PARENT]`. */
-  [GUARDIS_PARENT]?: TypeGuard<unknown>;
   (value: unknown): value is T1 | undefined;
   strict: (value: unknown, errorMsg?: string) => value is T1 | undefined;
   assert: (value: unknown, errorMsg?: string) => asserts value is T1 | undefined;
