@@ -1120,6 +1120,36 @@ export function entryToGuard(entry: ParserEntry): TypeGuard<unknown> {
 }
 
 /**
+ * Returns true if input satisfies type null.
+ *
+ * Defined here (not in modules/primitives.ts, where the rest of the primitive
+ * guards live) so that `isExactly` can return this exact guard for the `null`
+ * case instead of rebuilding an equivalent parser -- primitives.ts imports
+ * `createTypeGuard` from this module, so the reverse import would cycle.
+ * Re-exported from primitives.ts to keep its public surface unchanged.
+ *
+ * @param {unknown} t
+ * @return {boolean}
+ */
+export const isNull: TypeGuard<null> = createTypeGuard<null>(
+  "null",
+  (t: unknown) => (t === null ? true : null) as null,
+);
+
+/**
+ * Returns true if input satisfies type undefined.
+ *
+ * Lives here alongside `isNull` for the same reason -- see its comment.
+ *
+ * @param {unknown} t
+ * @return {boolean}
+ */
+export const isUndefined: TypeGuard<undefined> = createTypeGuard(
+  "undefined",
+  (t): undefined | null => t === undefined ? t : null,
+);
+
+/**
  * Returns a guard that checks if a value strictly equals the given constant.
  * Narrows the TypeScript type to the exact literal type of the argument.
  *
@@ -1129,12 +1159,8 @@ export function entryToGuard(entry: ParserEntry): TypeGuard<unknown> {
  * isExactly(null)(null)       // true — narrows to null
  */
 export function isExactly<const T>(expected: T): TypeGuard<T> {
-  if (expected === null) {
-    // A successful parse returning `expected` (null) would be indistinguishable
-    // from failure -- `result !== null` is how the framework detects success --
-    // so this returns the `true` sentinel instead, same as isNull's own parser.
-    return createTypeGuard("null", (t: unknown) => (t === null ? true : null) as T);
-  }
+  if (expected === null) return isNull as TypeGuard<T>;
+  if (expected === undefined) return isUndefined as TypeGuard<T>;
 
   return createTypeGuard(
     safeStringify(expected),

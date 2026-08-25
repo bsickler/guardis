@@ -3,7 +3,7 @@
  * @module
  */
 
-import { createTypeGuard } from "../guard.ts";
+import { createTypeGuard, isNull, isUndefined } from "../guard.ts";
 import type { Simplify, TypeGuard } from "../types.ts";
 import { guardNameOrParens, unionOf, validateElement } from "../utilities.ts";
 import type { HelpersWithContext } from "../types.ts";
@@ -28,6 +28,9 @@ export type {
   NumberTypeGuard,
   StringTypeGuard,
 } from "./primitives.types.ts";
+
+/** Re-exported from guard.ts -- see the comment on isNull there for why it's defined there. */
+export { isNull, isUndefined };
 
 /**
  * Wraps a string TypeGuard with chainable length validation methods.
@@ -107,26 +110,6 @@ function withArrayMethods<T>(guard: TypeGuard<T[]>): ArrayTypeGuard<T> {
     );
   return arr;
 }
-
-/**
- * Returns true if input satisfies type undefined.
- * @param {unknown} t
- * @return {boolean}
- */
-export const isUndefined: TypeGuard<undefined> = createTypeGuard(
-  "undefined",
-  (t): undefined | null => t === undefined ? t : null,
-);
-
-/**
- * Returns true if input satisfies type null.
- * @param {unknown} t
- * @return {boolean}
- */
-export const isNull: TypeGuard<null> = createTypeGuard<null>(
-  "null",
-  (t: unknown) => (t === null ? true : null) as null,
-);
 
 /**
  * Returns true if input satisfies type boolean.
