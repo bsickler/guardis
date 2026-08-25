@@ -22,6 +22,8 @@ import type {
 } from "./types.ts";
 import { createContext, createStrictContext } from "./context.ts";
 import { hasContext, hasName } from "./introspect.ts";
+import { GUARDIS_EXT, GUARDIS_PARENT, runConstructionHooks } from "./plugin.ts";
+import type { GuardisPlugins } from "./plugin.ts";
 import {
   doesNotHaveProperty,
   exact,
@@ -567,12 +569,12 @@ const createOptionalTypeGuard = <T>(
   parser: Parser<T>,
   context: (value: unknown, ctx?: Context) => StandardSchemaV1.Result<T>,
 ) => {
-  const optional = (value: unknown): value is T | undefined => isUndefined(value) || guard(value);
+  const optional = (value: unknown): value is T | undefined => value === undefined || guard(value);
 
   const name = hasName(guard) ? `${guard._.name} | undefined` : undefined;
-  const optionalParser: Parser<T | undefined> = (v, h) => isUndefined(v) ? v : parser(v, h);
+  const optionalParser: Parser<T | undefined> = (v, h) => v === undefined ? v : parser(v, h);
   const optionalContext = (value: unknown, ctx?: Context) =>
-    isUndefined(value) ? { value } : context(value, ctx ?? createContext());
+    value === undefined ? { value } : context(value, ctx ?? createContext());
 
   optional._ = {
     name,
@@ -585,6 +587,10 @@ const createOptionalTypeGuard = <T>(
   optional.assert = optional.strict;
   optional.validate = (value: unknown) => optionalContext(value, createContext());
   optional.or = createOrTypeGuard(optional);
+
+  optional[GUARDIS_PARENT] = guard as TypeGuard<unknown>;
+  optional[GUARDIS_EXT] = {} as GuardisPlugins<T | undefined>;
+  runConstructionHooks(optional);
 
   return optional;
 };
@@ -625,6 +631,10 @@ const createNotEmptyTypeGuard = <T>(guard: Predicate<T>) => {
 
   notEmpty.or = createOrTypeGuard(notEmpty);
 
+  notEmpty[GUARDIS_PARENT] = guard as TypeGuard<unknown>;
+  notEmpty[GUARDIS_EXT] = {} as GuardisPlugins<T>;
+  runConstructionHooks(notEmpty);
+
   return notEmpty as CanBeEmpty<T> extends false ? never : typeof notEmpty;
 };
 
@@ -635,11 +645,9 @@ function classifyGuard(
   key: string,
   guard: ((v: unknown) => boolean) | TypeGuard<unknown>,
 ): FieldDescriptor {
-  if (hasContext(guard as Predicate<unknown>)) {
-    return { kind: "typeGuard", key, guard: guard as TypeGuard<unknown> };
-  }
-
-  return { kind: "typePredicate", key, guard: guard as (value: unknown) => boolean };
+  return hasContext(guard as Predicate<unknown>)
+    ? { kind: "typeGuard", key, guard: guard as TypeGuard<unknown> }
+    : { kind: "typePredicate", key, guard: guard as (value: unknown) => boolean };
 }
 
 /**
@@ -717,22 +725,12 @@ function tryCompileParser<T1>(parser: Parser<T1>): Parser<T1> | null {
       fieldsHolder.current.push({ kind: "absent", key: String(k) });
       return true;
     }) as HelpersWithContext["hasNot"],
-    tupleHas: (() => {
-      failed = true;
-      return true;
-    }) as unknown as HelpersWithContext["tupleHas"],
-    includes: ((arr: readonly unknown[], val: unknown) => {
-      failed = true;
-      return arr.includes(val);
-    }) as HelpersWithContext["includes"],
-    keyOf: (() => {
-      failed = true;
-      return false;
-    }) as unknown as HelpersWithContext["keyOf"],
-    exact: ((a: unknown, b: unknown) => {
-      failed = true;
-      return a === b;
-    }) as HelpersWithContext["exact"],
+    tupleHas: (() => failed = true) as unknown as HelpersWithContext["tupleHas"],
+    includes:
+      ((arr: readonly unknown[], val: unknown) =>
+        failed = true && arr.includes(val)) as HelpersWithContext["includes"],
+    keyOf: (() => failed = true && false) as unknown as HelpersWithContext["keyOf"],
+    exact: ((a: unknown, b: unknown) => failed = true && a === b) as HelpersWithContext["exact"],
     fail: (() => {
       failed = true;
       return null;
@@ -743,10 +741,7 @@ function tryCompileParser<T1>(parser: Parser<T1>): Parser<T1> | null {
       ...branches: ReadonlyArray<(v: unknown) => any>
     ) => {
       if (failed) return true;
-      if (branches.length === 0) {
-        failed = true;
-        return false;
-      }
+      if (branches.length === 0) return failed = true && false;
 
       const perBranchFields: FieldDescriptor[][] = [];
       for (const branch of branches) {
@@ -772,19 +767,16 @@ function tryCompileParser<T1>(parser: Parser<T1>): Parser<T1> | null {
         fieldsHolder.current = savedFields;
         failed = savedFailed || branchFailed;
 
-        if (branchFailed) {
-          // Bail the whole `or` — caller will fall back to closure path.
-          return true;
-        }
-        if (branchFields.length === 0) {
-          // Empty branch: the branch called no compile-trackable helpers, so
-          // its compiled semantics would be "matches anything" — which doesn't
-          // match the branch's actual runtime behavior (e.g., a branch that
-          // just returns false/undefined). Bail compilation to preserve
-          // correctness.
-          failed = true;
-          return true;
-        }
+        // Bail the whole `or` — caller will fall back to closure path.
+        if (branchFailed) return true;
+
+        // Empty branch: the branch called no compile-trackable helpers, so
+        // its compiled semantics would be "matches anything" — which doesn't
+        // match the branch's actual runtime behavior (e.g., a branch that
+        // just returns false/undefined). Bail compilation to preserve
+        // correctness.
+        if (branchFields.length === 0) return failed = true;
+
         perBranchFields.push(branchFields);
       }
 
@@ -934,12 +926,31 @@ export function createTypeGuard<T1>(
 ): TypeGuard<T1> {
   const parserOrShape = args.length === 1 ? args[0] : args[1];
   const name = args.length === 2 ? args[0] as string : undefined;
+  return buildTypeGuard(parserOrShape, name);
+}
 
+/**
+ * Shared construction body for createTypeGuard() and extend(). `parent` and
+ * `ownShape`, when provided, are stamped on the guard BEFORE construction
+ * hooks run -- the same ordering `.optional`/`.notEmpty` already use -- so a
+ * hook inspecting either one during construction sees the real value, not
+ * the pre-stamp default. `ownShape` lets extend()'s shape-based overload
+ * retain the newly-added fields (not the parent's) at `_.shape`, since the
+ * combined parser extend() builds is a function, not a shape, and would
+ * otherwise leave `_.shape` unset the way any parser-built guard does.
+ */
+function buildTypeGuard<T1>(
+  parserOrShape: Parser<T1> | TypeGuardShape,
+  name: string | undefined,
+  parent?: TypeGuard<unknown>,
+  ownShape?: TypeGuardShape,
+): TypeGuard<T1> {
   // Convert shape to parser, or try to auto-compile parser callbacks into
   // field descriptors for parity with shape-based performance.
   const parser: Parser<T1> = isTypeGuardShape(parserOrShape)
     ? compileShapeParser(parserOrShape)
     : tryCompileParser(parserOrShape) ?? parserOrShape;
+  const shape = ownShape ?? (isTypeGuardShape(parserOrShape) ? parserOrShape : undefined);
 
   /**
    * Internal validation method that accepts a context for path tracking.
@@ -986,7 +997,7 @@ export function createTypeGuard<T1>(
   };
 
   const callback = (value: unknown): value is T1 => parser(value, defaultHelpers) !== null;
-  callback._ = { name, parser, context };
+  callback._ = { name, parser, context, shape };
 
   /**
    * Creates a new type guard that checks if the value is of type T1 or T2.
@@ -1017,19 +1028,25 @@ export function createTypeGuard<T1>(
 
     // Build a combined parser that first checks the base guard, then the extension
     let combinedParser: Parser<T2>;
+    let ownShape: TypeGuardShape | undefined;
 
     if (isTypeGuardShape(parserOrShape)) {
       const shapeGuard = createTypeGuard(parserOrShape);
       combinedParser = (v) => callback(v) && shapeGuard(v) ? v as T2 : null;
+      ownShape = parserOrShape;
     } else {
       combinedParser = (v, h) => callback(v) ? parserOrShape(v, h) : null;
     }
 
-    if (extendName) {
-      return createTypeGuard<T2>(extendName, combinedParser);
-    }
-
-    return createTypeGuard<T2>(combinedParser);
+    // Route through buildTypeGuard directly (not the public createTypeGuard)
+    // so the parent reference and the newly-added fields' shape are stamped
+    // BEFORE construction hooks run for the child -- see buildTypeGuard's doc.
+    return buildTypeGuard<T2>(
+      combinedParser,
+      extendName,
+      callback as unknown as TypeGuard<unknown>,
+      ownShape,
+    );
   }
   callback.extend = extend as IsExtensible<T1> extends false ? never : typeof extend;
 
@@ -1073,8 +1090,15 @@ export function createTypeGuard<T1>(
     types: {} as StandardSchemaV1.Types<T1>,
   };
 
+  // Reserved plugin extension slot. Always an empty object — guardis never
+  // writes into it itself. See plugin.ts for what this is and isn't.
+  callback[GUARDIS_EXT] = {} as GuardisPlugins<T1>;
+  if (parent) callback[GUARDIS_PARENT] = parent;
+
   // Attach the type to the function for easy access
-  return (<T1>(t: unknown): TypeGuard<T1> => t as TypeGuard<T1>)(callback);
+  const guard: TypeGuard<T1> = (<T1>(t: unknown): TypeGuard<T1> => t as TypeGuard<T1>)(callback);
+  runConstructionHooks(guard);
+  return guard;
 }
 
 function isParser(entry: ParserEntry): entry is Parser {
@@ -1096,26 +1120,6 @@ export function entryToGuard(entry: ParserEntry): TypeGuard<unknown> {
 }
 
 /**
- * Returns true if input satisfies type undefined.
- * @param {unknown} t
- * @return {boolean}
- */
-export const isUndefined: TypeGuard<undefined> = createTypeGuard(
-  "undefined",
-  (t): undefined | null => t === undefined ? t : null,
-);
-
-/**
- * Returns true if input satisfies type null.
- * @param {unknown} t
- * @return {boolean}
- */
-export const isNull: TypeGuard<null> = createTypeGuard<null>(
-  "null",
-  (t: unknown) => (t === null ? true : null) as null,
-);
-
-/**
  * Returns a guard that checks if a value strictly equals the given constant.
  * Narrows the TypeScript type to the exact literal type of the argument.
  *
@@ -1125,19 +1129,17 @@ export const isNull: TypeGuard<null> = createTypeGuard<null>(
  * isExactly(null)(null)       // true — narrows to null
  */
 export function isExactly<const T>(expected: T): TypeGuard<T> {
-  switch (expected) {
-    case null:
-      return isNull as TypeGuard<T>;
-
-    case undefined:
-      return isUndefined as TypeGuard<T>;
-
-    default:
-      return createTypeGuard(
-        safeStringify(expected),
-        (t): T | null => exact(expected, t) ? expected : null,
-      );
+  if (expected === null) {
+    // A successful parse returning `expected` (null) would be indistinguishable
+    // from failure -- `result !== null` is how the framework detects success --
+    // so this returns the `true` sentinel instead, same as isNull's own parser.
+    return createTypeGuard("null", (t: unknown) => (t === null ? true : null) as T);
   }
+
+  return createTypeGuard(
+    safeStringify(expected),
+    (t): T | null => exact(expected, t) ? expected : null,
+  );
 }
 
 /**

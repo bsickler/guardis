@@ -1,3 +1,11 @@
+/**
+ * Branded variants of the IP/CIDR guards from `http.ts` — same runtime
+ * behavior, retyped to nominal branded types (`IPv4`, `IPv6Full`, `CIDR`,
+ * etc.) at zero runtime cost, so callers can distinguish a validated address
+ * from a plain `string` at the type level.
+ * @module
+ */
+
 import type { Brand, TypeGuard } from "../types.ts";
 import {
   isCidr as _isCidr,

@@ -1,3 +1,12 @@
+/**
+ * Type guards for Web platform HTTP types (URL, Request, Response, Headers,
+ * Blob, FormData) and IP/CIDR address formats (IPv4, IPv6, and their CIDR
+ * notations).
+ *
+ * See `http.branded.ts` for branded variants of the IP/CIDR guards.
+ * @module
+ */
+
 import { createTypeGuard } from "../guard.ts";
 import { IPV4_REGEX, IPV6_COMPRESSED_REGEX, IPV6_FULL_REGEX } from "../helpers/http.helpers.ts";
 import type { TypeGuard } from "../types.ts";

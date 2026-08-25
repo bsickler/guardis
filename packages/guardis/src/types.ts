@@ -1,4 +1,5 @@
 import type { StandardSchemaV1 } from "../specs/standard-schema-spec.v1.ts";
+import type { GUARDIS_EXT, GUARDIS_PARENT, GuardisPlugins } from "./plugin.ts";
 
 /**
  * Creates a nominal type by intersecting a base type `T` with a unique brand `B`.
@@ -137,11 +138,34 @@ export type GuardMeta<T> = {
   context: (value: unknown, ctx?: Context) => StandardSchemaV1.Result<T>;
   /** Indicates this guard is an optional variant, used by InferShape to mark properties as optional */
   optional?: true;
+  /**
+   * The shape this guard (or, for `.extend(shape)`, just its added fields)
+   * was built from -- lets a plugin's construction hook recover field
+   * structure a compiled parser can't.
+   */
+  shape?: TypeGuardShape;
 };
 
 export interface TypeGuard<T1> extends StandardSchemaV1<T1> {
   /** Internal metadata for guard introspection */
   _: GuardMeta<T1>;
+
+  /**
+   * Reserved plugin data bag. Empty by default — guardis itself never
+   * writes to it. Plugins augment `GuardisPlugins<T>` via declaration
+   * merging and read/write their own named slot on this object.
+   */
+  [GUARDIS_EXT]: GuardisPlugins<T1>;
+
+  /**
+   * Reserved reference to the guard this one was derived from (set by
+   * `.extend()`, `.optional`, `.notEmpty`). Absent on guards with no
+   * derivation parent (e.g. base guards, `.or()` results). guardis never
+   * reads this itself — it exists purely for plugins that want "inherit
+   * unless overridden" semantics for their own bag data.
+   */
+  [GUARDIS_PARENT]?: TypeGuard<unknown>;
+
   /**
    * A utility to gain access to the type being guarded. Can be used
    * to infer the type in other parts of the code.
@@ -242,6 +266,10 @@ export interface TypeGuard<T1> extends StandardSchemaV1<T1> {
     };
   optional: OptionalTypeGuard<T1>;
   notEmpty: CanBeEmpty<T1> extends false ? never : {
+    /** Reserved plugin data bag — see `TypeGuard[GUARDIS_EXT]`. */
+    [GUARDIS_EXT]: GuardisPlugins<T1>;
+    /** Reserved derivation-parent reference — see `TypeGuard[GUARDIS_PARENT]`. */
+    [GUARDIS_PARENT]?: TypeGuard<unknown>;
     /**
      * A type guard that checks if the value is not empty and of type T.
      * An empty value is defined as null, undefined, an empty string, an empty array,
@@ -393,6 +421,18 @@ export interface StringTypeGuard {
   range(min: number, max: number): TypeGuard<string>;
 }
 
+/** Chainable date comparison methods */
+export interface DateTypeGuard {
+  /** Lower bound (exclusive). Can chain with lt/lte. */
+  gt(threshold: Date): TypeGuard<Date> & Omit<DateTypeGuard, "gt" | "gte">;
+  /** Lower bound (inclusive). Can chain with lt/lte. */
+  gte(threshold: Date): TypeGuard<Date> & Omit<DateTypeGuard, "gt" | "gte">;
+  /** Upper bound (exclusive). Can chain with gt/gte. */
+  lt(threshold: Date): TypeGuard<Date> & Omit<DateTypeGuard, "lt" | "lte">;
+  /** Upper bound (inclusive). Can chain with gt/gte. */
+  lte(threshold: Date): TypeGuard<Date> & Omit<DateTypeGuard, "lt" | "lte">;
+}
+
 /** An array type guard with chainable length validation methods */
 export interface ArrayTypeGuard<T = unknown> extends TypeGuard<T[]> {
   /** Returns a typed array guard preserving length methods */
@@ -425,6 +465,10 @@ export interface SetTypeGuard extends TypeGuard<Set<unknown>> {
 export interface OptionalTypeGuard<T1> {
   /** Internal metadata with optional flag for shape type inference */
   _: Omit<GuardMeta<T1 | undefined>, "optional"> & { optional: true };
+  /** Reserved plugin data bag — see `TypeGuard[GUARDIS_EXT]`. */
+  [GUARDIS_EXT]: GuardisPlugins<T1 | undefined>;
+  /** Reserved derivation-parent reference — see `TypeGuard[GUARDIS_PARENT]`. */
+  [GUARDIS_PARENT]?: TypeGuard<unknown>;
   (value: unknown): value is T1 | undefined;
   strict: (value: unknown, errorMsg?: string) => value is T1 | undefined;
   assert: (value: unknown, errorMsg?: string) => asserts value is T1 | undefined;

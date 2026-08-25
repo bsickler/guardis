@@ -5,7 +5,7 @@
  *
  * @module Guardis
  */
-import { isExactly, isNull, isUndefined } from "./src/guard.ts";
+import { isExactly } from "./src/guard.ts";
 import {
   isAny,
   isArray,
@@ -21,26 +21,30 @@ import {
   isJsonObject,
   isJsonPrimitive,
   isJsonValue,
-  isMap,
   isNever,
   isNil,
+  isNull,
   isNumber,
   isNumeric,
   isObject,
   isPropertyKey,
-  isSet,
   isString,
   isSymbol,
-  isTuple,
+  isUndefined,
   isUnknown,
 } from "./src/modules/primitives.ts";
+import { isMap, isSet, isTuple } from "./src/modules/collections.ts";
 
 export * from "./src/guard.ts";
 export * from "./src/modules/primitives.ts";
+export * from "./src/modules/collections.ts";
 export * from "./src/extend.ts";
 export * from "./src/batch.ts";
 export * from "./src/brand.ts";
 export * from "./src/types.ts";
+
+export { GUARDIS_EXT, GUARDIS_PARENT, registerConstructionHook } from "./src/plugin.ts";
+export type { ConstructedGuard, GuardisPlugins } from "./src/plugin.ts";
 export { unionOf } from "./src/utilities.ts";
 
 /**

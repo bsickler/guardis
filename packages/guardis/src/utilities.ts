@@ -1,4 +1,3 @@
-import { isUndefined } from "./guard.ts";
 import { hasContext, hasName } from "./introspect.ts";
 import type { Context, GuardedType, TypeGuard } from "./types.ts";
 
@@ -105,7 +104,7 @@ export function hasOptionalProperty<K extends PropertyKey, G = unknown>(
   ctx?: Context,
   errorMessage?: string,
 ): t is { [K2 in K]+?: G } {
-  if (isUndefined(t[k as keyof typeof t])) return true;
+  if (t[k as keyof typeof t] === undefined) return true;
 
   return hasProperty(t, k, guard, ctx, errorMessage);
 }

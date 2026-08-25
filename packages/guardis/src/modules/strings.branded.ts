@@ -1,5 +1,9 @@
 /**
- * This module provides type guards for common string patterns.
+ * Branded variants of the string-format guards from `strings.ts` — same
+ * runtime behavior, retyped to nominal branded types (`Email`, `UUIDv4`,
+ * `ULID`, etc.) at zero runtime cost, so callers can distinguish a validated
+ * string format from a plain `string` at the type level.
+ * @module
  */
 
 import type { Brand, TypeGuard } from "../types.ts";
@@ -187,7 +191,9 @@ export type CommaDelimitedIntegers = Brand<string, "CommaDelimitedIntegers">;
  * - Valid: "1,2,3", "123,456,789", "-1,2,-3"
  * - Invalid: "1,,3", "1, 2, 3", "1 2,3", "", "1.5,2"
  */
-export const isCommaDelimitedIntegers = _isCommaDelimitedIntegers as TypeGuard<CommaDelimitedIntegers>;
+export const isCommaDelimitedIntegers = _isCommaDelimitedIntegers as TypeGuard<
+  CommaDelimitedIntegers
+>;
 
 /**
  * Represents a branded type for a comma-delimited string of numbers.
