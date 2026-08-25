@@ -6,14 +6,11 @@
 
 import { createTypeGuard } from "../guard.ts";
 import { isUndefined } from "./primitives.ts";
-import type {
-  HelpersWithContext,
-  MapTypeGuard,
-  SetTypeGuard,
-  TupleOfLength,
-  TypeGuard,
-} from "../types.ts";
+import type { HelpersWithContext, TypeGuard } from "../types.ts";
+import type { MapTypeGuard, SetTypeGuard, TupleOfLength } from "./collections.types.ts";
 import { guardNameOrParens, validateElement } from "../utilities.ts";
+
+export type { MapTypeGuard, SetTypeGuard, TupleOfLength } from "./collections.types.ts";
 
 /** Precursor to full isMap guard */
 const _isMap = createTypeGuard(
@@ -97,7 +94,7 @@ export const isSet: SetTypeGuard = Object.assign(
       });
     },
   },
-) as SetTypeGuard;
+);
 
 /**
  * Type guard that checks if a value is a tuple (array) of a specific length.

@@ -4,6 +4,9 @@
  */
 
 import { createTypeGuard } from "../guard.ts";
+import type { Simplify, TypeGuard } from "../types.ts";
+import { guardNameOrParens, unionOf, validateElement } from "../utilities.ts";
+import type { HelpersWithContext } from "../types.ts";
 import type {
   ArrayTypeGuard,
   DateTypeGuard,
@@ -12,12 +15,19 @@ import type {
   JsonPrimitive,
   JsonValue,
   NumberTypeGuard,
-  Simplify,
   StringTypeGuard,
-  TypeGuard,
-} from "../types.ts";
-import { guardNameOrParens, unionOf, validateElement } from "../utilities.ts";
-import type { HelpersWithContext } from "../types.ts";
+} from "./primitives.types.ts";
+
+export type {
+  ArrayTypeGuard,
+  DateTypeGuard,
+  JsonArray,
+  JsonObject,
+  JsonPrimitive,
+  JsonValue,
+  NumberTypeGuard,
+  StringTypeGuard,
+} from "./primitives.types.ts";
 
 /**
  * Wraps a string TypeGuard with chainable length validation methods.
