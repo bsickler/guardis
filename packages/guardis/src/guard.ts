@@ -1159,13 +1159,19 @@ export const isUndefined: TypeGuard<undefined> = createTypeGuard(
  * isExactly(null)(null)       // true — narrows to null
  */
 export function isExactly<const T>(expected: T): TypeGuard<T> {
-  if (expected === null) return isNull as TypeGuard<T>;
-  if (expected === undefined) return isUndefined as TypeGuard<T>;
+  switch (expected) {
+    case null:
+      return isNull as TypeGuard<T>;
 
-  return createTypeGuard(
-    safeStringify(expected),
-    (t): T | null => exact(expected, t) ? expected : null,
-  );
+    case undefined:
+      return isUndefined as TypeGuard<T>;
+
+    default:
+      return createTypeGuard(
+        safeStringify(expected),
+        (t): T | null => exact(expected, t) ? expected : null,
+      );
+  }
 }
 
 /**
