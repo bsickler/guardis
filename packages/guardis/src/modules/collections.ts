@@ -53,7 +53,7 @@ export const isMap: MapTypeGuard = Object.assign(
       });
     },
   },
-) as MapTypeGuard;
+);
 
 /** Precursor to full isSet guard */
 const _isSet = createTypeGuard(
