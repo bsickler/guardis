@@ -1,5 +1,4 @@
 import type { StandardSchemaV1 } from "../specs/standard-schema-spec.v1.ts";
-import type { GUARDIS_EXT, GUARDIS_PARENT, GuardisPlugins } from "./plugin.ts";
 
 /**
  * Creates a nominal type by intersecting a base type `T` with a unique brand `B`.
@@ -145,31 +144,6 @@ export type GuardMeta<T> = {
    */
   shape?: TypeGuardShape;
 };
-
-/**
- * The plugin-facing shape every constructed guard actually carries at
- * runtime -- the GUARDIS_EXT bag and GUARDIS_PARENT pointer that
- * `TypeGuard<T>` itself doesn't declare, since ordinary consumers never
- * need them. Plugin code reaches these by casting through this type, e.g.
- * `(guard as unknown as GuardisPluginCarrier<T>)[GUARDIS_EXT]`.
- */
-export interface GuardisPluginCarrier<T> {
-  /**
-   * Reserved plugin data bag. Empty by default — guardis itself never
-   * writes to it. Plugins augment `GuardisPlugins<T>` via declaration
-   * merging and read/write their own named slot on this object.
-   */
-  [GUARDIS_EXT]: GuardisPlugins<T>;
-
-  /**
-   * Reserved reference to the guard this one was derived from (set by
-   * `.extend()`, `.optional`, `.notEmpty`). Absent on guards with no
-   * derivation parent (e.g. base guards, `.or()` results). guardis never
-   * reads this itself — it exists purely for plugins that want "inherit
-   * unless overridden" semantics for their own bag data.
-   */
-  [GUARDIS_PARENT]?: TypeGuard<unknown>;
-}
 
 export interface TypeGuard<T1> extends StandardSchemaV1<T1> {
   /** Internal metadata for guard introspection */

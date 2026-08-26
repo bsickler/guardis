@@ -4,6 +4,7 @@
  * slots and drains the construction-hook list.
  * @module
  */
+import type { OptionalTypeGuard, TypeGuard } from "./types.ts";
 
 /**
  * Well-known symbol for the per-guard plugin data bag. `Symbol.for` (the
@@ -34,6 +35,42 @@ export const GUARDIS_PARENT: unique symbol = Symbol.for("guardis.parent");
  */
 // deno-lint-ignore no-empty-interface
 export interface GuardisPlugins<T> {}
+
+/**
+ * The plugin-facing shape every constructed guard actually carries at
+ * runtime -- the GUARDIS_EXT bag and GUARDIS_PARENT pointer that
+ * `TypeGuard<T>` itself doesn't declare, since ordinary consumers never
+ * need them. Kept private to this module -- `pluginBag`/`guardParent`
+ * below are the public way to reach these slots, so no other file needs
+ * to name this type directly.
+ */
+interface GuardisPluginCarrier<T> {
+  [GUARDIS_EXT]: GuardisPlugins<T>;
+  [GUARDIS_PARENT]?: TypeGuard<unknown>;
+}
+
+/**
+ * Reads a guard's reserved plugin data bag. Every guard `createTypeGuard`
+ * builds has one (empty by default, never written to by guardis itself) --
+ * see `GuardisPlugins`'s doc for how plugins augment it via declaration
+ * merging.
+ */
+export function pluginBag<T>(guard: TypeGuard<T> | OptionalTypeGuard<T>): GuardisPlugins<T> {
+  return (guard as unknown as GuardisPluginCarrier<T>)[GUARDIS_EXT];
+}
+
+/**
+ * Reads the guard a given guard was derived from (stamped by `.extend()`,
+ * `.optional`, `.notEmpty`). Undefined for guards with no derivation parent
+ * (base guards, `.or()` results). Plugins use this for "inherit unless
+ * overridden" semantics over their own bag data -- guardis itself never
+ * reads it.
+ */
+export function guardParent<T>(
+  guard: TypeGuard<T> | OptionalTypeGuard<T>,
+): TypeGuard<unknown> | undefined {
+  return (guard as unknown as GuardisPluginCarrier<T>)[GUARDIS_PARENT];
+}
 
 /**
  * The minimal shape every guard genuinely has by the time construction

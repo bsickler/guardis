@@ -43,7 +43,13 @@ export * from "./src/batch.ts";
 export * from "./src/brand.ts";
 export * from "./src/types.ts";
 
-export { GUARDIS_EXT, GUARDIS_PARENT, registerConstructionHook } from "./src/plugin.ts";
+export {
+  GUARDIS_EXT,
+  GUARDIS_PARENT,
+  guardParent,
+  pluginBag,
+  registerConstructionHook,
+} from "./src/plugin.ts";
 export type { ConstructedGuard, GuardisPlugins } from "./src/plugin.ts";
 export { unionOf } from "./src/utilities.ts";
 
