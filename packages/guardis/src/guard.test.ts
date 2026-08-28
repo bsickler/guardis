@@ -1,8 +1,8 @@
 import { assert, assertEquals, assertFalse, assertThrows } from "@std/assert";
 import type { StandardSchemaV1 } from "../specs/standard-schema-spec.v1.ts";
 import { createTypeGuard, isExactly } from "./guard.ts";
+import { isArray } from "./modules/collections.ts";
 import {
-  isArray,
   isBoolean,
   isNil,
   isNull,

@@ -40,20 +40,6 @@ export interface DateTypeGuard {
   lte(threshold: Date): TypeGuard<Date> & Omit<DateTypeGuard, "lt" | "lte">;
 }
 
-/** An array type guard with chainable length validation methods */
-export interface ArrayTypeGuard<T = unknown> extends TypeGuard<T[]> {
-  /** Returns a typed array guard preserving length methods */
-  of<U>(guard: TypeGuard<U>): ArrayTypeGuard<U>;
-  /** Checks array has exactly this length */
-  ofLength(length: number): ArrayTypeGuard<T>;
-  /** Checks array length >= min */
-  min(length: number): ArrayTypeGuard<T>;
-  /** Checks array length <= max */
-  max(length: number): ArrayTypeGuard<T>;
-  /** Checks array length is between min and max (inclusive) */
-  range(min: number, max: number): ArrayTypeGuard<T>;
-}
-
 /** Any valid primitive json value. */
 export type JsonPrimitive = string | number | boolean | null;
 

@@ -8,7 +8,6 @@
 import { isExactly } from "./src/guard.ts";
 import {
   isAny,
-  isArray,
   isBinary,
   isBoolean,
   isDate,
@@ -33,7 +32,7 @@ import {
   isUndefined,
   isUnknown,
 } from "./src/modules/primitives.ts";
-import { isMap, isSet, isTuple } from "./src/modules/collections.ts";
+import { isArray, isMap, isSet, isTuple } from "./src/modules/collections.ts";
 
 export * from "./src/guard.ts";
 export * from "./src/modules/primitives.ts";

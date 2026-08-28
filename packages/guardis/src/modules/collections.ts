@@ -1,16 +1,115 @@
 /**
- * Type guards for compound/container types (Map, Set, Tuple) built on top of
- * guardis' primitives.
+ * Type guards for compound/container types (Map, Set, Array, Tuple).
  * @module
  */
 
 import { createTypeGuard } from "../guard.ts";
 import { isUndefined } from "./primitives.ts";
 import type { HelpersWithContext, TypeGuard } from "../types.ts";
-import type { MapTypeGuard, SetTypeGuard, TupleOfLength } from "./collections.types.ts";
+import type {
+  ArrayTypeGuard,
+  MapSizeGuard,
+  MapTypeGuard,
+  SetTypeGuard,
+  TupleOfLength,
+} from "./collections.types.ts";
 import { guardNameOrParens, validateElement } from "../utilities.ts";
 
-export type { MapTypeGuard, SetTypeGuard, TupleOfLength } from "./collections.types.ts";
+export type {
+  ArraySizeGuard,
+  ArrayTypeGuard,
+  MapSizeGuard,
+  MapTypeGuard,
+  SetSizeGuard,
+  SetTypeGuard,
+  TupleOfLength,
+} from "./collections.types.ts";
+
+/** The min/max/range methods every size-chain-method result carries. The
+ * exact-value shorthand (isArray's `ofLength`, isMap/isSet's `ofSize`) is
+ * attached under a caller-chosen key instead, since it differs by kind. */
+type SizeChainable<T> = TypeGuard<T> & {
+  min(n: number): TypeGuard<T>;
+  max(n: number): TypeGuard<T>;
+  range(min: number, max: number): TypeGuard<T>;
+};
+
+/** `SizeChainable<T>` plus the exact-value shorthand under its own
+ * caller-chosen key (isArray's `ofLength`, isMap/isSet's `ofSize`). */
+type WithExact<T, ExactName extends string> =
+  & SizeChainable<T>
+  & {
+    [K in ExactName]: (n: number) => TypeGuard<T>;
+  };
+
+/** Wraps `guard` with chainable min/max/range/[exactName] validation methods
+ * over `sizeOf(value)` -- the shared implementation behind isMap/isSet/
+ * isArray's size/length methods. `exactName` must be a string literal
+ * (e.g. `"ofSize"` as const) for it to appear as its own key in the return
+ * type rather than widening to `string`.
+ *
+ * `reattach`, if given, runs on every guard this produces (`guard` itself
+ * included) to re-layer guard-specific extras that would otherwise be lost
+ * when `.extend()` builds a fresh guard object at each chain step -- e.g.
+ * isMap's `.of()`. Pass the same `reattach` function again if its own
+ * result should keep re-attaching too; omit it once `.of()` is meant to be
+ * terminal. */
+function withSizeMethods<T, ExactName extends string>(
+  guard: TypeGuard<T>,
+  options: { sizeOf: (value: T) => number; exactName: ExactName; label: string },
+  reattach?: (guard: WithExact<T, ExactName>) => void,
+): WithExact<T, ExactName> {
+  const { sizeOf, exactName, label } = options;
+  const g = guard as WithExact<T, ExactName>;
+  const wrap = (child: TypeGuard<T>): WithExact<T, ExactName> =>
+    withSizeMethods(child, options, reattach);
+
+  // A mapped type keyed by a generic type parameter can be read but not
+  // written without a cast -- TS can't confirm `exactName`'s runtime value
+  // matches the key `ExactName` was instantiated with here.
+  (g as Record<ExactName, (n: number) => TypeGuard<T>>)[exactName] = (n) =>
+    wrap(guard.extend(`${label} == ${n}`, (v) => sizeOf(v) === n ? v : null));
+  g.min = (n) => wrap(guard.extend(`${label} >= ${n}`, (v) => sizeOf(v) >= n ? v : null));
+  g.max = (n) => wrap(guard.extend(`${label} <= ${n}`, (v) => sizeOf(v) <= n ? v : null));
+  g.range = (min, max) =>
+    wrap(
+      guard.extend(
+        `${label} ${min}..${max}`,
+        (v) => sizeOf(v) >= min && sizeOf(v) <= max ? v : null,
+      ),
+    );
+
+  reattach?.(g);
+  return g;
+}
+
+/** Attaches `.of()` to `guard` for a single-element container (array, Set) --
+ * shared by isSet/isArray. Validates against `guard` itself, not a bare
+ * "is this container" check, so a size constraint chained before `.of()`
+ * still applies after it. */
+function attachElementOf<C extends Iterable<unknown>>(
+  guard: SizeChainable<C>,
+  sizeOptions: { sizeOf: (value: C) => number; exactName: string; label: string },
+  nameFor: (elementName: string | undefined) => string,
+): void {
+  const typed = guard as unknown as { of: <T>(elementGuard: TypeGuard<T>) => SizeChainable<C> };
+  typed.of = <T>(elementGuard: TypeGuard<T>) => {
+    const name = nameFor(guardNameOrParens(elementGuard));
+
+    const child = createTypeGuard(name, (val, helpers): C | null => {
+      if (!guard(val)) return null;
+      const ctx = (helpers as HelpersWithContext)._ctx;
+      let idx = 0;
+      for (const item of val) {
+        if (!validateElement(elementGuard, item, ctx, idx)) return null;
+        idx++;
+      }
+      return val;
+    });
+
+    return withSizeMethods(child, sizeOptions);
+  };
+}
 
 /** Precursor to full isMap guard */
 const _isMap = createTypeGuard(
@@ -18,9 +117,44 @@ const _isMap = createTypeGuard(
   (t): Map<unknown, unknown> | null => t instanceof Map ? t : null,
 );
 
+const mapSizeOptions = {
+  sizeOf: (v: Map<unknown, unknown>) => v.size,
+  exactName: "ofSize",
+  label: "size",
+} as const;
+
+/** Attaches `.of()` to `guard`. Validates against `guard` itself, not a bare
+ * "is a Map" check, so a size constraint chained before `.of()` (via
+ * `.min()`/`.max()`/`.ofSize()`/`.range()`) still applies after it. */
+function attachMapOf(guard: SizeChainable<Map<unknown, unknown>>): void {
+  const typed = guard as unknown as {
+    of: <K, V>(keyGuard: TypeGuard<K>, valueGuard: TypeGuard<V>) => MapSizeGuard<K, V>;
+  };
+  typed.of = <K, V>(keyGuard: TypeGuard<K>, valueGuard: TypeGuard<V>) => {
+    const k = guardNameOrParens(keyGuard);
+    const v = guardNameOrParens(valueGuard);
+    const name = k && v ? `Map<${k}, ${v}>` : "Map";
+
+    const child = createTypeGuard(name, (val, helpers): Map<unknown, unknown> | null => {
+      if (!guard(val)) return null;
+      const ctx = (helpers as HelpersWithContext)._ctx;
+      let idx = 0;
+      for (const [key, value] of val) {
+        if (!validateElement(keyGuard, key, ctx, `key[${idx}]`)) return null;
+        if (!validateElement(valueGuard, value, ctx, `value[${idx}]`)) return null;
+        idx++;
+      }
+      return val;
+    });
+
+    return withSizeMethods(child, mapSizeOptions) as MapSizeGuard<K, V>;
+  };
+}
+
 /**
  * Type guard that checks if a value is a Map instance, with optional key/value
- * type checking via `.of(keyGuard, valueGuard)`.
+ * type checking via `.of(keyGuard, valueGuard)` and chainable size validation
+ * via `.min()`/`.max()`/`.ofSize()`/`.range()`.
  *
  * @example
  * ```typescript
@@ -30,30 +164,12 @@ const _isMap = createTypeGuard(
  * const isStringToNumber = isMap.of(isString, isNumber);
  * isStringToNumber(new Map([["a", 1]]))  // true
  * isStringToNumber(new Map([[1, 1]]))    // false (key is not string)
+ *
+ * const isSmallMap = isMap.max(3);
+ * isSmallMap(new Map([["a", 1]]))        // true
  * ```
  */
-export const isMap: MapTypeGuard = Object.assign(
-  _isMap,
-  {
-    of: <K, V>(keyGuard: TypeGuard<K>, valueGuard: TypeGuard<V>): TypeGuard<Map<K, V>> => {
-      const k = guardNameOrParens(keyGuard);
-      const v = guardNameOrParens(valueGuard);
-      const name = k && v ? `Map<${k}, ${v}>` : "Map";
-
-      return createTypeGuard(name, (val, helpers) => {
-        if (!_isMap(val)) return null;
-        const ctx = (helpers as HelpersWithContext)._ctx;
-        let idx = 0;
-        for (const [key, value] of val) {
-          if (!validateElement(keyGuard, key, ctx, `key[${idx}]`)) return null;
-          if (!validateElement(valueGuard, value, ctx, `value[${idx}]`)) return null;
-          idx++;
-        }
-        return val as Map<K, V>;
-      });
-    },
-  },
-);
+export const isMap = withSizeMethods(_isMap, mapSizeOptions, attachMapOf) as MapTypeGuard;
 
 /** Precursor to full isSet guard */
 const _isSet = createTypeGuard(
@@ -61,9 +177,22 @@ const _isSet = createTypeGuard(
   (t): Set<unknown> | null => t instanceof Set ? t : null,
 );
 
+const setSizeOptions = {
+  sizeOf: (v: Set<unknown>) => v.size,
+  exactName: "ofSize",
+  label: "size",
+} as const;
+
+/** Attaches `.of()` to `guard` -- shared with isArray's equivalent via
+ * `attachElementOf`. */
+function attachSetOf(guard: SizeChainable<Set<unknown>>): void {
+  attachElementOf(guard, setSizeOptions, (name) => name ? `Set<${name}>` : "Set");
+}
+
 /**
  * Type guard that checks if a value is a Set instance, with optional element
- * type checking via `.of(guard)`.
+ * type checking via `.of(guard)` and chainable size validation via
+ * `.min()`/`.max()`/`.ofSize()`/`.range()`.
  *
  * @example
  * ```typescript
@@ -73,28 +202,47 @@ const _isSet = createTypeGuard(
  * const isStringSet = isSet.of(isString);
  * isStringSet(new Set(["a", "b"]))    // true
  * isStringSet(new Set([1, 2]))        // false
+ *
+ * const isSmallSet = isSet.max(3);
+ * isSmallSet(new Set(["a"]))          // true
  * ```
  */
-export const isSet: SetTypeGuard = Object.assign(
-  _isSet,
-  {
-    of: <T>(guard: TypeGuard<T>): TypeGuard<Set<T>> => {
-      const g = guardNameOrParens(guard);
-      const name = g ? `Set<${g}>` : "Set";
+export const isSet = withSizeMethods(_isSet, setSizeOptions, attachSetOf) as SetTypeGuard;
 
-      return createTypeGuard(name, (val, helpers) => {
-        if (!_isSet(val)) return null;
-        const ctx = (helpers as HelpersWithContext)._ctx;
-        let idx = 0;
-        for (const item of val) {
-          if (!validateElement(guard, item, ctx, idx)) return null;
-          idx++;
-        }
-        return val as Set<T>;
-      });
-    },
-  },
-);
+/** Precursor to full isArray guard */
+const _isArray = createTypeGuard("array", (t): unknown[] | null => Array.isArray(t) ? t : null);
+
+const arraySizeOptions = {
+  sizeOf: (v: unknown[]) => v.length,
+  exactName: "ofLength",
+  label: "length",
+} as const;
+
+/** Attaches `.of()` to `guard` -- shared with isSet's equivalent via
+ * `attachElementOf`. */
+function attachArrayOf(guard: SizeChainable<unknown[]>): void {
+  attachElementOf(guard, arraySizeOptions, (name) => name ? `${name}[]` : "array");
+}
+
+/**
+ * Type guard that checks if a value is an array, with optional element type
+ * checking via `.of(guard)` and chainable length validation via
+ * `.min()`/`.max()`/`.ofLength()`/`.range()`.
+ *
+ * @example
+ * ```typescript
+ * isArray([1, 2, 3])                  // true
+ * isArray("not an array")             // false
+ *
+ * const isStringArray = isArray.of(isString);
+ * isStringArray(["a", "b"])           // true
+ * isStringArray([1, 2])               // false
+ *
+ * const isSmallArray = isArray.max(3);
+ * isSmallArray([1, 2])                // true
+ * ```
+ */
+export const isArray = withSizeMethods(_isArray, arraySizeOptions, attachArrayOf) as ArrayTypeGuard;
 
 /**
  * Type guard that checks if a value is a tuple (array) of a specific length.

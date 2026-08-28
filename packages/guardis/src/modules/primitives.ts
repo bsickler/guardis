@@ -5,10 +5,9 @@
 
 import { createTypeGuard, isNull, isUndefined } from "../guard.ts";
 import type { Simplify, TypeGuard } from "../types.ts";
-import { guardNameOrParens, unionOf, validateElement } from "../utilities.ts";
+import { unionOf, validateElement } from "../utilities.ts";
 import type { HelpersWithContext } from "../types.ts";
 import type {
-  ArrayTypeGuard,
   DateTypeGuard,
   JsonArray,
   JsonObject,
@@ -19,7 +18,6 @@ import type {
 } from "./primitives.types.ts";
 
 export type {
-  ArrayTypeGuard,
   DateTypeGuard,
   JsonArray,
   JsonObject,
@@ -90,25 +88,6 @@ function withDateComparisons(guard: TypeGuard<Date>): TypeGuard<Date> & DateType
       guard.extend(`<= ${threshold.toISOString()}`, (v) => v <= threshold ? v : null),
     );
   return dated;
-}
-
-/**
- * Wraps a TypeGuard<T[]> with chainable length validation methods.
- * Each method delegates to .extend() and wraps the result for further chaining.
- */
-function withArrayMethods<T>(guard: TypeGuard<T[]>): ArrayTypeGuard<T> {
-  const arr = guard as ArrayTypeGuard<T>;
-  arr.ofLength = (n) =>
-    withArrayMethods(guard.extend(`length == ${n}`, (v) => v.length === n ? v : null));
-  arr.min = (n) =>
-    withArrayMethods(guard.extend(`length >= ${n}`, (v) => v.length >= n ? v : null));
-  arr.max = (n) =>
-    withArrayMethods(guard.extend(`length <= ${n}`, (v) => v.length <= n ? v : null));
-  arr.range = (min, max) =>
-    withArrayMethods(
-      guard.extend(`length ${min}..${max}`, (v) => v.length >= min && v.length <= max ? v : null),
-    );
-  return arr;
 }
 
 /**
@@ -328,33 +307,6 @@ export const isJsonObject: TypeGuard<JsonObject> = createTypeGuard(
     return null;
   },
 );
-
-/** Precursor to full isArray guard */
-const _isArray = createTypeGuard("array", (t): unknown[] | null => Array.isArray(t) ? t : null);
-
-/**
- * Returns true if input satisfies type array.
- * @param {unknown} t
- * @return {boolean}
- */
-export const isArray: ArrayTypeGuard = withArrayMethods(Object.assign(
-  _isArray,
-  {
-    of: <T>(guard: TypeGuard<T>): ArrayTypeGuard<T> => {
-      const inner = guardNameOrParens(guard);
-      const name = inner ? `${inner}[]` : "array";
-
-      return withArrayMethods(createTypeGuard(name, (v, helpers) => {
-        if (!isArray(v)) return null;
-        const ctx = (helpers as HelpersWithContext)._ctx;
-        for (let i = 0; i < v.length; i++) {
-          if (!validateElement(guard, v[i], ctx, i)) return null;
-        }
-        return v as T[];
-      }));
-    },
-  },
-));
 
 /**
  * Returns true if input satisfies type array.
