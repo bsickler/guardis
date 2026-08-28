@@ -1,0 +1,28 @@
+{
+  "name": "@spudlabs/guardis-gen",
+  "version": "0.1.0",
+  "license": "MIT",
+  "description": "Data generation plugin for Guardis type guards.",
+  "exports": {
+    ".": "./mod.ts",
+    "./modules/primitives": "./src/modules/primitives.ts",
+    "./modules/strings": "./src/modules/strings.ts",
+    "./modules/http": "./src/modules/http.ts",
+    "./modules/collections": "./src/modules/collections.ts"
+  },
+  "tasks": {
+    "test": "deno test",
+    "build:npm": "deno run -A scripts/build_npm.ts"
+  },
+  "publish": {
+    "include": ["mod.ts", "README.md", "deno.json", "src/"],
+    "exclude": ["**/*.test.ts"]
+  },
+  "imports": {
+    "@spudlabs/guardis": "jsr:@spudlabs/guardis@^0.9.0"
+  },
+  "compilerOptions": {},
+  "fmt": {
+    "lineWidth": 100
+  }
+}

@@ -7,6 +7,7 @@
 
     "@spudlabs/guardis": "./packages/guardis/mod.ts",
     "@spudlabs/guardis-hono": "./packages/guardis-hono/mod.ts",
+    "@spudlabs/guardis-gen": "./packages/guardis-gen/mod.ts",
 
     "zod": "npm:zod@^3",
     "arktype": "npm:arktype@^2",
