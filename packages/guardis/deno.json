@@ -1,6 +1,6 @@
 {
   "name": "@spudlabs/guardis",
-  "version": "0.8.2",
+  "version": "0.9.0",
   "license": "MIT",
   "description": "Guardis is a modular library of type guards, built to be easy to use and extend.",
   "exports": {
@@ -29,6 +29,10 @@
     "bench:parser-vs-shape": {
       "description": "Benchmark parser vs shape object validation across complexity levels.",
       "command": "deno bench benchmarks/parser-vs-shape.bench.ts"
+    },
+    "bench:plugin": {
+      "description": "Benchmark the plugin extension surface's construction/invocation overhead.",
+      "command": "deno bench benchmarks/plugin.bench.ts"
     },
     "build:npm": {
       "description": "Build npm package using dnt.",

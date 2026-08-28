@@ -299,6 +299,8 @@ The callback in `createTypeGuard` provides these helpers:
 - **`hasNot(obj, key)`** — assert a property is absent
 - **`tupleHas(arr, index, guard)`** — validate a tuple element at an index
 - **`includes(array, value)`** — check membership in a `const` array (useful for union types)
+- **`keyOf(key, obj)`** — check that a value is a valid key of an object
+- **`exact(expected, value)`** — check that a value is strictly equal (`===`) to a literal
 - **`or(val, ...branches)`** — express fork logic: match one of several alternative shapes
 - **`fail(message)`** — add a validation issue and return `null`
 
@@ -309,6 +311,20 @@ const isStatus = createTypeGuard<Status>((val, { includes }) => {
   const valid: Status[] = ["pending", "complete", "failed"];
   return isString(val) && includes(valid, val) ? val : null;
 });
+```
+
+```ts
+// keyOf — check that a dynamic key belongs to a known object
+const config = { host: "localhost", port: 8080 };
+
+const isConfigKey = createTypeGuard<keyof typeof config>((val, { keyOf }) =>
+  keyOf(val, config) ? val : null
+);
+
+// exact — check against a specific literal value
+const isPendingStatus = createTypeGuard<"pending">((val, { exact }) =>
+  exact("pending", val) ? val : null
+);
 ```
 
 ### Forking Inside a Parser

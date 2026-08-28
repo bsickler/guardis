@@ -1,5 +1,5 @@
 import {
-isArray,
+  isArray,
   isBinary,
   isBoolean,
   isEmpty,
@@ -10,7 +10,7 @@ isArray,
   isObject,
   isString,
   isUndefined,
-} from "../src/guard.ts";
+} from "../src/modules/primitives.ts";
 
 Deno.bench({
   name: "isBoolean",
@@ -69,11 +69,11 @@ Deno.bench({
 });
 
 Deno.bench({
-	name: "isArray",
-	fn() {
-		isArray([]);
-	}
-})
+  name: "isArray",
+  fn() {
+    isArray([]);
+  },
+});
 
 Deno.bench({
   name: "isNull",
@@ -95,7 +95,6 @@ Deno.bench({
     isEmpty({});
   },
 });
-
 
 // Deno.bench({
 //   name: "example async test",
