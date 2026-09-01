@@ -18,16 +18,13 @@ import {
   isIpv6Full,
 } from "@spudlabs/guardis/http";
 import { randomHex } from "../utilities/random.ts";
+import { randomBoolean, randomInt } from "../utilities/rng.ts";
 import { attachToVariants, ensureGenerateCapability } from "../shared.ts";
-import { ensureDefineGeneratorCapability } from "../define-generator.ts";
-import { ensureOrCapability } from "../or.ts";
 
 ensureGenerateCapability();
-ensureDefineGeneratorCapability();
-ensureOrCapability();
 
 function randomOctet(): number {
-  return Math.floor(Math.random() * 256);
+  return randomInt(0, 255);
 }
 
 function ipv4(): string {
@@ -40,11 +37,11 @@ function ipv6Full(): string {
 
 /** "::" plus a single trailing group is always valid per IPV6_COMPRESSED_REGEX. */
 function ipv6Compressed(): string {
-  return `::${randomHex(1 + Math.floor(Math.random() * 4))}`;
+  return `::${randomHex(randomInt(1, 4))}`;
 }
 
 function ipv6(): string {
-  return Math.random() < 0.5 ? ipv6Full() : ipv6Compressed();
+  return randomBoolean() ? ipv6Full() : ipv6Compressed();
 }
 
 // These guards already exist by the time this module runs (built at
@@ -70,7 +67,7 @@ isIpv4.defineGenerator(ipv4);
 isIpv6Full.defineGenerator(ipv6Full);
 isIpv6Compressed.defineGenerator(ipv6Compressed);
 isIpv6.defineGenerator(ipv6);
-isIpAddress.defineGenerator(() => (Math.random() < 0.5 ? ipv4() : ipv6()));
-isCidrV4.defineGenerator(() => `${ipv4()}/${Math.floor(Math.random() * 33)}`);
-isCidrV6.defineGenerator(() => `${ipv6()}/${Math.floor(Math.random() * 129)}`);
-isCidr.defineGenerator(() => `${ipv4()}/${Math.floor(Math.random() * 33)}`);
+isIpAddress.defineGenerator(() => (randomBoolean() ? ipv4() : ipv6()));
+isCidrV4.defineGenerator(() => `${ipv4()}/${randomInt(0, 32)}`);
+isCidrV6.defineGenerator(() => `${ipv6()}/${randomInt(0, 128)}`);
+isCidr.defineGenerator(() => `${ipv4()}/${randomInt(0, 32)}`);

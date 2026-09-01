@@ -3,7 +3,7 @@ import "./modules/primitives.ts";
 import { assert, assertEquals, assertThrows } from "@std/assert";
 import { createTypeGuard, isString } from "@spudlabs/guardis";
 import { registerGen } from "./spec.ts";
-import { attachGenerate, ensureGenerateCapability } from "./shared.ts";
+import { attachGenerate } from "./shared.ts";
 
 Deno.test("attachGenerate", async (t) => {
   await t.step("installs .generate() directly on an already-built guard", () => {
@@ -41,20 +41,6 @@ Deno.test("attachGenerate", async (t) => {
     const untyped = isThing as unknown as { generate(options?: unknown): string };
     assertEquals(untyped.generate({ ofLength: 4 }).length, 4);
   });
-});
-
-Deno.test("ensureGenerateCapability", () => {
-  ensureGenerateCapability();
-  ensureGenerateCapability();
-
-  const isThing = createTypeGuard(
-    "thing3",
-    (v: unknown): string | null => typeof v === "string" ? v : null,
-  );
-  registerGen(isThing, { kind: "string", constraints: {} });
-
-  assertEquals(typeof isThing.generate, "function");
-  assertEquals(typeof isThing.generate(), "string");
 });
 
 Deno.test("isString.optional.generate() (core singleton, wired via attachToVariants)", () => {
@@ -115,9 +101,9 @@ Deno.test("registered defaults on .optional apply to the present branch without 
     "thing6",
     (v: string) => v.length > 0 ? v : null,
   );
-  // Same "known non-goal" cast as define-generator.test.ts's primitive
-  // constraint-merge test -- a plain (non-object, non-branded) guard has no
-  // typed defineGenerator() options overload, .optional included.
+  // Same cast as define-generator.test.ts's primitive constraint-merge test
+  // -- a plain (non-object, non-branded) guard has no typed defineGenerator()
+  // options overload, .optional included.
   const optional = isThing.optional as unknown as {
     defineGenerator(defaults: unknown): void;
     generate(): string | undefined;

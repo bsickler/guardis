@@ -23,9 +23,8 @@ import {
   isUUIDv7,
 } from "@spudlabs/guardis/strings";
 import { randomDigits, randomHex, randomWord } from "../utilities/random.ts";
+import { next, pick, randomInt } from "../utilities/rng.ts";
 import { attachToVariants, ensureGenerateCapability } from "../shared.ts";
-import { ensureDefineGeneratorCapability } from "../define-generator.ts";
-import { ensureOrCapability } from "../or.ts";
 
 /**
  * Call-time options for `isInternationalPhone.generate()`. Lives here, next
@@ -54,12 +53,10 @@ declare module "@spudlabs/guardis-gen" {
 }
 
 ensureGenerateCapability();
-ensureDefineGeneratorCapability();
-ensureOrCapability();
 
 /** UUID variant field: must be one of 8, 9, a, b. */
 function randomVariantNibble(): string {
-  return "89ab"[Math.floor(Math.random() * 4)];
+  return "89ab"[randomInt(0, 3)];
 }
 
 function uuid(version: "4" | "7"): string {
@@ -70,12 +67,17 @@ function uuid(version: "4" | "7"): string {
 
 /** Total digit count `isInternationalPhone`'s regex accepts (country code + rest). */
 const INTERNATIONAL_PHONE_MIN_DIGITS = 7;
+/** Typical total digit count (e.g. a US number: 1-digit country code + 10-digit rest). */
+const INTERNATIONAL_PHONE_TYPICAL_DIGITS = 11;
 const INTERNATIONAL_PHONE_MAX_DIGITS = 15;
 
 function internationalPhone(options?: PhoneConstraints): string {
   const countryCode = options?.countryCode ?? randomDigits(2);
   const restLength = Math.min(
-    Math.max(11 - countryCode.length, INTERNATIONAL_PHONE_MIN_DIGITS - countryCode.length),
+    Math.max(
+      INTERNATIONAL_PHONE_TYPICAL_DIGITS - countryCode.length,
+      INTERNATIONAL_PHONE_MIN_DIGITS - countryCode.length,
+    ),
     INTERNATIONAL_PHONE_MAX_DIGITS - countryCode.length,
   );
   return `+${countryCode}${randomDigits(restLength)}`;
@@ -86,7 +88,7 @@ function ulid(): string {
   const alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
   let out = "";
   for (let i = 0; i < 26; i++) {
-    out += alphabet[Math.floor(Math.random() * alphabet.length)];
+    out += alphabet[randomInt(0, alphabet.length - 1)];
   }
   return out;
 }
@@ -126,12 +128,12 @@ isPhoneNumber.defineGenerator(() => randomDigits(10));
 isUUIDv4.defineGenerator(() => uuid("4"));
 isUUIDv7.defineGenerator(() => uuid("7"));
 isUlid.defineGenerator(ulid);
-isEmoji.defineGenerator(() => EMOJI_POOL[Math.floor(Math.random() * EMOJI_POOL.length)]);
+isEmoji.defineGenerator(() => pick(EMOJI_POOL));
 isCommaDelimited.defineGenerator(() => Array.from({ length: 3 }, () => randomWord(4)).join(","));
 isPeriodDelimited.defineGenerator(() => Array.from({ length: 3 }, () => randomWord(4)).join("."));
 isCommaDelimitedIntegers.defineGenerator(
-  () => Array.from({ length: 3 }, () => Math.floor(Math.random() * 100)).join(","),
+  () => Array.from({ length: 3 }, () => randomInt(0, 99)).join(","),
 );
 isCommaDelimitedNumbers.defineGenerator(
-  () => Array.from({ length: 3 }, () => (Math.random() * 100).toFixed(1)).join(","),
+  () => Array.from({ length: 3 }, () => (next() * 100).toFixed(1)).join(","),
 );

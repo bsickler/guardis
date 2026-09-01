@@ -1,8 +1,9 @@
 import "./modules/primitives.ts";
+import "./object.ts";
 
-import { assertEquals } from "@std/assert";
+import { assert, assertEquals, assertThrows } from "@std/assert";
 import { createTypeGuard, isString, type TypeGuard } from "@spudlabs/guardis";
-import { registerGen, resolveSpec } from "./spec.ts";
+import { deref, fixedSpec, registerGen, resolveSpec, specRef, unresolvedSpec } from "./spec.ts";
 
 Deno.test("resolveSpec", async (t) => {
   await t.step("returns undefined for undefined", () => {
@@ -76,6 +77,63 @@ Deno.test("resolveSpec", async (t) => {
       assertEquals(resolveSpec(isPlain.optional), undefined);
     },
   );
+
+  await t.step("returns undefined for a bare predicate, rather than throwing", () => {
+    const isNumberPredicate = (v: unknown): v is number => typeof v === "number";
+    assertEquals(resolveSpec(isNumberPredicate as unknown as TypeGuard<unknown>), undefined);
+  });
+});
+
+Deno.test("deref", async (t) => {
+  await t.step("a { spec } source returns that spec identically", () => {
+    const spec = fixedSpec({ kind: "string", constraints: { min: 1 } });
+    assertEquals(deref(spec), { kind: "string", constraints: { min: 1 } });
+  });
+
+  await t.step("specRef(g) derefs to resolveSpec(g) for a guard with a spec", () => {
+    const isThing = createTypeGuard(
+      "thing",
+      (v: unknown): string | null => typeof v === "string" ? v : null,
+    );
+    registerGen(isThing, { kind: "string", constraints: { min: 3 } });
+
+    assertEquals(deref(specRef(isThing)), resolveSpec(isThing));
+  });
+
+  await t.step("specRef(g) is undefined for a guard with no spec", () => {
+    const isPlain = createTypeGuard(
+      "plain",
+      (v: unknown): string | null => typeof v === "string" ? v : null,
+    );
+    assertEquals(deref(specRef(isPlain)), undefined);
+  });
+
+  await t.step("deref(undefined) is undefined", () => {
+    assertEquals(deref(undefined), undefined);
+  });
+
+  await t.step("specRef(g.optional) derefs to an optional-wrapped spec", () => {
+    const isThing = createTypeGuard(
+      "thing",
+      (v: unknown): string | null => typeof v === "string" ? v : null,
+    );
+    registerGen(isThing, { kind: "string", constraints: {} });
+
+    const spec = deref(specRef(isThing.optional));
+    assertEquals(spec?.kind, "optional");
+    assertEquals(spec && "inner" in spec ? spec.inner : undefined, {
+      kind: "string",
+      constraints: {},
+    });
+  });
+});
+
+Deno.test("createTypeGuard accepts a bare predicate field without throwing", () => {
+  const guard = createTypeGuard({
+    n: (v: unknown): v is number => typeof v === "number",
+    name: isString,
+  });
+  assertEquals(typeof guard, "function");
 });
 
 Deno.test("registerGen", () => {
@@ -89,4 +147,33 @@ Deno.test("registerGen", () => {
 
   registerGen(isThing, { kind: "number", constraints: {} });
   assertEquals(resolveSpec(isThing)?.kind, "number");
+});
+
+Deno.test("unresolvedSpec", async (t) => {
+  await t.step(
+    "a constructed guard with no generator points at .defineGenerator()/registerGen()",
+    () => {
+      const isThing = createTypeGuard(
+        "thing",
+        (v: unknown): string | null => typeof v === "string" ? v : null,
+      );
+      const spec = unresolvedSpec("array element", isThing);
+      const error = assertThrows(() => (spec as { generate: () => void }).generate(), Error);
+      assert(error.message.includes("thing"), error.message);
+      assert(error.message.includes(".defineGenerator()"), error.message);
+      assert(error.message.includes("registerGen()"), error.message);
+    },
+  );
+
+  await t.step(
+    "a bare predicate has no plugin bag, so the advice doesn't point at either dead end",
+    () => {
+      const bare = (v: unknown): v is string => typeof v === "string";
+      const spec = unresolvedSpec(".or() branch", bare);
+      const error = assertThrows(() => (spec as { generate: () => void }).generate(), Error);
+      assert(error.message.includes("bare"), error.message);
+      assert(!error.message.includes(".defineGenerator()"), error.message);
+      assert(!error.message.includes("registerGen()"), error.message);
+    },
+  );
 });

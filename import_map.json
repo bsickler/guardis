@@ -9,6 +9,8 @@
     "@spudlabs/guardis-hono": "./packages/guardis-hono/mod.ts",
     "@spudlabs/guardis-gen": "./packages/guardis-gen/mod.ts",
 
+    "@deno/dnt": "jsr:@deno/dnt@^0.43.2",
+
     "zod": "npm:zod@^3",
     "arktype": "npm:arktype@^2",
     "valibot": "npm:valibot@^1"

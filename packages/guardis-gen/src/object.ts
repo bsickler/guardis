@@ -1,12 +1,7 @@
 /**
- * object.ts - Automatic object-spec registration. Any guard built via
- * createTypeGuard(shape) gets a matching ObjectSpec automatically: a
- * construction hook reads the shape core retains at `guard._.shape`
- * specifically for this purpose (a compiled shape parser can't be
- * decomposed back into its per-field guards after the fact, so the shape
- * has to be captured before that happens). There's no wrapper function here
- * -- `createTypeGuard(shape)` is the normal, only way to build an object
- * guard, same as any other guard.
+ * object.ts - Automatic object-spec registration. A construction hook reads
+ * `guard._.shape`, which core retains because a compiled shape parser can't
+ * be decomposed back into per-field guards afterward.
  * @module
  */
 import {
@@ -17,19 +12,32 @@ import {
   type TypeGuard,
   type TypeGuardShape,
 } from "@spudlabs/guardis";
-import type { ObjectSpec, Spec } from "./spec.ts";
-import { registerGen, resolveSpec } from "./spec.ts";
+import type { ObjectSpec, SpecSource } from "./spec.ts";
+import { fixedSpec, registerGen, resolveSpec, specRef } from "./spec.ts";
 
 function isShapeObject(value: unknown): value is TypeGuardShape {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function specForField(field: unknown): Spec | undefined {
-  if (typeof field === "function") return resolveSpec(field as TypeGuard<unknown>);
+/**
+ * Late-bound: a function field points at its guard rather than snapshotting
+ * its spec, so a `.defineGenerator()`/`registerGen()` call made after this
+ * object is constructed is still honored at generation time (see `deref` in
+ * spec.ts). Total -- returns a `SpecSource` for every branch, never
+ * `undefined` -- so no field is ever silently dropped from `fields`.
+ */
+function specForField(field: unknown): SpecSource {
+  if (typeof field === "function") return specRef(field as TypeGuard<unknown>);
 
-  if (isShapeObject(field)) return specForShape(field);
+  // A shape value inside a larger shape has no guard of its own, so one is
+  // built here -- the SAME construction hook then fires for it, so there is
+  // nothing to recurse into by hand.
+  if (isShapeObject(field)) return specRef(createTypeGuard(field));
 
-  return undefined;
+  // A shape constant (core compiles it to isExactly). No guard is surfaced,
+  // so this is a genuine fixed position: without it the field would be
+  // dropped and the object would fail its own guard at generation time.
+  return fixedSpec({ kind: "custom", generate: () => field });
 }
 
 /**
@@ -39,26 +47,22 @@ function specForField(field: unknown): Spec | undefined {
  * of its own yet, so one is built on the fly.
  */
 function specForShape(shape: TypeGuardShape, guard?: TypeGuard<unknown>): ObjectSpec {
-  const fields: Record<string, Spec> = {};
+  const fields: Record<string, SpecSource> = {};
   for (const [key, field] of Object.entries(shape)) {
-    const fieldSpec = specForField(field);
-    if (fieldSpec) fields[key] = fieldSpec;
+    fields[key] = specForField(field);
   }
   return { kind: "object", fields, guard: guard ?? createTypeGuard(shape) };
 }
 
 /**
- * Fires for EVERY guard `createTypeGuard` builds -- a no-op unless
- * `guard._.shape` is present, which only happens for a guard actually
- * constructed from a shape (directly, or via `.extend(shape)`, where it
- * holds only the newly-added fields -- see `GuardMeta.shape`'s doc).
- * `ConstructedGuard` deliberately only types `_.name`, so `shape` is read
- * via a local cast.
+ * Fires for every guard, a no-op unless `guard._.shape` is set -- true only
+ * for shape-built guards, and for `.extend()` results, where it holds just
+ * the added fields. So a parent's fields are merged in to give the full shape.
  *
- * When the guard has a parent (an `.extend()` result), the parent's already-
- * resolved spec is merged in so the registered spec reflects the FULL
- * shape, not just this level's additions -- and `guard` is always `typed`
- * itself, which correctly validates the complete merged object.
+ * That merge is eager, fixing the child's key set at `.extend()` time; each
+ * field's `SpecSource` is still copied by reference and stays late-bound.
+ * Inheriting the parent's spec wholesale instead would let a later
+ * `registerGen` hand the child one that knows only the narrower shape.
  */
 function attachObjectSpec(guard: ConstructedGuard): void {
   const ownShape = (guard as unknown as { _: { shape?: TypeGuardShape } })._.shape;
@@ -69,11 +73,7 @@ function attachObjectSpec(guard: ConstructedGuard): void {
   const parent = guardParent(typed);
   const parentSpec = parent && resolveSpec(parent);
 
-  // `kind === "object"` alone doesn't narrow out CustomSpec here -- its `kind`
-  // is a plain `string`, so "object" is a structurally valid value for it too.
-  const parentFields = parentSpec && parentSpec.kind === "object" && !("generate" in parentSpec)
-    ? parentSpec.fields
-    : undefined;
+  const parentFields = parentSpec && parentSpec.kind === "object" ? parentSpec.fields : undefined;
 
   registerGen(typed, {
     kind: "object",

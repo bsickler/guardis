@@ -12,27 +12,30 @@
  */
 import {
   type ConstructedGuard,
+  pluginBag,
   type Predicate,
-  registerConstructionHook,
   type TypeGuard,
 } from "@spudlabs/guardis";
-import { DEFAULT_ELEMENT_SPEC, registerGen, resolveSpec, type Spec } from "./spec.ts";
+import { fixedSpec, registerGen, specRef, type SpecSource, unresolvedSpec } from "./spec.ts";
 import { attachMethod } from "./utilities/attach.ts";
 
 type OrFn = (...branches: Predicate<unknown>[]) => TypeGuard<unknown>;
 type OrCarrier = { or?: OrFn };
 
 /**
- * Resolves a `.or()` branch's spec, falling back to `DEFAULT_ELEMENT_SPEC`
- * for a branch that isn't a real constructed guard -- `.or()`'s own type
- * signature accepts a bare `(v: unknown) => v is T` predicate, which has no
- * `._` meta for `resolveSpec` to read (and would throw if handed to it).
+ * A constructed guard branch is late-bound via `specRef`. A bare predicate has
+ * no plugin bag to point at, so it can't be a `specRef` either -- but it's
+ * still a legal `.or()` branch per core's API, and dropping it isn't an
+ * option (`pick` draws against `branches.length`). It gets a fixed spec that
+ * throws a useful message naming it if generation ever actually picks it,
+ * rather than silently fabricating a value of the wrong type for whatever
+ * that predicate checks.
  */
-function branchSpec(guard: Predicate<unknown>): Spec {
-  const meta = (guard as { _?: unknown })._;
-  const hasMeta = typeof guard === "function" && !!meta && typeof meta === "object";
-  return (hasMeta ? resolveSpec(guard as unknown as TypeGuard<unknown>) : undefined) ??
-    DEFAULT_ELEMENT_SPEC;
+function branchSpec(guard: Predicate<unknown>): SpecSource {
+  const guardLike = guard as unknown as TypeGuard<unknown>;
+  return typeof guard === "function" && pluginBag(guardLike)
+    ? specRef(guardLike)
+    : fixedSpec(unresolvedSpec(".or() branch", guard));
 }
 
 /**
@@ -52,13 +55,4 @@ export function attachOrSpec(guard: ConstructedGuard): void {
     });
     return child;
   });
-}
-
-let hookRegistered = false;
-
-/** Idempotent -- safe to call more than once. */
-export function ensureOrCapability(): void {
-  if (hookRegistered) return;
-  hookRegistered = true;
-  registerConstructionHook(attachOrSpec);
 }

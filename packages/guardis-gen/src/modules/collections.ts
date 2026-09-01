@@ -4,29 +4,27 @@
  * singleton to monkeypatch -- it's a pure factory, so its generation support
  * lives at `gen.tuple()` in ../tuple.ts instead, always available from the
  * main package import with no register step). Import this (via the
- * "./register/collections" subpath) BEFORE calling `.of()`/`.min()`/`.max()`
- * /`.ofSize()`/`.range()` on isMap/isSet in schemas you want
- * `.generate()`-aware -- it stamps default key/value/element specs (plain
- * strings) and monkey-patches `.of()` plus the size chain methods so every
- * guard they return carries a matching spec.
+ * "@spudlabs/guardis-gen/modules/collections" subpath) BEFORE calling
+ * `.of()`/`.min()`/`.max()`/`.ofSize()`/`.range()` on isMap/isSet in schemas
+ * you want `.generate()`-aware -- it stamps default key/value/element specs
+ * (plain strings) and monkey-patches `.of()` plus the size chain methods so
+ * every guard they return carries a matching spec.
  * @module
  */
 import { isMap, isSet, type TypeGuard } from "@spudlabs/guardis";
 import {
   DEFAULT_ELEMENT_SPEC,
+  fixedSpec,
   type LengthConstraints as SizeConstraints,
   registerGen,
   resolveSpec,
   type Spec,
+  specRef,
 } from "../spec.ts";
 import { attachToVariants, ensureGenerateCapability } from "../shared.ts";
-import { ensureDefineGeneratorCapability } from "../define-generator.ts";
-import { ensureOrCapability } from "../or.ts";
 import { type ChainMethodGuard, patchChainMethods } from "../utilities/chain.ts";
 
 ensureGenerateCapability();
-ensureDefineGeneratorCapability();
-ensureOrCapability();
 
 // isMap/isSet already exist by the time this module runs (built at
 // @spudlabs/guardis's own module-load time) -- same reasoning as
@@ -38,11 +36,11 @@ attachToVariants(isSet);
 
 registerGen(isMap, {
   kind: "map",
-  key: DEFAULT_ELEMENT_SPEC,
-  value: DEFAULT_ELEMENT_SPEC,
+  key: fixedSpec(DEFAULT_ELEMENT_SPEC),
+  value: fixedSpec(DEFAULT_ELEMENT_SPEC),
   constraints: {},
 });
-registerGen(isSet, { kind: "set", element: DEFAULT_ELEMENT_SPEC, constraints: {} });
+registerGen(isSet, { kind: "set", element: fixedSpec(DEFAULT_ELEMENT_SPEC), constraints: {} });
 
 // --- size chain-method monkeypatching ---------------------------------------
 //
@@ -50,29 +48,22 @@ registerGen(isSet, { kind: "set", element: DEFAULT_ELEMENT_SPEC, constraints: {}
 // methods; patchChainMethods just makes them also carry a matching
 // generation spec.
 
-// `kind === "map"`/`kind === "set"` alone doesn't narrow out CustomSpec --
-// its `kind` is a plain `string`, so any literal is structurally valid for
-// it too (same reasoning as object.ts's `attachObjectSpec`).
-function isMapSpec(spec: Spec | undefined): spec is Extract<Spec, { kind: "map" }> {
-  return !!spec && spec.kind === "map" && !("generate" in spec);
-}
-
-function isSetSpec(spec: Spec | undefined): spec is Extract<Spec, { kind: "set" }> {
-  return !!spec && spec.kind === "set" && !("generate" in spec);
-}
-
+// `key`/`value`/`element` are carried forward as reference copies, so late
+// binding survives a `.of(...).min(2)` chain. The size constraint is
+// snapshotted instead — same rule as `mergeConstraint` in primitives.ts.
 function buildMapSpec(parent: TypeGuard<unknown>, patch: SizeConstraints): Spec {
   const parentSpec = resolveSpec(parent);
   const existing = parentSpec && "constraints" in parentSpec ? parentSpec.constraints : undefined;
-  const key = isMapSpec(parentSpec) ? parentSpec.key : DEFAULT_ELEMENT_SPEC;
-  const value = isMapSpec(parentSpec) ? parentSpec.value : DEFAULT_ELEMENT_SPEC;
+  const key = parentSpec?.kind === "map" ? parentSpec.key : fixedSpec(DEFAULT_ELEMENT_SPEC);
+  const value = parentSpec?.kind === "map" ? parentSpec.value : fixedSpec(DEFAULT_ELEMENT_SPEC);
   return { kind: "map", key, value, constraints: { ...existing, ...patch } };
 }
 
+// Same eager-constraint reasoning as `buildMapSpec` above.
 function buildSetSpec(parent: TypeGuard<unknown>, patch: SizeConstraints): Spec {
   const parentSpec = resolveSpec(parent);
   const existing = parentSpec && "constraints" in parentSpec ? parentSpec.constraints : undefined;
-  const element = isSetSpec(parentSpec) ? parentSpec.element : DEFAULT_ELEMENT_SPEC;
+  const element = parentSpec?.kind === "set" ? parentSpec.element : fixedSpec(DEFAULT_ELEMENT_SPEC);
   return { kind: "set", element, constraints: { ...existing, ...patch } };
 }
 
@@ -91,9 +82,9 @@ function patchMapOf(guard: ChainMethodGuard): void {
     const parentSpec = resolveSpec(guard);
     registerGen(child, {
       kind: "map",
-      key: resolveSpec(keyGuard) ?? DEFAULT_ELEMENT_SPEC,
-      value: resolveSpec(valueGuard) ?? DEFAULT_ELEMENT_SPEC,
-      constraints: isMapSpec(parentSpec) ? parentSpec.constraints ?? {} : {},
+      key: specRef(keyGuard),
+      value: specRef(valueGuard),
+      constraints: parentSpec?.kind === "map" ? parentSpec.constraints ?? {} : {},
     });
     patchChainMethods(child as unknown as ChainMethodGuard, "ofSize", buildMapSpec);
     return child;
@@ -108,8 +99,8 @@ function patchSetOf(guard: ChainMethodGuard): void {
     const parentSpec = resolveSpec(guard);
     registerGen(child, {
       kind: "set",
-      element: resolveSpec(elementGuard) ?? DEFAULT_ELEMENT_SPEC,
-      constraints: isSetSpec(parentSpec) ? parentSpec.constraints ?? {} : {},
+      element: specRef(elementGuard),
+      constraints: parentSpec?.kind === "set" ? parentSpec.constraints ?? {} : {},
     });
     patchChainMethods(child as unknown as ChainMethodGuard, "ofSize", buildSetSpec);
     return child;

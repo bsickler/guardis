@@ -16,24 +16,87 @@ import {
 // deno-lint-ignore no-empty-interface
 export interface GeneratorOptionsRegistry {}
 
-/** Per-property derive functions for an object-shaped `T1` -- one optional function per key, reading the other generated properties. */
-type RelationalOptions<T1> = T1 extends Record<string, unknown>
-  ? { [K in keyof T1]?: (props: T1) => T1[K] }
+/**
+ * The objects enclosing the value being generated -- a derive function's
+ * second argument. `parent` is a live proxy, so reading a field off it
+ * generates that field on demand, whatever order fields were declared in.
+ * A collection is a position, not a level: an array element's `parent` is
+ * the object that owns the array.
+ */
+export type GenContext<P = Record<string, unknown> | undefined> = {
+  /** The enclosing object's props proxy; `undefined` at the root. */
+  readonly parent: P;
+  /** Every enclosing object's proxy, root first -- `parent === ancestors.at(-1)`. */
+  readonly ancestors: readonly Record<string, unknown>[];
+  /**
+   * `ancestors`, unwrapped to the plain object each proxy wraps -- safe to
+   * embed in a returned/derived value, unlike `ancestors` itself. Same
+   * order and length as `ancestors`.
+   */
+  readonly ancestorValues: readonly Record<string, unknown>[];
+  /** `ancestors[0]` -- the outermost object; `undefined` at the root. */
+  readonly root?: Record<string, unknown>;
+  /**
+   * Position within the nearest enclosing array/set/map/tuple, if any.
+   * Inherited by an element's own nested fields, so a field three levels
+   * inside `members[2]` still sees `index === 2`.
+   */
+  readonly index?: number;
+  /** Key/index path from the root to the value being generated. */
+  readonly path: readonly (string | number)[];
+};
+
+/**
+ * Per-property options: a derive function, or a nested options bag forwarded
+ * to that field. A deriver's `ctx` belongs to the object it sits in, not to
+ * its own field, so `ctx.parent` is the level above; `Parent` threads down as
+ * `T1` to type it without a cast.
+ */
+type RelationalOptions<T1, Parent = Record<string, unknown> | undefined> = T1 extends
+  Record<string, unknown> ? {
+    [K in keyof T1]?:
+      | ((props: T1, ctx: GenContext<Parent>) => T1[K])
+      | NestedOptionsFor<T1[K], T1>;
+  }
+  : never;
+
+/** `X & never` is `never`, which would annihilate a collection's size constraints. */
+type OrEmpty<T> = [T] extends [never] ? unknown : T;
+
+/**
+ * A collection element's options, safe to intersect onto `LengthConstraints`
+ * in a `generate()` overload -- `unknown` rather than `never` when the
+ * element type has no options of its own, so it never annihilates the size
+ * constraints it sits beside. See `NestedOptionsFor`.
+ */
+export type ElementOptions<T> = OrEmpty<NestedOptionsFor<T>>;
+
+export type NestedOptionsFor<T, Parent = Record<string, unknown> | undefined> = T extends
+  Brand<unknown, string> ? GenerateOptionsFor<T>
+  : T extends string ? LengthConstraints
+  : T extends number ? NumberConstraints
+  : T extends boolean ? never
+  : T extends Date ? DateConstraints
+  : T extends readonly unknown[] ? LengthConstraints & OrEmpty<NestedOptionsFor<T[number], Parent>>
+  : T extends Map<infer K, infer V> ?
+      & LengthConstraints
+      & OrEmpty<NestedOptionsFor<K, Parent>>
+      & OrEmpty<NestedOptionsFor<V, Parent>>
+  : T extends Set<infer E> ? LengthConstraints & OrEmpty<NestedOptionsFor<E, Parent>>
+  : T extends Record<string, unknown> ? { props?: RelationalOptions<T, Parent> }
   : never;
 
 /**
- * Options type for `TypeGuard<T1>.generate()`: a registered brand's shape,
- * `LengthConstraints` for a Map/Set (covers `.of()` results too, since
- * they're still `TypeGuard<Map<K, V>>`/`TypeGuard<Set<T>>`, not a distinct
- * nominal type), `{ props?: RelationalOptions<T1> }` for a plain object
- * shape, or `never` otherwise -- `never`, not `unknown`, so this doesn't
- * swallow a sibling chain-interface overload (`StringTypeGuard.generate`
- * etc.) it's intersected with.
+ * Options for `TypeGuard<T1>.generate()`. The fallback is `never`, not
+ * `unknown`, so it doesn't swallow the chain-interface overloads it is
+ * intersected with; arrays stay on that branch for the same reason, since
+ * modules/primitives.ts declares their overloads.
  */
 export type GenerateOptionsFor<T1> = T1 extends Brand<unknown, infer B>
   ? (B extends keyof GeneratorOptionsRegistry ? GeneratorOptionsRegistry[B] : never)
-  : T1 extends Map<unknown, unknown> ? LengthConstraints
-  : T1 extends Set<unknown> ? LengthConstraints
+  : T1 extends Map<infer K, infer V>
+    ? LengthConstraints & OrEmpty<NestedOptionsFor<K>> & OrEmpty<NestedOptionsFor<V>>
+  : T1 extends Set<infer E> ? LengthConstraints & OrEmpty<NestedOptionsFor<E>>
   : T1 extends Record<string, unknown> ? { props?: RelationalOptions<T1> }
   : never;
 
@@ -63,10 +126,38 @@ export type PrimitiveSpec =
   | { kind: "number"; constraints?: NumberConstraints }
   | { kind: "boolean" }
   | { kind: "date"; constraints?: DateConstraints }
-  | { kind: "array"; element?: Spec; constraints?: LengthConstraints };
+  | { kind: "array"; element?: SpecSource; constraints?: LengthConstraints };
 
 /** Shared fallback element spec for array/map/set guards with no resolvable element type. */
 export const DEFAULT_ELEMENT_SPEC: Spec = { kind: "string", constraints: {} };
+
+/**
+ * A Spec that throws rather than fabricating a value, for a position naming a
+ * guard that has no generator. `context` describes the position ("array
+ * element", ".or() branch"). See `DEFAULT_ELEMENT_SPEC` for the other case,
+ * where no element type was given at all.
+ *
+ * `guard` may be a bare `(v) => v is T` predicate (a legal `.or()` branch,
+ * routed here from `or.ts`) rather than a constructed guard -- it has no
+ * plugin bag, so neither `.defineGenerator()` nor `registerGen()` is an
+ * option for it, and the advice below says so instead of naming dead ends.
+ */
+export function unresolvedSpec(context: string, guard?: unknown): Spec {
+  const asGuard = guard as { _?: { name?: string } } | undefined;
+  const asFn = guard as { name?: string } | undefined;
+  const label = asGuard?._?.name || asFn?.name || "this guard";
+  const hasPluginBag = typeof guard === "function" &&
+    !!pluginBag(guard as TypeGuard<unknown>);
+  const advice = hasPluginBag
+    ? "register one with .defineGenerator() or registerGen() before calling .generate()"
+    : "it's a bare predicate with no plugin data to register a generator on -- give this position a constructed guard instead";
+  return {
+    kind: "custom",
+    generate: () => {
+      throw new Error(`${context} has no registered generator for "${label}" -- ${advice}.`);
+    },
+  };
+}
 
 /**
  * One nested spec per field, plus (optionally) the guard that validates the
@@ -77,18 +168,23 @@ export const DEFAULT_ELEMENT_SPEC: Spec = { kind: "string", constraints: {} };
  */
 export type ObjectSpec = {
   kind: "object";
-  fields: Record<string, Spec>;
+  fields: Record<string, SpecSource>;
   guard?: TypeGuard<unknown>;
 };
 
 /** One spec for the keys, one for the values -- mirrors `isMap.of(keyGuard, valueGuard)`. */
-export type MapSpec = { kind: "map"; key: Spec; value: Spec; constraints?: LengthConstraints };
+export type MapSpec = {
+  kind: "map";
+  key: SpecSource;
+  value: SpecSource;
+  constraints?: LengthConstraints;
+};
 
 /** One spec shared by every generated element, mirroring `isSet.of(elementGuard)`. */
-export type SetSpec = { kind: "set"; element: Spec; constraints?: LengthConstraints };
+export type SetSpec = { kind: "set"; element: SpecSource; constraints?: LengthConstraints };
 
 /** One spec per position, in order -- unlike `array`, length and per-position types are fixed. */
-export type TupleSpec = { kind: "tuple"; elements: Spec[] };
+export type TupleSpec = { kind: "tuple"; elements: SpecSource[] };
 
 /** Wraps another spec to mark it as optional; generation just defers to `inner`. */
 export type OptionalSpec = { kind: "optional"; inner: Spec };
@@ -98,18 +194,17 @@ export type OptionalSpec = { kind: "optional"; inner: Spec };
  * generation picks one branch at random each call. Built automatically by
  * every guard's `.or()` -- see `or.ts`.
  */
-export type UnionSpec = { kind: "union"; branches: Spec[] };
+export type UnionSpec = { kind: "union"; branches: SpecSource[] };
 
 /**
- * A generator function bound directly to a guard (email, UUID, or any
- * custom guard -- see `defineGenerator()`/`registerGen()`). Dispatch is by
- * presence of `generate`, not `kind` -- `kind` is just a descriptive label,
- * not a fixed enum. `options` is untyped: real type safety comes from
- * `GenerateOptionsFor<T1>` on `TypeGuard<T1>.generate`, not from `Spec`.
+ * A generator bound directly to a guard. `interpret` dispatches on
+ * `"generate" in spec` before the switch, so `kind` exists only to keep
+ * `Spec` a discriminated union. Type safety comes from
+ * `GenerateOptionsFor<T1>`, not from here.
  */
 export type CustomSpec = {
-  kind: string;
-  generate: (options?: unknown) => unknown;
+  kind: "custom";
+  generate: (options?: unknown, ctx?: GenContext) => unknown;
 };
 
 /** A generation descriptor for a single guard. */
@@ -123,6 +218,20 @@ export type Spec =
   | UnionSpec
   | CustomSpec;
 
+/** Anything `resolveSpec` can be handed -- a guard or its `.optional` derivative. */
+export type GuardLike = TypeGuard<unknown> | OptionalTypeGuard<unknown>;
+
+/**
+ * A child position in a composed spec. `{ ref }` resolves at generation time,
+ * so a generator registered after composition is still honored; `{ spec }` is
+ * for positions with no guard to point at. Not `Spec | { ref }` — spelling
+ * snapshots explicitly keeps them greppable.
+ */
+export type SpecSource = { readonly ref: GuardLike } | { readonly spec: Spec };
+
+export const specRef = (guard: GuardLike): SpecSource => ({ ref: guard });
+export const fixedSpec = (spec: Spec): SpecSource => ({ spec });
+
 /**
  * `G` with `defineGenerator` removed, so chaining a second call is a
  * compile error -- type-level only, a cast can still call it again (it
@@ -134,7 +243,12 @@ type WithoutDefineGenerator<G, R> = Omit<G, "defineGenerator"> & ((v: unknown) =
 declare module "@spudlabs/guardis" {
   interface GuardisPlugins<T> {
     gen?: Spec;
-    /** Default `.generate()` options, registered via `.defineGenerator(defaults)`. Untyped for the same reason `CustomSpec.generate`'s `options` is. */
+    /**
+     * Default `.generate()` options from `.defineGenerator(defaults)`. Read
+     * only by `attachGenerate` in shared.ts, at the outermost call — these
+     * apply where registered, never to a nested position. (The `fn` overload
+     * registers a `CustomSpec` instead, and does compose.)
+     */
     genDefaults?: unknown;
   }
   interface TypeGuard<T1> {
@@ -147,18 +261,19 @@ declare module "@spudlabs/guardis" {
      * Falls back to `.defineGenerator()`-registered defaults when omitted.
      */
     generate(options?: GenerateOptionsFor<T1>): T1;
-    /** Binds a generator directly to this guard, validated on every `.generate()` call. */
+    /**
+     * Binds a generator directly to this guard, validated on every
+     * `.generate()` call. `ctx` is where the value sits in the tree being
+     * generated -- `undefined` at the root, populated when this guard is a
+     * field or element of a larger one.
+     */
     defineGenerator<O = unknown>(
-      generator: (options?: O) => T1,
+      generator: (options?: O, ctx?: GenContext) => T1,
     ): WithoutDefineGenerator<TypeGuard<T1>, T1>;
     /**
-     * Registers `defaults` as this guard's default `.generate()` options --
-     * a call passing its own options merges over them, not a full replace.
-     *
-     * `T1_` (defaulting to `T1`) instead of `GenerateOptionsFor<T1>`
-     * directly is load-bearing: written directly, it breaks `TypeGuard<T>
-     * extends TypeGuard<unknown>` checks program-wide (`resolveSpec`,
-     * `CanBeEmpty`, `isExactly`). Don't remove it without re-verifying those.
+     * Default `.generate()` options; a call's own options merge over them.
+     * `T1_` rather than `GenerateOptionsFor<T1>` directly: written directly it
+     * breaks `TypeGuard<T> extends TypeGuard<unknown>` program-wide.
      */
     defineGenerator<T1_ = T1>(
       defaults: GenerateOptionsFor<T1_>,
@@ -168,7 +283,7 @@ declare module "@spudlabs/guardis" {
   interface OptionalTypeGuard<T1> {
     generate(options?: GenerateOptionsFor<T1>): T1 | undefined;
     defineGenerator<O = unknown>(
-      generator: (options?: O) => T1 | undefined,
+      generator: (options?: O, ctx?: GenContext) => T1 | undefined,
     ): WithoutDefineGenerator<OptionalTypeGuard<T1>, T1 | undefined>;
     defineGenerator<T1_ = T1>(
       defaults: GenerateOptionsFor<T1_>,
@@ -177,31 +292,49 @@ declare module "@spudlabs/guardis" {
 }
 
 /**
- * Resolves the effective spec for a guard: its own spec if it has one,
- * otherwise the nearest ancestor's via the parent-pointer chain -- an own
- * spec always wins outright, skipping the wrap below entirely. Wraps the
- * result in `{ kind: "optional", inner: ... }` if `guard` is itself
- * `.optional`-derived (`_.optional`). Returns undefined if neither the
- * guard nor any ancestor has a spec registered.
+ * A guard's own spec, else the nearest ancestor's via the parent chain,
+ * wrapped in `{ kind: "optional" }` if the guard is `.optional`-derived.
+ * Undefined when nothing up the chain has one, including for a bare
+ * predicate with no plugin bag.
  *
- * Takes `OptionalTypeGuard<unknown>` too, not just `TypeGuard<unknown>` --
- * it's a standalone, non-augmentable interface (see the `declare module`
- * doc above), so `guard.optional` itself needs this to type-check.
+ * Exported so a self-referential schema's placeholder guard can be wired up
+ * after the fact: `registerGen(placeholder, resolveSpec(real)!)` copies the
+ * real guard's spec onto it (see self-guard-violations.test.ts's recursive
+ * schema test).
  */
-export function resolveSpec(
-  guard: TypeGuard<unknown> | OptionalTypeGuard<unknown> | undefined,
-): Spec | undefined {
+export function resolveSpec(guard: GuardLike | undefined): Spec | undefined {
   if (!guard) return undefined;
-  const own = pluginBag(guard).gen;
-  if (own) return own;
+  // A bare `(v) => v is T` predicate is a legal shape field (core compiles it
+  // as kind: "typePredicate") and a legal .or() branch, but has no plugin bag
+  // to read `.gen` off -- guarded here rather than at each call site, since
+  // callers should see a clean `undefined`, not a crash on `undefined.gen`.
+  const bag = pluginBag(guard);
+  if (!bag) return undefined;
+  if (bag.gen) return bag.gen;
   const inner = resolveSpec(guardParent(guard));
-  return guard._.optional && inner ? { kind: "optional", inner } : inner;
+  return guard._?.optional && inner ? { kind: "optional", inner } : inner;
 }
 
 /**
- * Registers a spec directly on a guard, overriding whatever it would
- * otherwise inherit via the parent chain. Use this for guards built from
- * fully custom parsers that can't be reverse-engineered structurally.
+ * Resolves one child position, at generation time -- this is what makes
+ * composition late-bound. Shallow: the result's own children stay
+ * `SpecSource`s until generation descends into them, so a self-referential
+ * spec hits interpret's depth cap rather than recursing here.
+ */
+export function deref(source: SpecSource | undefined): Spec | undefined {
+  if (!source) return undefined;
+  return "ref" in source ? resolveSpec(source.ref) : source.spec;
+}
+
+/**
+ * Registers a spec directly on a guard, overriding what it would inherit via
+ * the parent chain. For guards built from custom parsers that can't be
+ * reverse-engineered structurally.
+ *
+ * Takes a leaf spec, or a whole spec copied from another guard via
+ * `resolveSpec` (how a self-referential schema wires up its placeholder).
+ * Composite specs aren't hand-authored — build those with a shape object,
+ * `.of()`, `.or()`, or `gen.tuple()`.
  *
  * @example
  * ```typescript
@@ -210,8 +343,6 @@ export function resolveSpec(
  * );
  * registerGen(isZipCode, { kind: "string", constraints: { min: 5, max: 5 } });
  * ```
- *
- * Accepts `OptionalTypeGuard<T>` too -- see `resolveSpec`'s doc for why.
  */
 export function registerGen<T>(guard: TypeGuard<T> | OptionalTypeGuard<T>, spec: Spec): void {
   pluginBag(guard).gen = spec;

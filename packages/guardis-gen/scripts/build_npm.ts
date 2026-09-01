@@ -1,4 +1,4 @@
-import { build, emptyDir } from "jsr:@deno/dnt";
+import { build, emptyDir } from "@deno/dnt";
 
 const denoConfig = JSON.parse(await Deno.readTextFile("./deno.json"));
 const guardisConfig = JSON.parse(await Deno.readTextFile("../guardis/deno.json"));

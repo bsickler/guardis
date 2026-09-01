@@ -2,19 +2,24 @@
  * modules/primitives.ts - Side-effect entry point for guardis' primitive
  * guards (isString, isNumber, isBoolean, isDate, isArray — the default,
  * always-available surface of @spudlabs/guardis, not a subpath). Import
- * this (via the "./register" subpath) BEFORE defining schemas that chain
- * off these primitives — it stamps base specs and monkey-patches the known
- * chain methods (.min/.max/.range/.ofLength, .gt/.gte/.lt/.lte/.finite) so
- * derived guards carry constraint-aware specs instead of a blind inherited
- * default.
+ * this (via the "@spudlabs/guardis-gen/modules/primitives" subpath) BEFORE
+ * defining schemas that chain off these primitives — it stamps base specs
+ * and monkey-patches the known chain methods (.min/.max/.range/.ofLength,
+ * .gt/.gte/.lt/.lte/.finite) so derived guards carry constraint-aware specs
+ * instead of a blind inherited default.
  * @module
  */
 import { isArray, isBoolean, isDate, isNumber, isString, type TypeGuard } from "@spudlabs/guardis";
-import type { DateConstraints, LengthConstraints, NumberConstraints, Spec } from "../spec.ts";
-import { DEFAULT_ELEMENT_SPEC, registerGen, resolveSpec } from "../spec.ts";
+import type {
+  DateConstraints,
+  ElementOptions,
+  LengthConstraints,
+  NumberConstraints,
+  Spec,
+  SpecSource,
+} from "../spec.ts";
+import { registerGen, resolveSpec, specRef } from "../spec.ts";
 import { attachToVariants, ensureGenerateCapability } from "../shared.ts";
-import { ensureDefineGeneratorCapability } from "../define-generator.ts";
-import { ensureOrCapability } from "../or.ts";
 import { type ChainMethodGuard, patchChainMethods } from "../utilities/chain.ts";
 
 declare module "@spudlabs/guardis" {
@@ -31,7 +36,8 @@ declare module "@spudlabs/guardis" {
     generate(options?: DateConstraints): Date;
   }
   interface ArrayTypeGuard {
-    /** Overrides this call's length bounds; both ends stay optional. */
+    /** Overrides this call's length bounds; both ends stay optional. A bare
+     * isArray has no element type, so there are no element options to pass. */
     generate(options?: LengthConstraints): unknown[];
   }
   // `.of()` returns ArraySizeGuard<T>, not ArrayTypeGuard (core keeps `.of()`
@@ -41,19 +47,22 @@ declare module "@spudlabs/guardis" {
   // `GenerateOptionsFor<T1>` fallback (`never`, since arrays don't satisfy
   // any of its branches) and reject any options argument at all.
   interface ArraySizeGuard<T> {
-    /** Overrides this call's length bounds; both ends stay optional. */
-    generate(options?: LengthConstraints): T[];
+    /**
+     * Overrides this call's length bounds; both ends stay optional. Anything
+     * beyond the size keys is forwarded to each element -- so an array of
+     * objects takes `props` here, and its derive functions see the object
+     * that owns the array as `ctx.parent`.
+     */
+    generate(options?: LengthConstraints & ElementOptions<T>): T[];
   }
 }
 
 ensureGenerateCapability();
-ensureDefineGeneratorCapability();
-ensureOrCapability();
 
 // guardis' primitive singletons (and their .optional/.notEmpty variants)
 // already exist by the time this module runs (they're built at
 // @spudlabs/guardis's own module-load time, which always happens before
-// this side-effect entry point is imported) — the construction hooks above
+// this side-effect entry point is imported) — the construction hook above
 // never touch them, so they need the same treatment applied directly.
 attachToVariants(isString);
 attachToVariants(isNumber);
@@ -69,6 +78,27 @@ registerGen(isBoolean, { kind: "boolean" });
 registerGen(isDate, { kind: "date", constraints: {} });
 registerGen(isArray, { kind: "array", constraints: {} });
 
+// --- .notEmpty min:1 ---------------------------------------------------
+//
+// core's `.notEmpty` rejects an empty value at VALIDATION time, but nothing
+// taught GENERATION that: isArray's default min is 0, so `isArray.notEmpty`
+// generated an empty array (and then failed its own guard) a meaningful
+// fraction of the time -- a satisfiable schema failing at random, not a
+// contradiction. Registered directly on each singleton's `.notEmpty`
+// (`.notEmpty`'s own type is an anonymous inline shape in core, not the
+// named TypeGuard<T> these overloads target, hence the cast) rather than
+// derived from the base spec, so `min: 1` holds regardless of chaining.
+// isString's default min already happens to be 3, so this was passing by
+// accident there -- made explicit for the same reason.
+registerGen(isString.notEmpty as unknown as TypeGuard<unknown>, {
+  kind: "string",
+  constraints: { min: 1 },
+});
+registerGen(isArray.notEmpty as unknown as TypeGuard<unknown>, {
+  kind: "array",
+  constraints: { min: 1 },
+});
+
 // --- chain-method monkeypatching --------------------------------------------
 
 function mergeConstraint(
@@ -82,6 +112,9 @@ function mergeConstraint(
   patch: NumberConstraints,
 ): Spec;
 function mergeConstraint(parent: TypeGuard<unknown>, kind: "date", patch: DateConstraints): Spec;
+// `patch` is snapshotted, not late-bound: `.min(3)` means "at least 3" as of
+// the call, and a later registration on `parent` must not rewrite it. Only
+// composed child positions use `SpecSource`.
 function mergeConstraint(
   parent: TypeGuard<unknown>,
   kind: "string" | "number" | "date" | "array",
@@ -95,9 +128,11 @@ function mergeConstraint(
   const merged = { kind, constraints: { ...existing, ...patch } } as Spec;
   // Chaining off an isArray.of(elementGuard) result (e.g. .of(isNumber).min(2))
   // must not silently drop back to the default element spec -- carry the
-  // parent's `element` forward the same way `constraints` already is.
+  // parent's `element` forward the same way `constraints` already is. A
+  // reference copy, not a deref -- late binding on the element guard survives
+  // the chain.
   if (kind === "array" && parentSpec && "element" in parentSpec) {
-    (merged as { element?: Spec }).element = parentSpec.element;
+    (merged as { element?: SpecSource }).element = parentSpec.element;
   }
   return merged;
 }
@@ -215,13 +250,6 @@ patchDateMethods(isDate as unknown as DateChainable);
 // forward whatever length constraint `guard` already has so generated
 // values don't violate it.
 
-// `kind === "array"` alone doesn't narrow out CustomSpec -- its `kind` is a
-// plain `string`, so any literal is structurally valid for it too (same
-// reasoning as modules/collections.ts's `isMapSpec`/`isSetSpec`).
-function isArraySpec(spec: Spec | undefined): spec is Extract<Spec, { kind: "array" }> {
-  return !!spec && spec.kind === "array" && !("generate" in spec);
-}
-
 function patchArrayOf(guard: ChainMethodGuard): void {
   const typed = guard as unknown as { of: typeof isArray.of };
   const originalOf = typed.of;
@@ -230,8 +258,8 @@ function patchArrayOf(guard: ChainMethodGuard): void {
     const parentSpec = resolveSpec(guard);
     registerGen(child, {
       kind: "array",
-      element: resolveSpec(elementGuard) ?? DEFAULT_ELEMENT_SPEC,
-      constraints: isArraySpec(parentSpec) ? parentSpec.constraints ?? {} : {},
+      element: specRef(elementGuard),
+      constraints: parentSpec?.kind === "array" ? parentSpec.constraints ?? {} : {},
     });
     patchChainMethods(child as unknown as ChainMethodGuard, "ofLength", buildArraySpec);
     return child;

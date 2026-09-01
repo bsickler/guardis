@@ -12,18 +12,12 @@
  * @module
  */
 import { createTypeGuard, type TypeGuard } from "@spudlabs/guardis";
-import type { Spec } from "./spec.ts";
-import { registerGen, resolveSpec } from "./spec.ts";
+import { registerGen, specRef } from "./spec.ts";
 
 /** Maps a tuple of TypeGuards to a tuple of the types they guard. */
 type InferTuple<G extends readonly TypeGuard<unknown>[]> = {
   [K in keyof G]: G[K] extends TypeGuard<infer T> ? T : never;
 };
-
-/** Fallback for a positional guard with no registered/inherited spec -- a
- * tuple's length is fixed, so (unlike an object spec's fields) a missing
- * spec can't just drop the position; it needs *something* to generate. */
-const FALLBACK_ELEMENT_SPEC: Spec = { kind: "string", constraints: {} };
 
 /**
  * Builds a guard that validates a fixed-length array against one guard per
@@ -49,7 +43,7 @@ export function tuple<const G extends readonly TypeGuard<unknown>[]>(
 
   registerGen(guard, {
     kind: "tuple",
-    elements: guards.map((g) => resolveSpec(g) ?? FALLBACK_ELEMENT_SPEC),
+    elements: guards.map((g) => specRef(g)),
   });
 
   return guard;

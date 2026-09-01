@@ -2,11 +2,8 @@
  * attach.ts - A single, minimal escape hatch for installing a new own-
  * property method on a guard whose declared type (`ConstructedGuard`,
  * deliberately narrow -- see plugin.ts's doc in core) doesn't know about it
- * yet. Shared by shared.ts/define-generator.ts/or.ts so each doesn't repeat
- * its own inline `(guard as unknown as { name: Fn }).name = value` cast --
- * those three files must stay independent of EACH OTHER (see
- * define-generator.ts's and or.ts's module docs), but a dependency-free
- * leaf utility like this one is safe for all three to share.
+ * yet. Shared by shared.ts/define-generator.ts/or.ts so none of them repeats
+ * its own inline `(guard as unknown as { name: Fn }).name = value` cast.
  * @module
  */
 import type { ConstructedGuard } from "@spudlabs/guardis";
