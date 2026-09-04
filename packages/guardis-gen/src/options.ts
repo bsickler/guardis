@@ -35,6 +35,13 @@ export function extractProps(options: unknown): Record<string, unknown> {
   return (props && typeof props === "object") ? props as Record<string, unknown> : {};
 }
 
+/** Extracts the `dictionary` entry from a `.generate()`-style options bag, if present. */
+export function extractDictionary(options: unknown): unknown {
+  return (options && typeof options === "object")
+    ? (options as { dictionary?: unknown }).dictionary
+    : undefined;
+}
+
 /**
  * The option keys a collection consumes for its own length/size rather than
  * forwarding to its elements -- see `residual`.

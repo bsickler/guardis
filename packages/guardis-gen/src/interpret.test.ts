@@ -23,6 +23,7 @@
 import "./object.ts";
 import "./modules/primitives.ts";
 import "./modules/collections.ts";
+import "./modules/strings.ts";
 
 import { assert, assertEquals, assertThrows } from "@std/assert";
 import {
@@ -35,7 +36,8 @@ import {
   isSet,
   isString,
 } from "@spudlabs/guardis";
-import { gen, next, seed } from "../mod.ts";
+import { isInternationalPhone } from "@spudlabs/guardis/strings-branded";
+import { defineDictionary, gen, next, seed } from "../mod.ts";
 import { interpret } from "./interpret.ts";
 import type { CustomSpec, GenContext } from "./spec.ts";
 import { registerGen, resolveSpec, specRef } from "./spec.ts";
@@ -931,5 +933,120 @@ Deno.test("interpret() unwrapProps recurses one level into arrays/plain objects 
       });
     assertEquals(sample.inner.trail.trail[0], sample);
     Object.freeze(sample.inner.trail.trail[0]);
+  });
+});
+
+Deno.test("dictionary short-circuit", async (t) => {
+  await t.step(
+    "a string field with no registered generator draws from a call-time dictionary",
+    () => {
+      const pool = ["Ada", "Grace", "Alan"];
+      const value = isString.generate({ dictionary: defineDictionary(pool) });
+      assert(pool.includes(value), `expected ${value} to be in the pool`);
+    },
+  );
+
+  await t.step("a number field draws from a call-time dictionary", () => {
+    const pool = [1, 2, 3];
+    const value = isNumber.generate({ dictionary: defineDictionary(pool) });
+    assert(pool.includes(value), `expected ${value} to be in the pool`);
+  });
+
+  await t.step("a date field draws from a call-time dictionary", () => {
+    const pool = [new Date(2020, 0, 1), new Date(2021, 0, 1)];
+    const value = isDate.generate({ dictionary: defineDictionary(pool) });
+    assert(pool.includes(value), `expected ${value} to be in the pool`);
+  });
+
+  await t.step(
+    "an object guard with no registered generator draws from a call-time dictionary",
+    () => {
+      const isThing = createTypeGuard({ id: isNumber, name: isString });
+      const canned = { id: 42, name: "Canned" };
+      const value = isThing.generate({ dictionary: defineDictionary([canned]) });
+      assertEquals(value, canned);
+    },
+  );
+
+  await t.step("a branded (registry-typed) guard draws from a call-time dictionary", () => {
+    // Cast, not a typed call: a Dictionary<string> isn't assignable where
+    // Dictionary<InternationalPhone> is expected (the brand isn't just
+    // `string`) -- see spec.types.test.ts for that as a pinned type check.
+    // This step is only exercising the runtime short-circuit.
+    const value = (isInternationalPhone.generate as (options?: unknown) => string)({
+      dictionary: defineDictionary(["+15551234567"]),
+    });
+    assertEquals(value, "+15551234567");
+  });
+
+  await t.step("a per-field props.field.dictionary override scopes to just that field", () => {
+    const isUser = createTypeGuard({ name: isString, note: isString });
+
+    const first = isUser.generate({ props: { name: { dictionary: defineDictionary(["Ada"]) } } });
+    const second = isUser.generate({ props: { name: { dictionary: defineDictionary(["Ada"]) } } });
+
+    assertEquals(first.name, "Ada");
+    assertEquals(second.name, "Ada");
+    // "note" was never given a dictionary, so it keeps generating normally --
+    // overwhelmingly likely to differ across two independent random strings.
+    assert(first.note !== second.note, "expected the unaffected sibling field to vary");
+  });
+
+  await t.step("an array's own dictionary option supplies every element", () => {
+    const pool = ["x", "y"];
+    const values = isArray.of(isString).generate({
+      dictionary: defineDictionary(pool),
+      ofLength: 10,
+    });
+    assertEquals(values.length, 10);
+    for (const value of values) assert(pool.includes(value), `expected ${value} to be in the pool`);
+  });
+
+  await t.step(
+    "a BARE array's (no .of()) dictionary option picks a whole canned array, not per-element",
+    () => {
+      const pool = [[1, 2, 3], [4, 5]];
+      for (let i = 0; i < 20; i++) {
+        const value = isArray.generate({ dictionary: defineDictionary(pool) });
+        assert(
+          pool.some((canned) => JSON.stringify(canned) === JSON.stringify(value)),
+          `expected ${
+            JSON.stringify(value)
+          } to be one of the whole canned arrays, not built per-element`,
+        );
+      }
+    },
+  );
+
+  await t.step("a dictionary on an optional field still sometimes resolves to undefined", () => {
+    const isUser = createTypeGuard({ name: isString.optional });
+    const pool = ["Ada", "Grace"];
+    const seen = new Set<boolean>();
+    for (let i = 0; i < 100; i++) {
+      const user = isUser.generate({ props: { name: { dictionary: defineDictionary(pool) } } });
+      seen.add(user.name === undefined);
+      if (user.name !== undefined) assert(pool.includes(user.name));
+    }
+    assert(
+      seen.has(true),
+      "never saw undefined across 100 picks -- the dictionary skipped the optional coin flip",
+    );
+    assert(seen.has(false), "never saw a dictionary value across 100 picks");
+  });
+
+  await t.step("a Set's own dictionary option supplies every element", () => {
+    const pool = ["x", "y", "z"];
+    const values = isSet.of(isString).generate({ dictionary: defineDictionary(pool), ofLength: 3 });
+    for (const value of values) assert(pool.includes(value), `expected ${value} to be in the pool`);
+  });
+
+  await t.step("a call-time dictionary overrides an already-registered defineGenerator(fn)", () => {
+    const isCode = createTypeGuard("code", (v) => typeof v === "string" ? v : null);
+    isCode.defineGenerator(() => "REGISTERED");
+
+    const result = (isCode.generate as (options?: unknown) => string)({
+      dictionary: defineDictionary(["OVERRIDDEN"]),
+    });
+    assertEquals(result, "OVERRIDDEN");
   });
 });

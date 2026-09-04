@@ -62,9 +62,19 @@ export function randomInt(min: number, max: number): number {
   return min + Math.floor(next() * (max - min + 1));
 }
 
-/** Picks a uniformly random element from `items`. */
-export function pick<T>(items: readonly T[]): T {
-  return items[randomInt(0, items.length - 1)];
+/**
+ * Picks a uniformly random element from one or more lists, weighted by each
+ * list's own length -- `pick(a, b)` draws exactly as if `a` and `b` had been
+ * concatenated first, but without allocating a merged array to do it. One
+ * `randomInt()` draw either way, so `pick(list)` behaves identically to before.
+ */
+export function pick<T>(...lists: readonly (readonly T[])[]): T {
+  let index = randomInt(0, lists.reduce((total, list) => total + list.length, 0) - 1);
+  for (const list of lists) {
+    if (index < list.length) return list[index];
+    index -= list.length;
+  }
+  throw new Error("pick: called with no items to pick from.");
 }
 
 /** True with the given probability (default 0.5). */

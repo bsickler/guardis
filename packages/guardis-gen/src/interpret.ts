@@ -21,7 +21,8 @@ import {
   type SpecSource,
   unresolvedSpec,
 } from "./spec.ts";
-import { extractProps, mergeOptions, residual } from "./options.ts";
+import type { Dictionary } from "./dictionary.ts";
+import { extractDictionary, extractProps, mergeOptions, residual } from "./options.ts";
 import { lazyRecord, type ResolvingEntry } from "./utilities/lazy-record.ts";
 import { randomDate, randomLength, randomNumber, randomString } from "./utilities/random.ts";
 import { pick, randomBoolean } from "./utilities/rng.ts";
@@ -262,6 +263,34 @@ export function interpret(
         `it toward a base case -- put a collection in the cycle, or give the recursive field a ` +
         `non-recursive branch.`,
     );
+  }
+
+  // An explicit dictionary always wins, even over a registered
+  // `defineGenerator(fn)` and (for an object-typed position) a sibling
+  // `props` -- same "call-time option overrides everything" rule every
+  // other option already follows. A picked value is never re-validated
+  // against the guard's own refinements (`.gt()`, `.min()`, a custom
+  // predicate) the way a normally-generated value isn't either -- only the
+  // TYPE match is enforced, at compile time (see README). Checked before the `generate`
+  // dispatch below so it applies uniformly to every non-collection,
+  // non-optional spec kind, including ones with no registered generator at
+  // all. A `.of()` array/map/set/tuple's own `dictionary` option is its
+  // ELEMENT's, not a "canned whole collection" -- there's no typed option
+  // for the latter (see spec.ts's DictionaryOption usage) -- so it's left
+  // for `residual()` to forward down to each element's own `interpret()`
+  // call instead. A BARE array (`spec.element` unset, no `.of()`) is the
+  // one array case that DOES have a typed whole-value option
+  // (`DictionaryOption<unknown[]>` in modules/primitives.ts), so it short-
+  // circuits here like any scalar. `optional` also isn't short-circuited
+  // here -- its own `randomBoolean()` coin flip has to run first, so the
+  // dictionary is forwarded, unconsumed, to the `case "optional"` branch
+  // below, which re-enters `interpret()` on the inner spec (hitting this
+  // same check again) only when the flip lands on "present".
+  const dictionary = extractDictionary(options) as Dictionary<unknown> | undefined;
+  const isElementDictionary = spec.kind === "map" || spec.kind === "set" ||
+    spec.kind === "tuple" || (spec.kind === "array" && spec.element !== undefined);
+  if (dictionary !== undefined && !isElementDictionary && spec.kind !== "optional") {
+    return dictionary.pick();
   }
 
   if ("generate" in spec) return spec.generate(options, ctx);

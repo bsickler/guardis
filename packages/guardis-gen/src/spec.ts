@@ -11,6 +11,7 @@ import {
   pluginBag,
   type TypeGuard,
 } from "@spudlabs/guardis";
+import type { Dictionary } from "./dictionary.ts";
 
 /** Registry of per-brand `generate()` options shapes, extended via `declare module` (e.g. `modules/strings.ts` for `InternationalPhone`). */
 // deno-lint-ignore no-empty-interface
@@ -47,6 +48,16 @@ export type GenContext<P = Record<string, unknown> | undefined> = {
 };
 
 /**
+ * A call-time or per-field override that draws a value from `dictionary`
+ * instead of generating one normally -- see `interpret.ts`'s dictionary
+ * short-circuit. Parameterized by the exact position's own type, so a
+ * `Dictionary<string>` can't be handed to a `number` field, and a
+ * `Dictionary<string>` can't be handed to a branded type like `UUID`
+ * without going through validation first.
+ */
+export type DictionaryOption<T> = { dictionary?: Dictionary<T> };
+
+/**
  * Per-property options: a derive function, or a nested options bag forwarded
  * to that field. A deriver's `ctx` belongs to the object it sits in, not to
  * its own field, so `ctx.parent` is the level above; `Parent` threads down as
@@ -73,17 +84,18 @@ export type ElementOptions<T> = OrEmpty<NestedOptionsFor<T>>;
 
 export type NestedOptionsFor<T, Parent = Record<string, unknown> | undefined> = T extends
   Brand<unknown, string> ? GenerateOptionsFor<T>
-  : T extends string ? LengthConstraints
-  : T extends number ? NumberConstraints
+  : T extends string ? LengthConstraints & DictionaryOption<T>
+  : T extends number ? NumberConstraints & DictionaryOption<T>
   : T extends boolean ? never
-  : T extends Date ? DateConstraints
+  : T extends Date ? DateConstraints & DictionaryOption<T>
   : T extends readonly unknown[] ? LengthConstraints & OrEmpty<NestedOptionsFor<T[number], Parent>>
   : T extends Map<infer K, infer V> ?
       & LengthConstraints
       & OrEmpty<NestedOptionsFor<K, Parent>>
       & OrEmpty<NestedOptionsFor<V, Parent>>
   : T extends Set<infer E> ? LengthConstraints & OrEmpty<NestedOptionsFor<E, Parent>>
-  : T extends Record<string, unknown> ? { props?: RelationalOptions<T, Parent> }
+  : T extends Record<string, unknown>
+    ? { props?: RelationalOptions<T, Parent> } & DictionaryOption<T>
   : never;
 
 /**
@@ -93,11 +105,12 @@ export type NestedOptionsFor<T, Parent = Record<string, unknown> | undefined> = 
  * modules/primitives.ts declares their overloads.
  */
 export type GenerateOptionsFor<T1> = T1 extends Brand<unknown, infer B>
-  ? (B extends keyof GeneratorOptionsRegistry ? GeneratorOptionsRegistry[B] : never)
+  ? (B extends keyof GeneratorOptionsRegistry ? GeneratorOptionsRegistry[B] & DictionaryOption<T1>
+    : never)
   : T1 extends Map<infer K, infer V>
     ? LengthConstraints & OrEmpty<NestedOptionsFor<K>> & OrEmpty<NestedOptionsFor<V>>
   : T1 extends Set<infer E> ? LengthConstraints & OrEmpty<NestedOptionsFor<E>>
-  : T1 extends Record<string, unknown> ? { props?: RelationalOptions<T1> }
+  : T1 extends Record<string, unknown> ? { props?: RelationalOptions<T1> } & DictionaryOption<T1>
   : never;
 
 /**

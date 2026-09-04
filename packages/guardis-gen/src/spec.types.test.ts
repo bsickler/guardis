@@ -13,6 +13,7 @@
 import "./object.ts";
 import "./modules/primitives.ts";
 import "./modules/collections.ts";
+import "./modules/strings.ts";
 
 import { assertEquals } from "@std/assert";
 import {
@@ -25,7 +26,9 @@ import {
   isString,
 } from "@spudlabs/guardis";
 import type { OptionalTypeGuard, TypeGuard } from "@spudlabs/guardis";
+import { type InternationalPhone, isInternationalPhone } from "@spudlabs/guardis/strings-branded";
 import { resolveSpec } from "./spec.ts";
+import { defineDictionary } from "./dictionary.ts";
 
 const isCompany = createTypeGuard({ name: isString, size: isNumber });
 const isMember = createTypeGuard({ name: isString, email: isString });
@@ -74,6 +77,21 @@ Deno.test("option types accept the documented shapes", () => {
   isSet.generate({ min: 1, max: 2 });
   isMap.generate({ ofLength: 1 });
   isArray.generate({ ofLength: 1 });
+
+  // A dictionary whose element type matches the guard's own type is accepted
+  // at the top level, per field, and as an array element's own option --
+  // with no annotations or casts.
+  isString.generate({ dictionary: defineDictionary(["a", "b"]) });
+  isInternationalPhone.generate({
+    dictionary: defineDictionary(["+15551234567" as InternationalPhone]),
+  });
+  isTeam.generate({
+    props: { company: { props: { name: { dictionary: defineDictionary(["Acme"]) } } } },
+  });
+  isArray.of(isString).generate({ dictionary: defineDictionary(["a", "b"]) });
+  // A bare array's (no .of()) dictionary is a pool of whole canned arrays,
+  // not an element pool -- see interpret.test.ts for the runtime behavior.
+  isArray.generate({ dictionary: defineDictionary([[1, 2], [3, 4]]) });
 });
 
 /**
@@ -97,6 +115,13 @@ function _rejectedOptionShapes(): void {
 
   // @ts-expect-error - a boolean field has no constraints, so only a deriver
   createTypeGuard({ flag: isBoolean }).generate({ props: { flag: { min: 1 } } });
+
+  // @ts-expect-error - a Dictionary<number> can't back a string field
+  isString.generate({ dictionary: defineDictionary([1, 2, 3]) });
+
+  // @ts-expect-error - a plain Dictionary<string> isn't a Dictionary<InternationalPhone>
+  // (the brand is more than `string`), so it must be cast before it satisfies this guard
+  isInternationalPhone.generate({ dictionary: defineDictionary(["+15551234567"]) });
 }
 
 /**
