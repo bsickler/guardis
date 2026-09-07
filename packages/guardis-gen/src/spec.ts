@@ -95,8 +95,7 @@ export type NestedOptionsFor<T, Parent = Record<string, unknown> | undefined> = 
       & OrEmpty<NestedOptionsFor<K, Parent>>
       & OrEmpty<NestedOptionsFor<V, Parent>>
   : T extends Set<infer E> ? LengthConstraints & OrEmpty<NestedOptionsFor<E, Parent>>
-  : T extends Record<string, unknown>
-    ? { props?: RelationalOptions<T, Parent> }
+  : T extends Record<string, unknown> ? { props?: RelationalOptions<T, Parent> }
   : never;
 
 /**
@@ -109,15 +108,15 @@ export type NestedOptionsFor<T, Parent = Record<string, unknown> | undefined> = 
  * `interpret.ts`'s function/`Dictionary`/literal short-circuit.
  */
 export type GenerateOptionsFor<T1> = T1 extends Brand<unknown, infer B>
-  ? (B extends keyof GeneratorOptionsRegistry ? GeneratorOptionsRegistry[B] | GeneratorConstraint<T1>
+  ? (B extends keyof GeneratorOptionsRegistry
+    ? GeneratorOptionsRegistry[B] | GeneratorConstraint<T1>
     : never)
-  : T1 extends Map<infer K, infer V>
-    ? (LengthConstraints & OrEmpty<NestedOptionsFor<K>> & OrEmpty<NestedOptionsFor<V>>)
+  : T1 extends Map<infer K, infer V> ?
+      | (LengthConstraints & OrEmpty<NestedOptionsFor<K>> & OrEmpty<NestedOptionsFor<V>>)
       | GeneratorConstraint<T1>
   : T1 extends Set<infer E>
     ? (LengthConstraints & OrEmpty<NestedOptionsFor<E>>) | GeneratorConstraint<T1>
-  : T1 extends Record<string, unknown>
-    ? { props?: RelationalOptions<T1> } | GeneratorConstraint<T1>
+  : T1 extends Record<string, unknown> ? { props?: RelationalOptions<T1> } | GeneratorConstraint<T1>
   : never;
 
 /**

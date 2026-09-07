@@ -260,9 +260,7 @@ export const Companies = new class {
   readonly Name: Dictionary<string> = Dictionary.from(() => pick(this.categories).Name.pick());
 
   /** A job title, drawn from whichever business-entity type is picked -- independent of `Name`'s own pick, the same way `MedicalPractice.Title` is independent of `MedicalPractice.Name`. */
-  readonly Title: Dictionary<string> = Dictionary.from(() =>
-    pick(this.categories).Title.pick()
-  );
+  readonly Title: Dictionary<string> = Dictionary.from(() => pick(this.categories).Title.pick());
 
   private get categories() {
     return [

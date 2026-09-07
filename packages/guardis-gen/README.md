@@ -149,14 +149,14 @@ email, a UUID, ...) without going through validation first -- unlike faker.js's 
 which are one big untyped bag of unrelated pools, a dictionary here is tied to the type of the
 position it fills.
 
-`Dictionary.of(pool)` builds the common case: picks uniformly at random from an array. `Dictionary.from(picker)`
-wraps a one-off `() => T` expression directly, for a dictionary that's a projection or composition
-rather than a flat pool -- see `dictionaries/people/names.ts` and `dictionaries/location/countries.ts`,
-which build their composed fields this way, drawing straight from their own data (or another of
-their own dictionaries) via the low-level `pick()` primitive, rather than building a second
-dictionary object just to immediately delegate to it. `Dictionary.withChildren(dict, { ... })`
-attaches named child dictionaries onto `dict`, so `dict.child.pick()` works alongside `dict.pick()`
-(e.g. `Dictionaries.People.Names.first.pick()`).
+`Dictionary.of(pool)` builds the common case: picks uniformly at random from an array.
+`Dictionary.from(picker)` wraps a one-off `() => T` expression directly, for a dictionary that's a
+projection or composition rather than a flat pool -- see `dictionaries/people/names.ts` and
+`dictionaries/location/countries.ts`, which build their composed fields this way, drawing straight
+from their own data (or another of their own dictionaries) via the low-level `pick()` primitive,
+rather than building a second dictionary object just to immediately delegate to it.
+`Dictionary.withChildren(dict, { ... })` attaches named child dictionaries onto `dict`, so
+`dict.child.pick()` works alongside `dict.pick()` (e.g. `Dictionaries.People.Names.first.pick()`).
 
 A `Dictionary<T>`, handed directly wherever a value is expected, is the same shortcut as a literal
 value -- there's no `dictionary` key to wrap it in:
@@ -181,9 +181,10 @@ isSwatch.generate({ props: { name: colors } });
 ```
 
 A `.of()` collection (`isArray.of(...)`, `isMap.of(...)`, `isSet.of(...)`) has no per-call element
-dictionary the way a scalar or a bare collection does -- `isArray.of(isString).generate({ ofLength: 10 })`
-has no room for "and draw every element from this pool" alongside its own size options. Bind a
-dictionary to the ELEMENT guard's own `.defineGenerator()` instead:
+dictionary the way a scalar or a bare collection does --
+`isArray.of(isString).generate({ ofLength: 10 })` has no room for "and draw every element from this
+pool" alongside its own size options. Bind a dictionary to the ELEMENT guard's own
+`.defineGenerator()` instead:
 
 ```ts
 isColorName.defineGenerator(() => colors.pick());
@@ -191,22 +192,22 @@ isArray.of(isColorName).generate({ ofLength: 10 }); // every element drawn from 
 ```
 
 A bare collection (no `.of()`) has no separate element position to disambiguate from, so it keeps a
-whole-value shortcut like any scalar -- `isArray.generate(Dictionary.of([[1, 2], [3, 4]]))` picks one
-whole canned array, not built element-by-element.
+whole-value shortcut like any scalar -- `isArray.generate(Dictionary.of([[1, 2], [3, 4]]))` picks
+one whole canned array, not built element-by-element.
 
 `defineGenerator(() => dictionary.pick())`'s return type is unified against the guard's own type by
-`defineGenerator`'s existing generic signature, so handing a `Dictionary<number>` to a `string`-typed
-guard is already a compile error with no dictionary-specific type-checking needed. Composing
-dictionaries needs no dedicated merge function either -- `Dictionary.of([...poolA, ...poolB])`
-combines two pools into a new one directly.
+`defineGenerator`'s existing generic signature, so handing a `Dictionary<number>` to a
+`string`-typed guard is already a compile error with no dictionary-specific type-checking needed.
+Composing dictionaries needs no dedicated merge function either --
+`Dictionary.of([...poolA, ...poolB])` combines two pools into a new one directly.
 
 A small built-in starter set ships under `Dictionaries` (`Dictionaries.People.Names`,
 `Dictionaries.Companies`, `Dictionaries.Location.Cities`/`Countries`,
-`Dictionaries.Internet.DomainWords`/`Tlds`/`CountryTlds`) -- English-only, a few dozen entries each, not
-exhaustive locale data (`src/dictionaries/**`, one dataset per file, grouped into a directory per
-category). PascalCase all the way down to the dictionary itself, since each segment names a fixed
-namespace (a "system"), not a plain object property -- `pick()` and other instance members stay
-camelCase below that. Most of these are plain `Dictionary.of([...])` pools with no subclass
+`Dictionaries.Internet.DomainWords`/`Tlds`/`CountryTlds`) -- English-only, a few dozen entries each,
+not exhaustive locale data (`src/dictionaries/**`, one dataset per file, grouped into a directory
+per category). PascalCase all the way down to the dictionary itself, since each segment names a
+fixed namespace (a "system"), not a plain object property -- `pick()` and other instance members
+stay camelCase below that. Most of these are plain `Dictionary.of([...])` pools with no subclass
 needed. Three aren't, because a flat pool genuinely doesn't fit them:
 
 - `Dictionaries.People.Names` (a `Names`) has `Female`/`Male` (gendered first-name pools),
@@ -228,13 +229,13 @@ needed. Three aren't, because a flat pool genuinely doesn't fit them:
   mixes name/alpha2/alpha3 representations across calls ("Japan", then "US", then "GBR", ...) rather
   than drawing one consistent record, for mimicking varied, inconsistent real-world user input.
   Standardized names/numeric codes are left out of that mix on purpose -- neither a formal ISO name
-  nor a numeric code is something a person types into a form the way a common name or letter code
-  is -- but both stay available on their own via
+  nor a numeric code is something a person types into a form the way a common name or letter code is
+  -- but both stay available on their own via
   `Countries.StandardizedName.pick()`/`Countries.Numeric.pick()`. Want a single correlated record
   instead of the mixed representations? Use `Countries.Record.pick()`.
 - `Dictionaries.Companies` (a `Companies`) is not a `Dictionary<string>` itself -- it has
-  `Name`/`Title`, each its own `Dictionary<string>`, instead of one ambiguous `pick()`, since
-  "pick a company" doesn't say whether you want its name or a job title there.
+  `Name`/`Title`, each its own `Dictionary<string>`, instead of one ambiguous `pick()`, since "pick
+  a company" doesn't say whether you want its name or a job title there.
   `Brand`/`Llc`/`Corporation`/ `MedicalPractice`/`LawFirm`/`InvestmentFirm`/`Bank`/`Restaurant` are
   its eight business-entity types -- a company name isn't one shape: an LLC, a corporation, and a
   medical practice are named by genuinely different real-world conventions, not the same pool with a
@@ -250,10 +251,10 @@ needed. Three aren't, because a flat pool genuinely doesn't fit them:
   entity types, not a uniform one -- and `Companies.Title.pick()` does the same for job titles,
   independently of `Name`'s own pick.
 
-  Each of those eight is a plain `{ Name: Dictionary<string>, Title: Dictionary<string> }`
-  object, not a shared field on one `Record` the way `Countries` composes `Name`/`Alpha2`/`Alpha3`
-  off a single picked record, since a country has exactly one alpha2, but a company type doesn't
-  have "one" job title. Each carries its own `Title` pool instead (e.g.
+  Each of those eight is a plain `{ Name: Dictionary<string>, Title: Dictionary<string> }` object,
+  not a shared field on one `Record` the way `Countries` composes `Name`/`Alpha2`/`Alpha3` off a
+  single picked record, since a country has exactly one alpha2, but a company type doesn't have
+  "one" job title. Each carries its own `Title` pool instead (e.g.
   `Companies.MedicalPractice.Title.pick()` might return "Physician" or "Registered Nurse"), drawn
   independently of that type's own `Name.pick()` draw -- the same way `Names.pick()` draws
   first/middle independently once gender narrows which lists they come from, rather than pinning
@@ -267,10 +268,10 @@ A dictionary (or a literal value) handed to a position whose type doesn't match 
 not a silent no-op at runtime -- the type system is the whole enforcement mechanism here, there's no
 separate runtime check. That check is only for TYPE, though: a dictionary's values are never
 re-validated against the guard's own refinements once the type matches, so
-`isNumber.gt(10).generate(Dictionary.of([1, 2, 3]))` type-checks and happily returns `3`, which fails
-`isNumber.gt(10)`. Nothing re-runs the guard on a dictionary pick, the same way nothing re-runs it on
-a normal generated value either -- `.generate()` isn't guaranteed to only ever produce guard-passing
-output, dictionaries included.
+`isNumber.gt(10).generate(Dictionary.of([1, 2, 3]))` type-checks and happily returns `3`, which
+fails `isNumber.gt(10)`. Nothing re-runs the guard on a dictionary pick, the same way nothing
+re-runs it on a normal generated value either -- `.generate()` isn't guaranteed to only ever produce
+guard-passing output, dictionaries included.
 
 For `isMap.of(keyGuard, valueGuard)`, bind a dictionary to `keyGuard`'s own `.defineGenerator()` for
 keys and to `valueGuard`'s for values -- each entry draws its key and its value as two independent

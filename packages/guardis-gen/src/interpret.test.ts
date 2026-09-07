@@ -1005,7 +1005,9 @@ Deno.test("Dictionary/literal/function short-circuit", async (t) => {
       isPooledColor.defineGenerator(() => Dictionary.of(pool).pick());
       const values = isArray.of(isPooledColor).generate({ ofLength: 10 });
       assertEquals(values.length, 10);
-      for (const value of values) assert(pool.includes(value), `expected ${value} to be in the pool`);
+      for (const value of values) {
+        assert(pool.includes(value), `expected ${value} to be in the pool`);
+      }
     },
   );
 

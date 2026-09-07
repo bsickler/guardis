@@ -38,8 +38,10 @@ export class Dictionary<T1> {
     dict: D,
     children: C,
   ): Simplify<{ pick: D["pick"] } & { [K in keyof typeof children]: typeof children[K] }> {
-    if ('pick' in children) {
-      throw new Error('The "pick" property is reserved in Dictionaries but present in the record of children provided to withChildren()');
+    if ("pick" in children) {
+      throw new Error(
+        'The "pick" property is reserved in Dictionaries but present in the record of children provided to withChildren()',
+      );
     }
 
     const ret = Object.assign(dict, children);
