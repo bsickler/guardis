@@ -1,3 +1,9 @@
+/**
+ * Type guards for async-related constructs: async functions, native Promises,
+ * and PromiseLike/thenable values.
+ * @module
+ */
+
 import { createTypeGuard } from "../guard.ts";
 import type { TypeGuard } from "../types.ts";
 

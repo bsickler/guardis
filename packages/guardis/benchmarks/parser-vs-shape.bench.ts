@@ -1,11 +1,5 @@
-import {
-  createTypeGuard,
-  isArray,
-  isBoolean,
-  isNumber,
-  isObject,
-  isString,
-} from "../src/guard.ts";
+import { createTypeGuard } from "../src/guard.ts";
+import { isArray, isBoolean, isNumber, isObject, isString } from "../src/modules/primitives.ts";
 
 // ---------------------------------------------------------------------------
 // Test data

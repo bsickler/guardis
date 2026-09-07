@@ -1,4 +1,4 @@
-import { isJsonArray } from "../src/guard.ts";
+import { isJsonArray } from "../src/modules/primitives.ts";
 
 Deno.bench({
   name: "primitives",

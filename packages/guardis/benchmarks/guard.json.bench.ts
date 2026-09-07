@@ -1,4 +1,4 @@
-import { isJsonArray, isJsonObject, isJsonPrimitive } from "../src/guard.ts";
+import { isJsonArray, isJsonObject, isJsonPrimitive } from "../src/modules/primitives.ts";
 
 Deno.bench({
   name: "isJsonPrimitive-boolean",

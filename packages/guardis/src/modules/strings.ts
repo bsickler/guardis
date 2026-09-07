@@ -1,6 +1,9 @@
 /**
  * Type guards for common string formats such as email, phone numbers, and UUIDs.
  * These guards extend the basic string type guard to include regex-based validation.
+ *
+ * See `strings.branded.ts` for branded variants of these guards.
+ * @module
  */
 import { isString } from "./primitives.ts";
 import type { TypeGuard } from "../types.ts";

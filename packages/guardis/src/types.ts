@@ -137,11 +137,18 @@ export type GuardMeta<T> = {
   context: (value: unknown, ctx?: Context) => StandardSchemaV1.Result<T>;
   /** Indicates this guard is an optional variant, used by InferShape to mark properties as optional */
   optional?: true;
+  /**
+   * The shape this guard (or, for `.extend(shape)`, just its added fields)
+   * was built from -- lets a plugin's construction hook recover field
+   * structure a compiled parser can't.
+   */
+  shape?: TypeGuardShape;
 };
 
 export interface TypeGuard<T1> extends StandardSchemaV1<T1> {
   /** Internal metadata for guard introspection */
   _: GuardMeta<T1>;
+
   /**
    * A utility to gain access to the type being guarded. Can be used
    * to infer the type in other parts of the code.
@@ -332,94 +339,6 @@ export type InferEntry<P> = P extends Parser<infer T> ? T
   : P extends NamedParser ? (P["parse"] extends Parser<infer T> ? T : never)
   : P extends TypeGuardShape ? InferShape<P>
   : never;
-
-/** Any valid primitive json value. */
-export type JsonPrimitive = string | number | boolean | null;
-
-/** An array of JSON-able values. */
-export type JsonArray = JsonValue[] | readonly JsonValue[];
-
-/** An object containing only JSON-able values. */
-export type JsonObject =
-  & { [Key in string]: JsonValue }
-  & { [Key in string]?: JsonValue | undefined };
-
-/** The complete set of JSON-able data types. */
-export type JsonValue = JsonPrimitive | JsonObject | JsonArray;
-
-/** Construct a tuple of unknowns, up to size 10. */
-export type TupleOfLength<N extends number> = N extends 0 ? []
-  : N extends 1 ? [unknown]
-  : N extends 2 ? [unknown, unknown]
-  : N extends 3 ? [unknown, unknown, unknown]
-  : N extends 4 ? [unknown, unknown, unknown, unknown]
-  : N extends 5 ? [unknown, unknown, unknown, unknown, unknown]
-  : N extends 6 ? [unknown, unknown, unknown, unknown, unknown, unknown]
-  : N extends 7 ? [unknown, unknown, unknown, unknown, unknown, unknown, unknown]
-  : N extends 8 ? [unknown, unknown, unknown, unknown, unknown, unknown, unknown, unknown]
-  : N extends 9 ? [unknown, unknown, unknown, unknown, unknown, unknown, unknown, unknown, unknown]
-  : unknown[];
-
-/** Replace the type at position X in tuple T with type R */
-export type ReplaceTupleIndex<T extends readonly unknown[], X extends number, R> = {
-  readonly [K in keyof T]: K extends `${X}` ? R : T[K];
-};
-
-/** Chainable number comparison methods */
-export interface NumberTypeGuard {
-  /** Lower bound (exclusive). Can chain with lt/lte/eq. */
-  gt(threshold: number): TypeGuard<number> & Omit<NumberTypeGuard, "gt" | "gte" | "eq">;
-  /** Lower bound (inclusive). Can chain with lt/lte/eq. */
-  gte(threshold: number): TypeGuard<number> & Omit<NumberTypeGuard, "gt" | "gte" | "eq">;
-  /** Upper bound (exclusive). Can chain with gt/gte/eq. */
-  lt(threshold: number): TypeGuard<number> & Omit<NumberTypeGuard, "lt" | "lte" | "eq">;
-  /** Upper bound (inclusive). Can chain with gt/gte/eq. */
-  lte(threshold: number): TypeGuard<number> & Omit<NumberTypeGuard, "lt" | "lte" | "eq">;
-  /** Exact value (terminal). */
-  eq(target: number): TypeGuard<number>;
-  /** Rejects Infinity and -Infinity. Allows further comparisons. */
-  finite: TypeGuard<number> & Omit<NumberTypeGuard, "finite">;
-}
-
-/** A string type guard with chainable length validation methods */
-export interface StringTypeGuard {
-  /** Checks string has exactly this length */
-  ofLength(length: number): TypeGuard<string>;
-  /** Checks string length >= min */
-  min(length: number): TypeGuard<string> & Omit<StringTypeGuard, "min" | "ofLength" | "range">;
-  /** Checks string length <= max */
-  max(length: number): TypeGuard<string> & Omit<StringTypeGuard, "max" | "ofLength" | "range">;
-  /** Checks string length is between min and max (inclusive) */
-  range(min: number, max: number): TypeGuard<string>;
-}
-
-/** An array type guard with chainable length validation methods */
-export interface ArrayTypeGuard<T = unknown> extends TypeGuard<T[]> {
-  /** Returns a typed array guard preserving length methods */
-  of<U>(guard: TypeGuard<U>): ArrayTypeGuard<U>;
-  /** Checks array has exactly this length */
-  ofLength(length: number): ArrayTypeGuard<T>;
-  /** Checks array length >= min */
-  min(length: number): ArrayTypeGuard<T>;
-  /** Checks array length <= max */
-  max(length: number): ArrayTypeGuard<T>;
-  /** Checks array length is between min and max (inclusive) */
-  range(min: number, max: number): ArrayTypeGuard<T>;
-}
-
-/** A Map type guard factory. The base guard accepts any Map; `.of()` returns
- * a plain TypeGuard<Map<K, V>> with no further `.of()` chaining. */
-export interface MapTypeGuard extends TypeGuard<Map<unknown, unknown>> {
-  /** Returns a typed Map guard that validates key and value types */
-  of<K, V>(keyGuard: TypeGuard<K>, valueGuard: TypeGuard<V>): TypeGuard<Map<K, V>>;
-}
-
-/** A Set type guard factory. The base guard accepts any Set; `.of()` returns
- * a plain TypeGuard<Set<T>> with no further `.of()` chaining. */
-export interface SetTypeGuard extends TypeGuard<Set<unknown>> {
-  /** Returns a typed Set guard that validates element types */
-  of<T>(guard: TypeGuard<T>): TypeGuard<Set<T>>;
-}
 
 /** An optional type guard that accepts undefined in addition to the base type */
 export interface OptionalTypeGuard<T1> {
