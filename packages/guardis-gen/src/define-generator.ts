@@ -33,6 +33,7 @@ function bindGenerator(
       }
       return value;
     },
+    guard,
   });
 }
 

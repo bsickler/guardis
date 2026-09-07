@@ -28,7 +28,7 @@ import {
 import type { OptionalTypeGuard, TypeGuard } from "@spudlabs/guardis";
 import { type InternationalPhone, isInternationalPhone } from "@spudlabs/guardis/strings-branded";
 import { resolveSpec } from "./spec.ts";
-import { defineDictionary } from "./dictionary.ts";
+import { Dictionary } from "./dictionary.ts";
 
 const isCompany = createTypeGuard({ name: isString, size: isNumber });
 const isMember = createTypeGuard({ name: isString, email: isString });
@@ -78,20 +78,29 @@ Deno.test("option types accept the documented shapes", () => {
   isMap.generate({ ofLength: 1 });
   isArray.generate({ ofLength: 1 });
 
-  // A dictionary whose element type matches the guard's own type is accepted
-  // at the top level, per field, and as an array element's own option --
-  // with no annotations or casts.
-  isString.generate({ dictionary: defineDictionary(["a", "b"]) });
-  isInternationalPhone.generate({
-    dictionary: defineDictionary(["+15551234567" as InternationalPhone]),
-  });
+  // A Dictionary whose element type matches the guard's own type is accepted
+  // directly -- no `dictionary` key, no annotations, no casts -- at the top
+  // level, per field, and as a whole bare array's own option.
+  isString.generate(Dictionary.of(["a", "b"]));
+  isInternationalPhone.generate(Dictionary.of(["+15551234567" as InternationalPhone]));
   isTeam.generate({
-    props: { company: { props: { name: { dictionary: defineDictionary(["Acme"]) } } } },
+    props: { company: { props: { name: Dictionary.of(["Acme"]) } } },
   });
-  isArray.of(isString).generate({ dictionary: defineDictionary(["a", "b"]) });
-  // A bare array's (no .of()) dictionary is a pool of whole canned arrays,
+  // A bare array's (no .of()) Dictionary is a pool of whole canned arrays,
   // not an element pool -- see interpret.test.ts for the runtime behavior.
-  isArray.generate({ dictionary: defineDictionary([[1, 2], [3, 4]]) });
+  // There is no per-element Dictionary shortcut at a `.of()` collection's own
+  // call site anymore -- bind one to the element guard's own
+  // defineGenerator() instead (see interpret.test.ts).
+  isArray.generate(Dictionary.of([[1, 2], [3, 4]]));
+
+  // A literal value is likewise accepted directly, everywhere a Dictionary
+  // is above.
+  isString.generate("pinned");
+  isTeam.generate({ props: { company: { props: { name: "Acme" } } } });
+  createTypeGuard({ flag: isBoolean }).generate({ props: { flag: true } });
+
+  // A bare zero-arg thunk is accepted directly too.
+  isString.generate(() => "computed");
 });
 
 /**
@@ -113,15 +122,20 @@ function _rejectedOptionShapes(): void {
   // @ts-expect-error - a string field takes length bounds, not a number's `int`
   isTeam.generate({ props: { company: { props: { name: { int: true } } } } });
 
-  // @ts-expect-error - a boolean field has no constraints, so only a deriver
+  // @ts-expect-error - a boolean field takes a literal/Dictionary/thunk or a
+  // deriver, not a constraints bag (it has none of its own)
   createTypeGuard({ flag: isBoolean }).generate({ props: { flag: { min: 1 } } });
 
   // @ts-expect-error - a Dictionary<number> can't back a string field
-  isString.generate({ dictionary: defineDictionary([1, 2, 3]) });
+  isString.generate(Dictionary.of([1, 2, 3]));
 
   // @ts-expect-error - a plain Dictionary<string> isn't a Dictionary<InternationalPhone>
   // (the brand is more than `string`), so it must be cast before it satisfies this guard
-  isInternationalPhone.generate({ dictionary: defineDictionary(["+15551234567"]) });
+  isInternationalPhone.generate(Dictionary.of(["+15551234567"]));
+
+  // @ts-expect-error - there is no per-element dictionary key on a `.of()`
+  // collection's own call anymore -- bind one to the element guard instead
+  isArray.of(isString).generate({ dictionary: Dictionary.of(["a", "b"]) });
 }
 
 /**

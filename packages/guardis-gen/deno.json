@@ -5,6 +5,7 @@
   "description": "Data generation plugin for Guardis type guards.",
   "exports": {
     ".": "./mod.ts",
+    "./dictionaries": "./src/dictionaries/index.ts",
     "./modules/primitives": "./src/modules/primitives.ts",
     "./modules/strings": "./src/modules/strings.ts",
     "./modules/http": "./src/modules/http.ts",

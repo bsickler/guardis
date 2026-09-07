@@ -1,69 +1,49 @@
 /**
- * dictionary.ts - `Dictionary<T>` is the minimum contract `.generate()`/
- * `.defineGenerator()` need to draw a sample value from a named pool
- * instead of blind random generation: hand back one representative value
- * of type `T`. `defineDictionary()` builds the common case (a flat,
- * deduplicated pool); `dictionaryOf()` wraps a one-off expression; a
- * dictionary that's more than either implements `pick()` itself (see
- * `dictionaries/people/names.ts`, `dictionaries/location/countries.ts`).
- * @module
+ * dictionary.ts - Wraps a pool of realistic sample values (names, cities,
+ * TLDs, ...) behind a uniform `.pick()` so generators can draw from curated
+ * data instead of synthesizing it. Dictionaries can nest child dictionaries
+ * via `withChildren` for grouped/namespaced lookups (e.g. `people.first`).
  */
+
 import { pick } from "./utilities/rng.ts";
 
-/** Anything that can draw one representative value of type `T`. The whole contract. */
-export interface Dictionary<T> {
-  pick(): T;
-}
+// deno-lint-ignore ban-types
+type Simplify<T> = { [K in keyof T]: T[K] } & {};
 
-/**
- * Wraps a plain function as a `Dictionary<T>` -- for a dictionary that's just one expression (a
- * composition, a projection off another dictionary, a delegation), without writing out
- * `{ pick: () => ... }` by hand at every call site.
- */
-export function dictionaryOf<T>(pick: () => T): Dictionary<T> {
-  return { pick };
-}
-
-/** The shape `defineDictionary()` returns: a `Dictionary<T>` plus membership/size/iteration. */
-export type DictionarySet<T> = Dictionary<T> & {
-  readonly size: number;
-  has(value: T): boolean;
-  [Symbol.iterator](): IterableIterator<T>;
-};
-
-/**
- * Builds a `DictionarySet` -- a validated, deduplicated pool backed by a
- * native Set (duplicate entries in the source collapse for free), rejecting
- * an empty pool up front rather than letting `pick()` misbehave on one
- * later. The array form is cached once here, rather than re-spread out of
- * the Set on every `pick()` call, since a large, real-world dictionary
- * shouldn't get slower to draw from than a small one.
- */
-export function defineDictionary<T>(pool: Iterable<T>): DictionarySet<T> {
-  const values = pool instanceof Set ? pool : new Set(pool);
-  if (values.size === 0) {
-    throw new TypeError("Dictionary: pool must contain at least one value.");
+export class Dictionary<T1> {
+  constructor(pick: () => T1) {
+    this.pick = pick;
   }
-  const cached = [...values];
 
-  return {
-    pick: () => pick(cached),
-    get size() {
-      return values.size;
-    },
-    has: (value: T) => values.has(value),
-    [Symbol.iterator]: () => values[Symbol.iterator](),
-  };
-}
+  /** Draws one value from the dictionary. */
+  public pick: () => T1;
 
-/**
- * A `.defineGenerator()`-ready function that always draws from `dictionary`
- * -- any `Dictionary<T>`. Composable at any nesting depth, like any
- * function passed to `.defineGenerator()` -- a call-time
- * `.generate({ dictionary })` override still wins over this, handled
- * generically by `interpret.ts` before a CustomSpec is ever reached, so
- * this only needs to cover the "nothing overridden" default case.
- */
-export function fromDictionary<T>(dictionary: Dictionary<T>): () => T {
-  return () => dictionary.pick();
+  /** Builds a dictionary that picks uniformly at random from `data`. */
+  public static of<T1>(data: readonly T1[]): Dictionary<T1> {
+    if (!Array.isArray(data)) throw new Error("Invalid dictionary data. Requires an array");
+
+    return new Dictionary(() => pick(data));
+  }
+
+  /** Builds a dictionary from a custom picker function. */
+  public static from<T1>(picker: () => T1): Dictionary<T1> {
+    return new Dictionary(picker);
+  }
+
+  /** Attaches named child dictionaries onto `dict`, so `dict.child.pick()` works alongside `dict.pick()`. */
+  public static withChildren<
+    D extends Dictionary<unknown>,
+    C extends Record<string, Dictionary<unknown>>,
+  >(
+    dict: D,
+    children: C,
+  ): Simplify<{ pick: D["pick"] } & { [K in keyof typeof children]: typeof children[K] }> {
+    if ('pick' in children) {
+      throw new Error('The "pick" property is reserved in Dictionaries but present in the record of children provided to withChildren()');
+    }
+
+    const ret = Object.assign(dict, children);
+
+    return ret;
+  }
 }

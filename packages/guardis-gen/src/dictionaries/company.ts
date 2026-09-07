@@ -1,107 +1,38 @@
 /**
- * dictionaries/company.ts - A curated starter set of company names across
- * eight business-entity conventions (`brand`, `llc`, `corporation`,
- * `medicalPractice`, `lawFirm`, `investmentFirm`, `bank`, `restaurant`),
- * since an LLC, a corporation, and a medical practice are named by
+ * dictionaries/company.ts - A curated starter set of company Names across
+ * eight business-entity conventions (`Brand`, `Llc`, `Corporation`,
+ * `MedicalPractice`, `LawFirm`, `InvestmentFirm`, `Bank`, `Restaurant`),
+ * since an LLC, a corporation, and a medical practice are Named by
  * genuinely different real-world conventions. Each type is a
- * `{ name: Dictionary<string>, jobTitle: Dictionary<string> }` object
- * (`CompanyType`), built with `dictionaryOf()`; `jobTitle` is its own pool
- * rather than a field projected off `name`'s pick, since a company type
- * doesn't have just "one" job title.
+ * `{ Name: Dictionary<string>, Title: Dictionary<string> }` object
+ * (`CompanyType`), built with `Dictionary.of()`/`Dictionary.from()`;
+ * `Title` is its own pool rather than a field projected off `Name`'s
+ * pick, since a company type doesn't have just "one" job title.
  *
- * `brand`/`bank`/`restaurant` use well-known parody company names (e.g.
+ * `Brand`/`Bank`/`Restaurant` use well-known parody company Names (e.g.
  * "Wayne Enterprises", "Krusty Burger"), since real businesses of those
- * kinds are usually known by name, not a naming pattern. `lawFirm`/
- * `investmentFirm`/`medicalPractice` are the opposite -- real ones follow a
- * pattern (one or two surnames plus a suffix, e.g. "Ramirez & Chen LLP") --
- * so they compose from `dictionaries.people.names`'s surnames instead of
- * duplicating a surname list here.
+ * kinds are usually known by Name, not a naming pattern. `LawFirm`/
+ * `InvestmentFirm`/`MedicalPractice` are the opposite -- real ones follow a
+ * pattern (one or two surNames plus a suffix, e.g. "Ramirez & Chen LLP") --
+ * so they compose from `Dictionaries.People.Names`'s surNames instead of
+ * duplicating a surName list here.
  * @module
  */
-import { type Dictionary, dictionaryOf } from "../dictionary.ts";
+import { Dictionary } from "../dictionary.ts";
 import { pick, randomBoolean } from "../utilities/rng.ts";
-import { names } from "./people/names.ts";
+import { Names } from "./people/names.ts";
 
-/** One business-entity type's name pool and job-title pool -- JSR's public-API check needs this
+/** One business-entity type's Name pool and job-title pool -- JSR's public-API check needs this
  * spelled out explicitly, since it can't infer a class field's type through a function call
- * (`dictionaryOf(...)`) the way a full TS checker can. */
+ * (`Dictionary.of(...)`/`Dictionary.from(...)`) the way a full TS checker can. */
 type CompanyType = {
-  readonly name: Dictionary<string>;
-  readonly jobTitle: Dictionary<string>;
+  readonly Name: Dictionary<string>;
+  readonly Title: Dictionary<string>;
 };
-
-class Companies {
-  readonly brand: CompanyType = {
-    name: dictionaryOf(() => pick(pools.brand.names)),
-    jobTitle: dictionaryOf(() => pick(pools.brand.jobTitles)),
-  };
-
-  readonly llc: CompanyType = {
-    name: dictionaryOf(() => `${pick(pools.llc.roots)} LLC`),
-    jobTitle: dictionaryOf(() => pick(pools.llc.jobTitles)),
-  };
-
-  readonly corporation: CompanyType = {
-    name: dictionaryOf(() =>
-      `${pick(pools.corporation.roots)} ${pick(pools.corporation.suffixes)}`
-    ),
-    jobTitle: dictionaryOf(() => pick(pools.corporation.jobTitles)),
-  };
-
-  readonly medicalPractice: CompanyType = {
-    name: dictionaryOf(() => `${names.last.pick()} ${pick(pools.medicalPractice.suffixes)}`),
-    jobTitle: dictionaryOf(() => pick(pools.medicalPractice.jobTitles)),
-  };
-
-  readonly lawFirm: CompanyType = {
-    name: dictionaryOf(() =>
-      `${names.last.pick()} & ${names.last.pick()} ${pick(pools.lawFirm.suffixes)}`
-    ),
-    jobTitle: dictionaryOf(() => pick(pools.lawFirm.jobTitles)),
-  };
-
-  readonly investmentFirm: CompanyType = {
-    name: dictionaryOf(() =>
-      randomBoolean(0.5)
-        ? `${names.last.pick()} ${pick(pools.investmentFirm.suffixes)}`
-        : `${names.last.pick()} & ${names.last.pick()} ${pick(pools.investmentFirm.suffixes)}`
-    ),
-    jobTitle: dictionaryOf(() => pick(pools.investmentFirm.jobTitles)),
-  };
-
-  readonly bank: CompanyType = {
-    name: dictionaryOf(() => pick(pools.bank.names)),
-    jobTitle: dictionaryOf(() => pick(pools.bank.jobTitles)),
-  };
-
-  readonly restaurant: CompanyType = {
-    name: dictionaryOf(() => pick(pools.restaurant.names)),
-    jobTitle: dictionaryOf(() => pick(pools.restaurant.jobTitles)),
-  };
-
-  /** A company name, mixing every business-entity type across calls, on purpose -- mimics a real, varied dataset of company names rather than one uniform shape. */
-  readonly name: Dictionary<string> = dictionaryOf(() => pick(this.categories).name.pick());
-
-  /** A job title, drawn from whichever business-entity type is picked -- independent of `name`'s own pick, the same way `medicalPractice.jobTitle` is independent of `medicalPractice.name`. */
-  readonly jobTitle: Dictionary<string> = dictionaryOf(() => pick(this.categories).jobTitle.pick());
-
-  private get categories() {
-    return [
-      this.brand,
-      this.llc,
-      this.corporation,
-      this.medicalPractice,
-      this.lawFirm,
-      this.investmentFirm,
-      this.bank,
-      this.restaurant,
-    ];
-  }
-}
 
 const pools = {
   brand: {
-    names: [
+    Names: [
       "Acme",
       "Globex",
       "Initech",
@@ -117,7 +48,7 @@ const pools = {
       "Aperture Science",
       "Tyrell Corporation",
     ],
-    jobTitles: [
+    Titles: [
       "Software Engineer",
       "Product Manager",
       "Research Scientist",
@@ -143,7 +74,7 @@ const pools = {
       "Fieldstone Advisors",
       "Harborview Property Management",
     ],
-    jobTitles: [
+    Titles: [
       "Managing Partner",
       "Consultant",
       "Operations Manager",
@@ -166,7 +97,7 @@ const pools = {
       "Sterling Group",
     ],
     suffixes: ["Inc.", "Corp.", "Corporation", "Incorporated"],
-    jobTitles: [
+    Titles: [
       "Chief Executive Officer",
       "Chief Financial Officer",
       "Plant Manager",
@@ -189,7 +120,7 @@ const pools = {
       "Orthopedics",
       "Cardiology Associates",
     ],
-    jobTitles: [
+    Titles: [
       "Physician",
       "Nurse Practitioner",
       "Registered Nurse",
@@ -201,7 +132,7 @@ const pools = {
   },
   lawFirm: {
     suffixes: ["LLP", "Law Group", "Attorneys at Law"],
-    jobTitles: [
+    Titles: [
       "Partner",
       "Associate Attorney",
       "Paralegal",
@@ -221,7 +152,7 @@ const pools = {
       "Advisors",
       "Management",
     ],
-    jobTitles: [
+    Titles: [
       "Portfolio Manager",
       "Financial Analyst",
       "Managing Director",
@@ -231,7 +162,7 @@ const pools = {
     ],
   },
   bank: {
-    names: [
+    Names: [
       "Gringotts Wizarding Bank",
       "Bailey Building and Loan Association",
       "Bank of Springfield",
@@ -242,7 +173,7 @@ const pools = {
       "Liberty Harbor Bank",
       "Cornerstone Federal Credit Union",
     ],
-    jobTitles: [
+    Titles: [
       "Bank Teller",
       "Loan Officer",
       "Branch Manager",
@@ -252,7 +183,7 @@ const pools = {
     ],
   },
   restaurant: {
-    names: [
+    Names: [
       "Krusty Burger",
       "Los Pollos Hermanos",
       "Big Kahuna Burger",
@@ -264,7 +195,7 @@ const pools = {
       "Jack Rabbit Slim's",
       "Arnold's Drive-In",
     ],
-    jobTitles: [
+    Titles: [
       "Line Cook",
       "Server",
       "Sous Chef",
@@ -276,4 +207,73 @@ const pools = {
   },
 } as const;
 
-export const companies: Companies = new Companies();
+export const Companies = new class {
+  readonly Brand: CompanyType = {
+    Name: Dictionary.of(pools.brand.Names),
+    Title: Dictionary.of(pools.brand.Titles),
+  };
+
+  readonly Llc: CompanyType = {
+    Name: Dictionary.from(() => `${pick(pools.llc.roots)} LLC`),
+    Title: Dictionary.of(pools.llc.Titles),
+  };
+
+  readonly Corporation: CompanyType = {
+    Name: Dictionary.from(() =>
+      `${pick(pools.corporation.roots)} ${pick(pools.corporation.suffixes)}`
+    ),
+    Title: Dictionary.of(pools.corporation.Titles),
+  };
+
+  readonly MedicalPractice: CompanyType = {
+    Name: Dictionary.from(() => `${Names.Last.pick()} ${pick(pools.medicalPractice.suffixes)}`),
+    Title: Dictionary.of(pools.medicalPractice.Titles),
+  };
+
+  readonly LawFirm: CompanyType = {
+    Name: Dictionary.from(() =>
+      `${Names.Last.pick()} & ${Names.Last.pick()} ${pick(pools.lawFirm.suffixes)}`
+    ),
+    Title: Dictionary.of(pools.lawFirm.Titles),
+  };
+
+  readonly InvestmentFirm: CompanyType = {
+    Name: Dictionary.from(() =>
+      randomBoolean(0.5)
+        ? `${Names.Last.pick()} ${pick(pools.investmentFirm.suffixes)}`
+        : `${Names.Last.pick()} & ${Names.Last.pick()} ${pick(pools.investmentFirm.suffixes)}`
+    ),
+    Title: Dictionary.of(pools.investmentFirm.Titles),
+  };
+
+  readonly Bank: CompanyType = {
+    Name: Dictionary.of(pools.bank.Names),
+    Title: Dictionary.of(pools.bank.Titles),
+  };
+
+  readonly Restaurant: CompanyType = {
+    Name: Dictionary.of(pools.restaurant.Names),
+    Title: Dictionary.of(pools.restaurant.Titles),
+  };
+
+  /** A company Name, mixing every business-entity type across calls, on purpose -- mimics a real, varied dataset of company Names rather than one uniform shape. */
+  readonly Name: Dictionary<string> = Dictionary.from(() => pick(this.categories).Name.pick());
+
+  /** A job title, drawn from whichever business-entity type is picked -- independent of `Name`'s own pick, the same way `MedicalPractice.Title` is independent of `MedicalPractice.Name`. */
+  readonly Title: Dictionary<string> = Dictionary.from(() =>
+    pick(this.categories).Title.pick()
+  );
+
+  private get categories() {
+    return [
+      this.Brand,
+      this.Llc,
+      this.Corporation,
+      this.MedicalPractice,
+      this.LawFirm,
+      this.InvestmentFirm,
+      this.Bank,
+      this.Restaurant,
+    ];
+  }
+}();

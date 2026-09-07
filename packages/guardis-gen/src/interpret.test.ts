@@ -25,7 +25,7 @@ import "./modules/primitives.ts";
 import "./modules/collections.ts";
 import "./modules/strings.ts";
 
-import { assert, assertEquals, assertThrows } from "@std/assert";
+import { assert, assertEquals, assertNotEquals, assertThrows } from "@std/assert";
 import {
   createTypeGuard,
   isArray,
@@ -37,7 +37,7 @@ import {
   isString,
 } from "@spudlabs/guardis";
 import { isInternationalPhone } from "@spudlabs/guardis/strings-branded";
-import { defineDictionary, gen, next, seed } from "../mod.ts";
+import { Dictionary, gen, next, seed } from "../mod.ts";
 import { interpret } from "./interpret.ts";
 import type { CustomSpec, GenContext } from "./spec.ts";
 import { registerGen, resolveSpec, specRef } from "./spec.ts";
@@ -238,24 +238,22 @@ Deno.test("interpret() collection kinds", async (t) => {
 
 Deno.test("interpret() object kind", async (t) => {
   await t.step(
-    "a literal (non-function) option forwards to that field's own interpret() call",
+    "a literal value pins a field directly, bypassing its own registered generator",
     () => {
       const isCode = createTypeGuard(
         "code",
         (v: unknown): string | null => typeof v === "string" ? v : null,
       );
-      isCode.defineGenerator((opt: unknown) => opt as string);
+      // Deliberately returns something OTHER than the literal below, so the
+      // assertion actually proves the literal wins over this generator,
+      // rather than an identity function masking the two apart.
+      isCode.defineGenerator(() => "GENERATED");
       const isRow = createTypeGuard({ code: isCode });
-      // isCode is a plain TypeGuard<string>, not a Brand -- so NestedOptionsFor
-      // types `props.code` as LengthConstraints (the generic string branch),
-      // not as an arbitrary passthrough value. Forwarding a raw literal to a
-      // field's own generator is real CustomSpec.generate(options) behavior
-      // (untyped by design -- see CustomSpec in spec.ts), just not one the
-      // typed `props` surface can express -- same untyped dispatch as
-      // isNumber's .defineGenerator cast in object.test.ts.
-      const result = (isRow.generate as (options?: unknown) => { code: string })({
-        props: { code: "LITERAL" },
-      });
+      // No cast needed: `props.code`'s type is now
+      // `GeneratorConstraint<string> | ...`, which includes a bare `string`
+      // literal directly -- this is real `GenerateOptionsFor`/`RelationalOptions`
+      // typed surface, not an untyped dispatch.
+      const result = isRow.generate({ props: { code: "LITERAL" } });
       assertEquals(result.code, "LITERAL");
     },
   );
@@ -936,25 +934,25 @@ Deno.test("interpret() unwrapProps recurses one level into arrays/plain objects 
   });
 });
 
-Deno.test("dictionary short-circuit", async (t) => {
+Deno.test("Dictionary/literal/function short-circuit", async (t) => {
   await t.step(
     "a string field with no registered generator draws from a call-time dictionary",
     () => {
       const pool = ["Ada", "Grace", "Alan"];
-      const value = isString.generate({ dictionary: defineDictionary(pool) });
+      const value = isString.generate(Dictionary.of(pool));
       assert(pool.includes(value), `expected ${value} to be in the pool`);
     },
   );
 
   await t.step("a number field draws from a call-time dictionary", () => {
     const pool = [1, 2, 3];
-    const value = isNumber.generate({ dictionary: defineDictionary(pool) });
+    const value = isNumber.generate(Dictionary.of(pool));
     assert(pool.includes(value), `expected ${value} to be in the pool`);
   });
 
   await t.step("a date field draws from a call-time dictionary", () => {
     const pool = [new Date(2020, 0, 1), new Date(2021, 0, 1)];
-    const value = isDate.generate({ dictionary: defineDictionary(pool) });
+    const value = isDate.generate(Dictionary.of(pool));
     assert(pool.includes(value), `expected ${value} to be in the pool`);
   });
 
@@ -963,7 +961,7 @@ Deno.test("dictionary short-circuit", async (t) => {
     () => {
       const isThing = createTypeGuard({ id: isNumber, name: isString });
       const canned = { id: 42, name: "Canned" };
-      const value = isThing.generate({ dictionary: defineDictionary([canned]) });
+      const value = isThing.generate(Dictionary.of([canned]));
       assertEquals(value, canned);
     },
   );
@@ -973,17 +971,17 @@ Deno.test("dictionary short-circuit", async (t) => {
     // Dictionary<InternationalPhone> is expected (the brand isn't just
     // `string`) -- see spec.types.test.ts for that as a pinned type check.
     // This step is only exercising the runtime short-circuit.
-    const value = (isInternationalPhone.generate as (options?: unknown) => string)({
-      dictionary: defineDictionary(["+15551234567"]),
-    });
+    const value = (isInternationalPhone.generate as (options?: unknown) => string)(
+      Dictionary.of(["+15551234567"]),
+    );
     assertEquals(value, "+15551234567");
   });
 
-  await t.step("a per-field props.field.dictionary override scopes to just that field", () => {
+  await t.step("a per-field dictionary, handed directly, scopes to just that field", () => {
     const isUser = createTypeGuard({ name: isString, note: isString });
 
-    const first = isUser.generate({ props: { name: { dictionary: defineDictionary(["Ada"]) } } });
-    const second = isUser.generate({ props: { name: { dictionary: defineDictionary(["Ada"]) } } });
+    const first = isUser.generate({ props: { name: Dictionary.of(["Ada"]) } });
+    const second = isUser.generate({ props: { name: Dictionary.of(["Ada"]) } });
 
     assertEquals(first.name, "Ada");
     assertEquals(second.name, "Ada");
@@ -992,22 +990,31 @@ Deno.test("dictionary short-circuit", async (t) => {
     assert(first.note !== second.note, "expected the unaffected sibling field to vary");
   });
 
-  await t.step("an array's own dictionary option supplies every element", () => {
-    const pool = ["x", "y"];
-    const values = isArray.of(isString).generate({
-      dictionary: defineDictionary(pool),
-      ofLength: 10,
-    });
-    assertEquals(values.length, 10);
-    for (const value of values) assert(pool.includes(value), `expected ${value} to be in the pool`);
-  });
+  await t.step(
+    "a .of() collection's per-element dictionary now binds to the ELEMENT guard, not the call",
+    () => {
+      // There's no more per-call element dictionary (see modules/primitives.ts's
+      // ArraySizeGuard doc) -- a dedicated element guard's own
+      // defineGenerator() is how a `.of()` collection draws every element
+      // from one pool while still taking its own `ofLength`.
+      const isPooledColor = createTypeGuard(
+        "color",
+        (v: unknown): string | null => typeof v === "string" ? v : null,
+      );
+      const pool = ["x", "y"];
+      isPooledColor.defineGenerator(() => Dictionary.of(pool).pick());
+      const values = isArray.of(isPooledColor).generate({ ofLength: 10 });
+      assertEquals(values.length, 10);
+      for (const value of values) assert(pool.includes(value), `expected ${value} to be in the pool`);
+    },
+  );
 
   await t.step(
-    "a BARE array's (no .of()) dictionary option picks a whole canned array, not per-element",
+    "a BARE array's (no .of()) dictionary, handed directly, picks a whole canned array, not per-element",
     () => {
       const pool = [[1, 2, 3], [4, 5]];
       for (let i = 0; i < 20; i++) {
-        const value = isArray.generate({ dictionary: defineDictionary(pool) });
+        const value = isArray.generate(Dictionary.of(pool));
         assert(
           pool.some((canned) => JSON.stringify(canned) === JSON.stringify(value)),
           `expected ${
@@ -1023,7 +1030,7 @@ Deno.test("dictionary short-circuit", async (t) => {
     const pool = ["Ada", "Grace"];
     const seen = new Set<boolean>();
     for (let i = 0; i < 100; i++) {
-      const user = isUser.generate({ props: { name: { dictionary: defineDictionary(pool) } } });
+      const user = isUser.generate({ props: { name: Dictionary.of(pool) } });
       seen.add(user.name === undefined);
       if (user.name !== undefined) assert(pool.includes(user.name));
     }
@@ -1034,19 +1041,84 @@ Deno.test("dictionary short-circuit", async (t) => {
     assert(seen.has(false), "never saw a dictionary value across 100 picks");
   });
 
-  await t.step("a Set's own dictionary option supplies every element", () => {
-    const pool = ["x", "y", "z"];
-    const values = isSet.of(isString).generate({ dictionary: defineDictionary(pool), ofLength: 3 });
-    for (const value of values) assert(pool.includes(value), `expected ${value} to be in the pool`);
-  });
-
   await t.step("a call-time dictionary overrides an already-registered defineGenerator(fn)", () => {
     const isCode = createTypeGuard("code", (v) => typeof v === "string" ? v : null);
     isCode.defineGenerator(() => "REGISTERED");
 
-    const result = (isCode.generate as (options?: unknown) => string)({
-      dictionary: defineDictionary(["OVERRIDDEN"]),
-    });
+    const result = (isCode.generate as (options?: unknown) => string)(
+      Dictionary.of(["OVERRIDDEN"]),
+    );
     assertEquals(result, "OVERRIDDEN");
   });
+
+  await t.step("a literal value pins a top-level call directly, for every primitive kind", () => {
+    assertEquals(isString.generate("pinned"), "pinned");
+    assertEquals(isNumber.generate(7), 7);
+    // isBoolean has no typed top-level generate() overload at all (there's
+    // nothing to constrain, and modules/primitives.ts never added one) --
+    // same untyped dispatch as isNumber's .defineGenerator cast in
+    // object.test.ts. The runtime short-circuit still applies regardless.
+    assertEquals((isBoolean.generate as (options?: unknown) => boolean)(true), true);
+    const when = new Date(2020, 0, 1);
+    assertEquals(isDate.generate(when), when);
+    assertEquals(isArray.generate(["a", "b"]), ["a", "b"]);
+  });
+
+  await t.step("a literal object pins a whole object-guard call, bypassing its own fields", () => {
+    const isThing = createTypeGuard({ id: isNumber, name: isString });
+    const literal = { id: 1, name: "Fixed" };
+    assertEquals(isThing.generate(literal), literal);
+  });
+
+  await t.step("a bare zero-arg function pins a top-level call, ignoring normal generation", () => {
+    assertEquals(isString.generate(() => "computed"), "computed");
+  });
+
+  await t.step(
+    "a literal value on a branded/custom guard bypasses its own registered generator " +
+      "even when that generator destructures its options",
+    () => {
+      // Mirrors modules/strings.ts's real isEmail generator shape: a
+      // registered generator that destructures an OPTIONS object. If a
+      // literal short-circuit for "custom" kind specs used typeof/shape
+      // guessing instead of asking the guard itself, this exact shape would
+      // silently feed the literal string into `{ prefix, domain, tld } = ...`
+      // (all undefined) and fabricate a random value instead of honoring it.
+      type EmailyConstraints = { prefix?: string; domain?: string };
+      const isEmaily = createTypeGuard(
+        "emaily",
+        (v: unknown): string | null => typeof v === "string" && v.includes("@") ? v : null,
+      );
+      isEmaily.defineGenerator(({ prefix, domain }: EmailyConstraints = {}) => {
+        return `${prefix ?? "auto"}@${domain ?? "auto.test"}`;
+      });
+      const result = (isEmaily.generate as (options?: unknown) => string)("pinned@example.com");
+      assertEquals(result, "pinned@example.com");
+    },
+  );
+
+  await t.step(
+    "a literal value still pins a field literally named 'props', not the props bag",
+    () => {
+      // isPropsBagShape's disambiguation: `{ props: "PINNED" }` has "props" as
+      // its only key, but the VALUE there is a string, not a per-field map --
+      // so this is the literal `{ props: string }`, not a bag saying "field
+      // 'props' gets some nested option". Before this was fixed, `"PINNED"`
+      // was silently discarded (extractProps only recognizes an object) and
+      // the field generated a random string instead.
+      const isThing = createTypeGuard({ props: isString });
+      assertEquals(isThing.generate({ props: "PINNED" }), { props: "PINNED" });
+    },
+  );
+
+  await t.step(
+    "a .of() collection has no whole-value literal shortcut, even via an untyped call",
+    () => {
+      // Unlike a bare array, `spec.element` is set here -- the literal-array
+      // short-circuit must not fire just because `spec.kind === "array"`.
+      const literal = ["only", "these", "three"];
+      const value = (isArray.of(isString).generate as (options?: unknown) => unknown)(literal);
+      assertNotEquals(value, literal);
+    },
+  );
 });

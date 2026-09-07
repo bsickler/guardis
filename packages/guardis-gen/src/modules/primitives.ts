@@ -12,8 +12,8 @@
 import { isArray, isBoolean, isDate, isNumber, isString, type TypeGuard } from "@spudlabs/guardis";
 import type {
   DateConstraints,
-  DictionaryOption,
   ElementOptions,
+  GeneratorConstraint,
   LengthConstraints,
   NumberConstraints,
   Spec,
@@ -25,21 +25,24 @@ import { type ChainMethodGuard, patchChainMethods } from "../utilities/chain.ts"
 
 declare module "@spudlabs/guardis" {
   interface StringTypeGuard {
-    /** Overrides this call's length bounds/dictionary; both ends stay optional. */
-    generate(options?: LengthConstraints & DictionaryOption<string>): string;
+    /** Overrides this call's length bounds, or hands back a literal/`Dictionary`/thunk directly. */
+    generate(options?: LengthConstraints | GeneratorConstraint<string>): string;
   }
   interface NumberTypeGuard {
-    /** Overrides this call's numeric bounds/int-ness/dictionary; all optional. */
-    generate(options?: NumberConstraints & DictionaryOption<number>): number;
+    /** Overrides this call's numeric bounds/int-ness, or a literal/`Dictionary`/thunk directly. */
+    generate(options?: NumberConstraints | GeneratorConstraint<number>): number;
   }
   interface DateTypeGuard {
-    /** Overrides this call's gte/lte bounds/dictionary; both ends stay optional. */
-    generate(options?: DateConstraints & DictionaryOption<Date>): Date;
+    /** Overrides this call's gte/lte bounds, or a literal/`Dictionary`/thunk directly. */
+    generate(options?: DateConstraints | GeneratorConstraint<Date>): Date;
   }
   interface ArrayTypeGuard {
-    /** Overrides this call's length bounds/dictionary; both ends stay optional. A bare
-     * isArray has no element type, so there are no element options to pass. */
-    generate(options?: LengthConstraints & DictionaryOption<unknown[]>): unknown[];
+    /**
+     * Overrides this call's length bounds, or hands back a literal/`Dictionary`/thunk directly
+     * for the WHOLE array -- a bare isArray has no element type, so there are no element
+     * options to pass.
+     */
+    generate(options?: LengthConstraints | GeneratorConstraint<unknown[]>): unknown[];
   }
   // `.of()` returns ArraySizeGuard<T>, not ArrayTypeGuard (core keeps `.of()`
   // terminal -- see collections.types.ts's doc on the same restriction for
@@ -52,9 +55,9 @@ declare module "@spudlabs/guardis" {
      * Overrides this call's length bounds; both ends stay optional. Anything
      * beyond the size keys is forwarded to each element -- so an array of
      * objects takes `props` here, and its derive functions see the object
-     * that owns the array as `ctx.parent`. A `dictionary` here is the
-     * ELEMENT's (via `ElementOptions<T>`, e.g. `Dictionary<T>`), not a
-     * pool of whole arrays -- there's no separate option for that.
+     * that owns the array as `ctx.parent`. There's no whole-array or
+     * per-element `Dictionary`/literal shortcut here -- bind one to the
+     * ELEMENT guard's own `.defineGenerator()` instead.
      */
     generate(options?: LengthConstraints & ElementOptions<T>): T[];
   }

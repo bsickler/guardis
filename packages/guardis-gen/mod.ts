@@ -15,17 +15,16 @@ import { tuple } from "./src/tuple.ts";
 
 export type {
   DateConstraints,
-  DictionaryOption,
   GenContext,
+  GeneratorConstraint,
   GeneratorOptionsRegistry,
   LengthConstraints,
   NumberConstraints,
   Spec,
 } from "./src/spec.ts";
 export { registerGen, resolveSpec } from "./src/spec.ts";
-export type { Dictionary, DictionarySet } from "./src/dictionary.ts";
-export { defineDictionary, dictionaryOf, fromDictionary } from "./src/dictionary.ts";
-export { dictionaries } from "./src/dictionaries/index.ts";
+export { Dictionary } from "./src/dictionary.ts";
+export { Dictionaries } from "./src/dictionaries/index.ts";
 export { next, pick, randomBoolean, randomInt, seed } from "./src/utilities/rng.ts";
 
 /** Namespace for guard constructors that also derive a generation spec. */

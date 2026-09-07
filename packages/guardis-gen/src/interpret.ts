@@ -21,8 +21,8 @@ import {
   type SpecSource,
   unresolvedSpec,
 } from "./spec.ts";
-import type { Dictionary } from "./dictionary.ts";
-import { extractDictionary, extractProps, mergeOptions, residual } from "./options.ts";
+import { Dictionary } from "./dictionary.ts";
+import { extractProps, mergeOptions, residual } from "./options.ts";
 import { lazyRecord, type ResolvingEntry } from "./utilities/lazy-record.ts";
 import { randomDate, randomLength, randomNumber, randomString } from "./utilities/random.ts";
 import { pick, randomBoolean } from "./utilities/rng.ts";
@@ -241,6 +241,68 @@ function requiredSpec(source: SpecSource, context: string): Spec {
 }
 
 /**
+ * A structural options bag for an object-typed position has exactly one
+ * possible key now that `dictionary` is gone (`{ props?: ... }`), and that
+ * key's own value is always itself a per-field map (a plain object) -- so
+ * `{}`, or `{ props: <plain object> }`, reads as a bag; anything else
+ * (including `{ props: "a string" }`) is a literal value whose own field
+ * happens to be named `props`. The one residual ambiguity this can't
+ * resolve: a literal object whose `props` field is ITSELF plain-object-typed
+ * would still be misread as a bag.
+ */
+function isPropsBagShape(value: Record<string, unknown>): boolean {
+  const keys = Object.keys(value);
+  if (keys.length === 0) return true;
+  return keys.length === 1 && keys[0] === "props" &&
+    (value.props === undefined || isPlainObject(value.props));
+}
+
+/**
+ * Whether `options` is a value already usable as-is for `spec`'s position,
+ * rather than a structural constraints/props bag -- the other half of the
+ * function/`Dictionary` short-circuit above. Each kind has a JS type that
+ * can't also be a legal bag shape (a string/number/boolean/Date/Map/Set
+ * is never itself `{min, max, ...}`-shaped), except `"object"`, disambiguated
+ * by `isPropsBagShape`. `"array"` only takes a literal when it's a BARE
+ * array (`spec.element` unset) -- a `.of()` array has no whole-value
+ * shortcut (see modules/primitives.ts's `ArraySizeGuard` doc), and a plain
+ * `Array.isArray` check here can't otherwise tell the two apart, since they
+ * share the same spec kind. `"custom"` covers every branded/registry guard
+ * and any `.defineGenerator(fn)`-bound guard -- it can't be typeof/instanceof-
+ * sniffed generically, so it defers to the guard itself: a value that
+ * already satisfies it is treated as a pinned literal. `"union"`/`"optional"`
+ * are left alone entirely -- forwarded unchanged into their own re-entrant
+ * `interpret()` call, which re-runs this same check against the picked/inner
+ * spec.
+ */
+function isLiteralValue(spec: Spec, options: unknown): boolean {
+  switch (spec.kind) {
+    case "string":
+      return typeof options === "string";
+    case "number":
+      return typeof options === "number";
+    case "boolean":
+      return typeof options === "boolean";
+    case "date":
+      return options instanceof Date;
+    case "array":
+      return spec.element === undefined && Array.isArray(options);
+    case "tuple":
+      return Array.isArray(options);
+    case "map":
+      return options instanceof Map;
+    case "set":
+      return options instanceof Set;
+    case "object":
+      return isPlainObject(options) && !isPropsBagShape(options);
+    case "custom":
+      return spec.guard ? spec.guard(options) : false;
+    default:
+      return false;
+  }
+}
+
+/**
  * Interprets a resolved Spec into sample data. `options` overrides the spec's
  * registered constraints for this call; registered defaults are already
  * merged in by `attachGenerate` before the outermost call. `ctx` is the
@@ -265,32 +327,18 @@ export function interpret(
     );
   }
 
-  // An explicit dictionary always wins, even over a registered
-  // `defineGenerator(fn)` and (for an object-typed position) a sibling
-  // `props` -- same "call-time option overrides everything" rule every
-  // other option already follows. A picked value is never re-validated
-  // against the guard's own refinements (`.gt()`, `.min()`, a custom
-  // predicate) the way a normally-generated value isn't either -- only the
-  // TYPE match is enforced, at compile time (see README). Checked before the `generate`
-  // dispatch below so it applies uniformly to every non-collection,
-  // non-optional spec kind, including ones with no registered generator at
-  // all. A `.of()` array/map/set/tuple's own `dictionary` option is its
-  // ELEMENT's, not a "canned whole collection" -- there's no typed option
-  // for the latter (see spec.ts's DictionaryOption usage) -- so it's left
-  // for `residual()` to forward down to each element's own `interpret()`
-  // call instead. A BARE array (`spec.element` unset, no `.of()`) is the
-  // one array case that DOES have a typed whole-value option
-  // (`DictionaryOption<unknown[]>` in modules/primitives.ts), so it short-
-  // circuits here like any scalar. `optional` also isn't short-circuited
-  // here -- its own `randomBoolean()` coin flip has to run first, so the
-  // dictionary is forwarded, unconsumed, to the `case "optional"` branch
-  // below, which re-enters `interpret()` on the inner spec (hitting this
-  // same check again) only when the flip lands on "present".
-  const dictionary = extractDictionary(options) as Dictionary<unknown> | undefined;
-  const isElementDictionary = spec.kind === "map" || spec.kind === "set" ||
-    spec.kind === "tuple" || (spec.kind === "array" && spec.element !== undefined);
-  if (dictionary !== undefined && !isElementDictionary && spec.kind !== "optional") {
-    return dictionary.pick();
+  // A GeneratorConstraint always wins, even over a registered
+  // `defineGenerator(fn)` -- checked before the `generate` dispatch below,
+  // never re-validated against the guard (see README). `undefined` (no
+  // options given) is excluded, since a guard built from `.optional`
+  // legitimately accepts it, which would otherwise misread "nothing passed"
+  // as a pinned `undefined` and skip the registered generator (shared.test.ts's
+  // `.optional.defineGenerator(fn)` tests). `optional` defers this same check
+  // to its own re-entrant `interpret()` call, after its coin flip.
+  if (spec.kind !== "optional") {
+    if (typeof options === "function") return (options as () => unknown)();
+    if (options instanceof Dictionary) return options.pick();
+    if (options !== undefined && isLiteralValue(spec, options)) return options;
   }
 
   if ("generate" in spec) return spec.generate(options, ctx);

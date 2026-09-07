@@ -18,6 +18,14 @@ import type { Dictionary } from "./dictionary.ts";
 export interface GeneratorOptionsRegistry {}
 
 /**
+ * A value that can stand in directly for a generated value at any position:
+ * the literal value itself, a `Dictionary` to pick one from, or a zero-arg
+ * thunk that computes one. See `interpret.ts`'s function/`Dictionary`/literal
+ * short-circuit.
+ */
+export type GeneratorConstraint<T> = T | Dictionary<T> | (() => T);
+
+/**
  * The objects enclosing the value being generated -- a derive function's
  * second argument. `parent` is a live proxy, so reading a field off it
  * generates that field on demand, whatever order fields were declared in.
@@ -48,25 +56,18 @@ export type GenContext<P = Record<string, unknown> | undefined> = {
 };
 
 /**
- * A call-time or per-field override that draws a value from `dictionary`
- * instead of generating one normally -- see `interpret.ts`'s dictionary
- * short-circuit. Parameterized by the exact position's own type, so a
- * `Dictionary<string>` can't be handed to a `number` field, and a
- * `Dictionary<string>` can't be handed to a branded type like `UUID`
- * without going through validation first.
- */
-export type DictionaryOption<T> = { dictionary?: Dictionary<T> };
-
-/**
- * Per-property options: a derive function, or a nested options bag forwarded
- * to that field. A deriver's `ctx` belongs to the object it sits in, not to
- * its own field, so `ctx.parent` is the level above; `Parent` threads down as
- * `T1` to type it without a cast.
+ * Per-property options: a derive function, a `GeneratorConstraint` (a literal
+ * value, a `Dictionary`, or a zero-arg thunk -- see `interpret.ts`'s
+ * function/`Dictionary`/literal short-circuit), or a nested options bag
+ * forwarded to that field. A deriver's `ctx` belongs to the object it sits
+ * in, not to its own field, so `ctx.parent` is the level above; `Parent`
+ * threads down as `T1` to type it without a cast.
  */
 type RelationalOptions<T1, Parent = Record<string, unknown> | undefined> = T1 extends
   Record<string, unknown> ? {
     [K in keyof T1]?:
       | ((props: T1, ctx: GenContext<Parent>) => T1[K])
+      | GeneratorConstraint<T1[K]>
       | NestedOptionsFor<T1[K], T1>;
   }
   : never;
@@ -84,10 +85,10 @@ export type ElementOptions<T> = OrEmpty<NestedOptionsFor<T>>;
 
 export type NestedOptionsFor<T, Parent = Record<string, unknown> | undefined> = T extends
   Brand<unknown, string> ? GenerateOptionsFor<T>
-  : T extends string ? LengthConstraints & DictionaryOption<T>
-  : T extends number ? NumberConstraints & DictionaryOption<T>
+  : T extends string ? LengthConstraints
+  : T extends number ? NumberConstraints
   : T extends boolean ? never
-  : T extends Date ? DateConstraints & DictionaryOption<T>
+  : T extends Date ? DateConstraints
   : T extends readonly unknown[] ? LengthConstraints & OrEmpty<NestedOptionsFor<T[number], Parent>>
   : T extends Map<infer K, infer V> ?
       & LengthConstraints
@@ -95,22 +96,28 @@ export type NestedOptionsFor<T, Parent = Record<string, unknown> | undefined> = 
       & OrEmpty<NestedOptionsFor<V, Parent>>
   : T extends Set<infer E> ? LengthConstraints & OrEmpty<NestedOptionsFor<E, Parent>>
   : T extends Record<string, unknown>
-    ? { props?: RelationalOptions<T, Parent> } & DictionaryOption<T>
+    ? { props?: RelationalOptions<T, Parent> }
   : never;
 
 /**
  * Options for `TypeGuard<T1>.generate()`. The fallback is `never`, not
  * `unknown`, so it doesn't swallow the chain-interface overloads it is
  * intersected with; arrays stay on that branch for the same reason, since
- * modules/primitives.ts declares their overloads.
+ * modules/primitives.ts declares their overloads. Every branch also accepts a
+ * bare `GeneratorConstraint<T1>` -- a literal value, a `Dictionary<T1>`, or a
+ * zero-arg thunk -- as a whole-value alternative to the structural bag; see
+ * `interpret.ts`'s function/`Dictionary`/literal short-circuit.
  */
 export type GenerateOptionsFor<T1> = T1 extends Brand<unknown, infer B>
-  ? (B extends keyof GeneratorOptionsRegistry ? GeneratorOptionsRegistry[B] & DictionaryOption<T1>
+  ? (B extends keyof GeneratorOptionsRegistry ? GeneratorOptionsRegistry[B] | GeneratorConstraint<T1>
     : never)
   : T1 extends Map<infer K, infer V>
-    ? LengthConstraints & OrEmpty<NestedOptionsFor<K>> & OrEmpty<NestedOptionsFor<V>>
-  : T1 extends Set<infer E> ? LengthConstraints & OrEmpty<NestedOptionsFor<E>>
-  : T1 extends Record<string, unknown> ? { props?: RelationalOptions<T1> } & DictionaryOption<T1>
+    ? (LengthConstraints & OrEmpty<NestedOptionsFor<K>> & OrEmpty<NestedOptionsFor<V>>)
+      | GeneratorConstraint<T1>
+  : T1 extends Set<infer E>
+    ? (LengthConstraints & OrEmpty<NestedOptionsFor<E>>) | GeneratorConstraint<T1>
+  : T1 extends Record<string, unknown>
+    ? { props?: RelationalOptions<T1> } | GeneratorConstraint<T1>
   : never;
 
 /**
@@ -214,10 +221,19 @@ export type UnionSpec = { kind: "union"; branches: SpecSource[] };
  * `"generate" in spec` before the switch, so `kind` exists only to keep
  * `Spec` a discriminated union. Type safety comes from
  * `GenerateOptionsFor<T1>`, not from here.
+ *
+ * `guard`, when present, is what lets `interpret.ts` recognize a literal
+ * value passed as this position's options (a custom/branded type can't be
+ * typeof/instanceof-sniffed the way a primitive can, so "already satisfies
+ * its own guard" stands in for that check instead). Unset for a `CustomSpec`
+ * with no real guard behind it (`unresolvedSpec`'s throwing spec,
+ * `object.ts`'s shape-constant fixed spec) -- the literal short-circuit is
+ * simply skipped there.
  */
 export type CustomSpec = {
   kind: "custom";
   generate: (options?: unknown, ctx?: GenContext) => unknown;
+  guard?: TypeGuard<unknown>;
 };
 
 /** A generation descriptor for a single guard. */

@@ -6,25 +6,34 @@
  * @module
  */
 
+/** A `{}`/`Object.create(null)` object -- excludes Map/Set/Date/class instances. */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== "object") return false;
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+
 /**
  * Merges registered defaults under call-time options. Shallow, except
  * `props`, which merges one level deeper because it holds per-field options
  * -- otherwise overriding field B would discard a registered default for
- * field A. A non-object override wins outright over an object base.
+ * field A. Only attempted when BOTH sides are plain objects -- either side
+ * being a `GeneratorConstraint` (a literal value, a `Dictionary`, a function)
+ * wins outright instead, the same "non-object side wins" rule made symmetric.
+ * Spreading a `Dictionary` instance as if it were a plain bag would otherwise
+ * silently strip its `instanceof Dictionary`-ness (its `pick` method survives
+ * the spread as an ordinary property, but the short-circuit in interpret.ts
+ * that looks for `instanceof Dictionary` would no longer recognize it).
  */
 export function mergeOptions(base: unknown, override: unknown): unknown {
   if (override === undefined) return base;
-  if (base && typeof base === "object" && typeof override === "object") {
-    const merged = { ...base, ...override } as Record<string, unknown>;
-    if ("props" in base || (override !== null && "props" in override)) {
-      merged.props = mergeOptions(
-        (base as { props?: unknown }).props,
-        (override as { props?: unknown } | null)?.props,
-      );
-    }
-    return merged;
+  if (!isPlainObject(base) || !isPlainObject(override)) return override;
+
+  const merged = { ...base, ...override };
+  if ("props" in base || "props" in override) {
+    merged.props = mergeOptions(base.props, override.props);
   }
-  return override;
+  return merged;
 }
 
 /** Extracts the `props` sub-object from a `.generate()`-style options bag, if present. */
@@ -33,13 +42,6 @@ export function extractProps(options: unknown): Record<string, unknown> {
     ? (options as { props?: unknown }).props
     : undefined;
   return (props && typeof props === "object") ? props as Record<string, unknown> : {};
-}
-
-/** Extracts the `dictionary` entry from a `.generate()`-style options bag, if present. */
-export function extractDictionary(options: unknown): unknown {
-  return (options && typeof options === "object")
-    ? (options as { dictionary?: unknown }).dictionary
-    : undefined;
 }
 
 /**

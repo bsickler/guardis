@@ -4,9 +4,10 @@
  * modules/strings.ts's `isEmail` generator.
  * @module
  */
-import { defineDictionary, type DictionarySet } from "../../dictionary.ts";
 
-export const domainWords: DictionarySet<string> = defineDictionary([
+import { Dictionary } from "../../dictionary.ts";
+
+export const DomainWords: Dictionary<string> = Dictionary.of([
   "example",
   "acme",
   "globex",

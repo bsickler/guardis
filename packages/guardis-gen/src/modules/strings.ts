@@ -35,6 +35,9 @@ import { attachToVariants, ensureGenerateCapability } from "../shared.ts";
  */
 export type PhoneConstraints = { countryCode?: string };
 
+/** Call-time options for `isEmail.generate()`: override any part, default the rest. */
+export type EmailConstraints = { prefix?: string; domain?: string; tld?: string };
+
 /**
  * Registers `PhoneConstraints` for the `InternationalPhone` brand, so
  * `.generate(options)` is typed at every call site for anyone importing the
@@ -49,6 +52,7 @@ export type PhoneConstraints = { countryCode?: string };
 declare module "@spudlabs/guardis-gen" {
   interface GeneratorOptionsRegistry {
     InternationalPhone: PhoneConstraints;
+    Email: EmailConstraints;
   }
 }
 
@@ -121,7 +125,14 @@ for (
   attachToVariants(guard);
 }
 
-isEmail.defineGenerator(() => `${randomWord()}@${randomWord()}.com`);
+isEmail.defineGenerator(({ prefix, domain, tld }: EmailConstraints = {}): string => {
+  prefix ??= randomWord();
+  domain ??= randomWord();
+  tld ??= "com";
+
+  return `${prefix}@${domain}.${tld}`;
+});
+
 isInternationalPhone.defineGenerator(internationalPhone);
 isUSPhone.defineGenerator(() => randomDigits(10));
 isPhoneNumber.defineGenerator(() => randomDigits(10));

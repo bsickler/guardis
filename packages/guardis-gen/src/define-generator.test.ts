@@ -4,7 +4,7 @@ import "./modules/strings.ts";
 
 import { assert, assertEquals, assertThrows } from "@std/assert";
 import { createTypeGuard, isNumber, isString } from "@spudlabs/guardis";
-import { isInternationalPhone } from "@spudlabs/guardis/strings-branded";
+import { isEmail, isInternationalPhone } from "@spudlabs/guardis/strings-branded";
 
 Deno.test("guard.defineGenerator() options overload", async (t) => {
   await t.step("sets defaults an object guard's zero-arg generate() reflects", () => {
@@ -64,6 +64,13 @@ Deno.test("guard.defineGenerator() options overload", async (t) => {
 
     const value = isInternationalPhone.generate();
     assert(value.startsWith("+44"), `expected ${value} to start with +44`);
+  });
+
+  await t.step("isEmail.generate() accepts prefix/domain/tld, defaulting the rest", () => {
+    assertEquals(isEmail.generate({ prefix: "jane" }).split("@")[0], "jane");
+
+    const value = isEmail.generate({ prefix: "jane", domain: "acme", tld: "io" });
+    assertEquals(value, "jane@acme.io");
   });
 
   await t.step(

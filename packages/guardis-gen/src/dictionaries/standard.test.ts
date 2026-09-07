@@ -1,42 +1,25 @@
-import { assert, assertEquals } from "@std/assert";
-import { companies } from "./company.ts";
-import { cities } from "./location/cities.ts";
-import { countries } from "./location/countries.ts";
-import { domainWords } from "./internet/domain-words.ts";
-import { tlds } from "./internet/tlds.ts";
-import { names } from "./people/names.ts";
-import { dictionaries } from "./index.ts";
+import { assert } from "@std/assert";
+import { Companies } from "./company.ts";
+import { Cities } from "./location/cities.ts";
+import { Countries } from "./location/countries.ts";
+import { DomainWords } from "./internet/domain-words.ts";
+import { Tlds } from "./internet/tlds.ts";
+import { Names } from "./people/names.ts";
+import { Dictionaries } from "./index.ts";
 
-Deno.test("built-in flat pools are non-empty", () => {
-  for (const dictionary of [cities, domainWords, tlds]) {
-    assert(dictionary.size > 0);
-  }
-});
-
-Deno.test("every built-in dictionary satisfies Dictionary<T> -- has a pick()", () => {
-  for (const dictionary of [names, cities, countries, domainWords, tlds]) {
-    assertEquals(typeof dictionary.pick, "function");
-  }
-});
-
-Deno.test("companies has name/jobTitle Dictionary<string>s instead of an ambiguous pick()", () => {
-  assertEquals(typeof companies.name.pick, "function");
-  assertEquals(typeof companies.jobTitle.pick, "function");
-});
-
-Deno.test("dictionaries namespace nests the built-in pools under the expected keys", () => {
-  assert(dictionaries.people.names === names);
-  assert(dictionaries.company.companies === companies);
-  assert(dictionaries.location.cities === cities);
-  assert(dictionaries.location.countries === countries);
-  assert(dictionaries.internet.domainWords === domainWords);
-  assert(dictionaries.internet.tlds === tlds);
+Deno.test("Dictionaries namespace nests the built-in pools under the expected keys", () => {
+  assert(Dictionaries.People.Names === Names);
+  assert(Dictionaries.Companies === Companies);
+  assert(Dictionaries.Location.Cities === Cities);
+  assert(Dictionaries.Location.Countries === Countries);
+  assert(Dictionaries.Internet.DomainWords === DomainWords);
+  assert(Dictionaries.Internet.Tlds === Tlds);
 });
 
 Deno.test("Names", async (t) => {
   await t.step("pick() composes 'First Last' or 'First Middle Last'", () => {
     for (let i = 0; i < 30; i++) {
-      const full = names.pick();
+      const full = Names.pick();
       const partCount = full.split(" ").length;
       assert(
         partCount === 2 || partCount === 3,
@@ -48,7 +31,7 @@ Deno.test("Names", async (t) => {
   await t.step("pick() sometimes includes a middle name and sometimes doesn't", () => {
     const partCounts = new Set<number>();
     for (let i = 0; i < 200; i++) {
-      partCounts.add(names.pick().split(" ").length);
+      partCounts.add(Names.pick().split(" ").length);
     }
     assert(partCounts.has(2), "never saw a 2-part name across 200 picks");
     assert(partCounts.has(3), "never saw a 3-part name across 200 picks");
@@ -58,11 +41,11 @@ Deno.test("Names", async (t) => {
     "female/male/first/middle/last are independent, each just a Dictionary<string>",
     () => {
       for (let i = 0; i < 20; i++) {
-        assert(typeof names.female.pick() === "string");
-        assert(typeof names.male.pick() === "string");
-        assert(typeof names.first.pick() === "string");
-        assert(typeof names.middle.pick() === "string");
-        assert(typeof names.last.pick() === "string");
+        assert(typeof Names.Female.pick() === "string");
+        assert(typeof Names.Male.pick() === "string");
+        assert(typeof Names.First.pick() === "string");
+        assert(typeof Names.Middle.pick() === "string");
+        assert(typeof Names.Last.pick() === "string");
       }
     },
   );
@@ -70,102 +53,102 @@ Deno.test("Names", async (t) => {
 
 Deno.test("Companies", async (t) => {
   await t.step(
-    "brand/llc/corporation/medicalPractice/lawFirm/investmentFirm/bank/restaurant are independent, each just a { name: Dictionary<string>, jobTitle: Dictionary<string> }",
+    "Brand/Llc/Corporation/MedicalPractice/LawFirm/InvestmentFirm/Bank/Restaurant are independent, each just a { Name: Dictionary<string>, Title: Dictionary<string> }",
     () => {
       for (let i = 0; i < 20; i++) {
-        assert(typeof companies.brand.name.pick() === "string");
-        assert(typeof companies.llc.name.pick() === "string");
-        assert(typeof companies.corporation.name.pick() === "string");
-        assert(typeof companies.medicalPractice.name.pick() === "string");
-        assert(typeof companies.lawFirm.name.pick() === "string");
-        assert(typeof companies.investmentFirm.name.pick() === "string");
-        assert(typeof companies.bank.name.pick() === "string");
-        assert(typeof companies.restaurant.name.pick() === "string");
+        assert(typeof Companies.Brand.Name.pick() === "string");
+        assert(typeof Companies.Llc.Name.pick() === "string");
+        assert(typeof Companies.Corporation.Name.pick() === "string");
+        assert(typeof Companies.MedicalPractice.Name.pick() === "string");
+        assert(typeof Companies.LawFirm.Name.pick() === "string");
+        assert(typeof Companies.InvestmentFirm.Name.pick() === "string");
+        assert(typeof Companies.Bank.Name.pick() === "string");
+        assert(typeof Companies.Restaurant.Name.pick() === "string");
       }
     },
   );
 
-  await t.step("llc always ends in 'LLC'", () => {
+  await t.step("Llc always ends in 'LLC'", () => {
     for (let i = 0; i < 20; i++) {
-      assert(companies.llc.name.pick().endsWith("LLC"));
+      assert(Companies.Llc.Name.pick().endsWith("LLC"));
     }
   });
 
   await t.step(
-    "medicalPractice draws its namesake from dictionaries.people.names, not a duplicated list",
+    "MedicalPractice draws its namesake from Dictionaries.People.Names, not a duplicated list",
     () => {
-      const knownSurnames = new Set(Array.from({ length: 2000 }, () => names.last.pick()));
+      const knownSurnames = new Set(Array.from({ length: 2000 }, () => Names.Last.pick()));
       for (let i = 0; i < 20; i++) {
-        const [surname] = companies.medicalPractice.name.pick().split(" ");
+        const [surname] = Companies.MedicalPractice.Name.pick().split(" ");
         assert(
           knownSurnames.has(surname),
-          `expected surname "${surname}" to come from dictionaries.people.names.last`,
+          `expected surname "${surname}" to come from Dictionaries.People.Names.last`,
         );
       }
     },
   );
 
-  await t.step("lawFirm composes two surnames joined by '&'", () => {
+  await t.step("LawFirm composes two surnames joined by '&'", () => {
     for (let i = 0; i < 20; i++) {
-      assert(companies.lawFirm.name.pick().includes(" & "));
+      assert(Companies.LawFirm.Name.pick().includes(" & "));
     }
   });
 
   await t.step(
-    "investmentFirm sometimes composes one surname and sometimes two joined by '&'",
+    "InvestmentFirm sometimes composes one surname and sometimes two joined by '&'",
     () => {
       const partCounts = new Set<boolean>();
       for (let i = 0; i < 30; i++) {
-        partCounts.add(companies.investmentFirm.name.pick().includes(" & "));
+        partCounts.add(Companies.InvestmentFirm.Name.pick().includes(" & "));
       }
-      assert(partCounts.has(true), "never saw a two-surname investmentFirm result across 30 picks");
+      assert(partCounts.has(true), "never saw a two-surname InvestmentFirm result across 30 picks");
       assert(
         partCounts.has(false),
-        "never saw a one-surname investmentFirm result across 30 picks",
+        "never saw a one-surname InvestmentFirm result across 30 picks",
       );
     },
   );
 
-  await t.step("each company type has its own jobTitle pool, independent of its name draw", () => {
+  await t.step("each company type has its own Title pool, independent of its Name draw", () => {
     const categories = [
-      companies.brand,
-      companies.llc,
-      companies.corporation,
-      companies.medicalPractice,
-      companies.lawFirm,
-      companies.investmentFirm,
-      companies.bank,
-      companies.restaurant,
+      Companies.Brand,
+      Companies.Llc,
+      Companies.Corporation,
+      Companies.MedicalPractice,
+      Companies.LawFirm,
+      Companies.InvestmentFirm,
+      Companies.Bank,
+      Companies.Restaurant,
     ];
     for (const category of categories) {
-      const titles = new Set(Array.from({ length: 20 }, () => category.jobTitle.pick()));
+      const titles = new Set(Array.from({ length: 20 }, () => category.Title.pick()));
       for (const title of titles) assert(typeof title === "string" && title.length > 0);
     }
   });
 
-  await t.step("jobTitle pools differ by company type -- not one shared list", () => {
+  await t.step("Title pools differ by company type -- not one shared list", () => {
     const medicalTitles = new Set(
-      Array.from({ length: 30 }, () => companies.medicalPractice.jobTitle.pick()),
+      Array.from({ length: 30 }, () => Companies.MedicalPractice.Title.pick()),
     );
-    const lawTitles = new Set(Array.from({ length: 30 }, () => companies.lawFirm.jobTitle.pick()));
+    const lawTitles = new Set(Array.from({ length: 30 }, () => Companies.LawFirm.Title.pick()));
     const overlap = [...medicalTitles].some((title) => lawTitles.has(title));
-    assert(!overlap, "medicalPractice and lawFirm job titles should not overlap");
+    assert(!overlap, "MedicalPractice and LawFirm job titles should not overlap");
   });
 
   await t.step(
-    "name.pick() mixes company-name types across calls, on purpose (mimics a varied real dataset)",
+    "Name.pick() mixes company-name types across calls, on purpose (mimics a varied real dataset)",
     () => {
       const knownRestaurants = new Set(
-        Array.from({ length: 200 }, () => companies.restaurant.name.pick()),
+        Array.from({ length: 200 }, () => Companies.Restaurant.Name.pick()),
       );
-      const knownBanks = new Set(Array.from({ length: 200 }, () => companies.bank.name.pick()));
+      const knownBanks = new Set(Array.from({ length: 200 }, () => Companies.Bank.Name.pick()));
 
       const sawLlc = new Set<boolean>();
       const sawAmpersand = new Set<boolean>();
       const sawRestaurant = new Set<boolean>();
       const sawBank = new Set<boolean>();
       for (let i = 0; i < 500; i++) {
-        const value = companies.name.pick();
+        const value = Companies.Name.pick();
         sawLlc.add(value.endsWith("LLC"));
         sawAmpersand.add(value.includes(" & "));
         sawRestaurant.add(knownRestaurants.has(value));
@@ -185,15 +168,15 @@ Deno.test("Companies", async (t) => {
   );
 
   await t.step(
-    "jobTitle.pick() mixes job titles across every business-entity type, independent of name.pick()",
+    "Title.pick() mixes job titles across every business-entity type, independent of Name.pick()",
     () => {
       const seen = new Set<string>();
-      for (let i = 0; i < 300; i++) seen.add(companies.jobTitle.pick());
+      for (let i = 0; i < 300; i++) seen.add(Companies.Title.pick());
       const knownMedicalTitles = new Set(
-        Array.from({ length: 30 }, () => companies.medicalPractice.jobTitle.pick()),
+        Array.from({ length: 30 }, () => Companies.MedicalPractice.Title.pick()),
       );
       const knownRestaurantTitles = new Set(
-        Array.from({ length: 30 }, () => companies.restaurant.jobTitle.pick()),
+        Array.from({ length: 30 }, () => Companies.Restaurant.Title.pick()),
       );
       assert(
         [...seen].some((title) => knownMedicalTitles.has(title)),
@@ -210,7 +193,7 @@ Deno.test("Companies", async (t) => {
 Deno.test("Countries", async (t) => {
   await t.step("record.pick() returns a full, self-consistent record", () => {
     for (let i = 0; i < 20; i++) {
-      const record = countries.record.pick();
+      const record = Countries.Record.pick();
       assert(record.name.length > 0, `bad name: "${record.name}"`);
       assert(
         record.standardizedName.length > 0,
@@ -226,11 +209,11 @@ Deno.test("Countries", async (t) => {
     "name/standardizedName/alpha2/alpha3/numeric each project one field off a freshly-picked record",
     () => {
       for (let i = 0; i < 20; i++) {
-        assert(countries.name.pick().length > 0);
-        assert(countries.standardizedName.pick().length > 0);
-        assert(countries.alpha2.pick().length === 2);
-        assert(countries.alpha3.pick().length === 3);
-        assert(/^\d{3}$/.test(countries.numeric.pick()));
+        assert(Countries.Name.pick().length > 0);
+        assert(Countries.StandardizedName.pick().length > 0);
+        assert(Countries.Alpha2.pick().length === 2);
+        assert(Countries.Alpha3.pick().length === 3);
+        assert(/^\d{3}$/.test(Countries.Numeric.pick()));
       }
     },
   );
@@ -238,7 +221,7 @@ Deno.test("Countries", async (t) => {
   await t.step(
     "standardizedName differs from name for at least one country (a common name exists)",
     () => {
-      const differing = Array.from({ length: 50 }, () => countries.record.pick())
+      const differing = Array.from({ length: 50 }, () => Countries.Record.pick())
         .some((record) => record.name !== record.standardizedName);
       assert(
         differing,
@@ -252,7 +235,7 @@ Deno.test("Countries", async (t) => {
     () => {
       const lengths = new Set<number>();
       for (let i = 0; i < 100; i++) {
-        lengths.add(countries.pick().length);
+        lengths.add(Countries.pick().length);
       }
       assert(lengths.has(2), "never saw an alpha-2-length result across 100 picks");
       assert(lengths.has(3), "never saw an alpha-3-length result across 100 picks");
@@ -265,7 +248,7 @@ Deno.test("Countries", async (t) => {
 
   await t.step("pick() never returns a numeric code -- see the class doc for why", () => {
     for (let i = 0; i < 200; i++) {
-      const value = countries.pick();
+      const value = Countries.pick();
       assert(!/^\d+$/.test(value), `pick() returned a numeric-looking value: "${value}"`);
     }
   });
@@ -275,7 +258,7 @@ Deno.test("Countries", async (t) => {
     // distinguishable from a legitimate `name` pick.
     const distinctStandardizedNames = new Set<string>();
     for (let i = 0; i < 500; i++) {
-      const record = countries.record.pick();
+      const record = Countries.Record.pick();
       if (record.standardizedName !== record.name) {
         distinctStandardizedNames.add(record.standardizedName);
       }
@@ -286,7 +269,7 @@ Deno.test("Countries", async (t) => {
     );
 
     for (let i = 0; i < 500; i++) {
-      const value = countries.pick();
+      const value = Countries.pick();
       assert(
         !distinctStandardizedNames.has(value),
         `pick() returned a standardizedName-only value: "${value}"`,
@@ -296,7 +279,7 @@ Deno.test("Countries", async (t) => {
 
   await t.step("the full ISO 3166-1 list is loaded, not just a handful of countries", () => {
     const seen = new Set<string>();
-    for (let i = 0; i < 500; i++) seen.add(countries.name.pick());
+    for (let i = 0; i < 500; i++) seen.add(Countries.Name.pick());
     assert(
       seen.size > 50,
       `expected a large, varied country list, saw only ${seen.size} distinct names in 500 picks`,

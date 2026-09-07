@@ -1,52 +1,13 @@
 /**
  * dictionaries/people/names.ts - A large, curated, English-only starter set
- * of person names: `female`/`male` first names (plus `first`/`middle`, each
- * combining both) and `last` names, since a full name isn't a single flat
+ * of person names: `Female`/`Male` first names (plus `First`/`Middle`, each
+ * combining both) and `Last` names, since a full name isn't a single flat
  * list -- you need one of each (middle optional) to make one, not
  * independent picks from a merged list.
  * @module
  */
-import { type Dictionary, dictionaryOf } from "../../dictionary.ts";
+import { Dictionary } from "../../dictionary.ts";
 import { pick, randomBoolean } from "../../utilities/rng.ts";
-
-/**
- * Implements `Dictionary<string>` directly -- there's no single flat pool,
- * only these fields together. `pick()` fixes a gender once per call and
- * draws first (and, ~30% of the time, a middle name) from that same
- * gender's pool, so a generated name's parts don't mix genders; `last` is
- * independent. `first`/`middle` themselves are gender-neutral, combining
- * female/male/unisex. Middle names reuse the first-name lists rather than a
- * separate one, since the two overlap heavily in practice.
- */
-export class Names implements Dictionary<string> {
-  readonly female: Dictionary<string> = dictionaryOf(() =>
-    pick(femaleFirstNames, unisexFirstNames)
-  );
-  readonly male: Dictionary<string> = dictionaryOf(() => pick(maleFirstNames, unisexFirstNames));
-  readonly first: Dictionary<string> = dictionaryOf(() =>
-    pick(femaleFirstNames, maleFirstNames, unisexFirstNames)
-  );
-  readonly middle: Dictionary<string> = dictionaryOf(() =>
-    pick(femaleFirstNames, maleFirstNames, unisexFirstNames)
-  );
-  readonly last: Dictionary<string> = dictionaryOf(() => pick(lastNames));
-
-  private getGenderedNames() {
-    return randomBoolean()
-      ? [femaleFirstNames, unisexFirstNames]
-      : [maleFirstNames, unisexFirstNames];
-  }
-
-  pick(): string {
-    const candidates = this.getGenderedNames();
-
-    const parts = randomBoolean(0.3)
-      ? [pick(...candidates), pick(...candidates), pick(lastNames)]
-      : [pick(...candidates), pick(lastNames)];
-
-    return parts.join(" ");
-  }
-}
 
 // Names usable for either gender -- spread into female/male/first/middle
 // above at each pick() call, rather than duplicated into their own lists.
@@ -457,4 +418,30 @@ const lastNames = [
   "Papageorgiou",
 ];
 
-export const names: Names = new Names();
+/** A random female first name (includes unisex names). */
+const Female = Dictionary.from(() => pick(femaleFirstNames, unisexFirstNames));
+/** A random male first name (includes unisex names). */
+const Male = Dictionary.from(() => pick(maleFirstNames, unisexFirstNames));
+/** A random first name, any gender. Not part of `pick()`'s mix -- see `pick()`'s doc. */
+const First = Dictionary.from(() => pick(femaleFirstNames, maleFirstNames, unisexFirstNames));
+/** A random middle name -- reuses the first-name pools, since the two overlap heavily in practice. Not part of `pick()`'s mix -- see `pick()`'s doc. */
+const Middle = Dictionary.from(() => pick(femaleFirstNames, maleFirstNames, unisexFirstNames));
+/** A random last name. */
+const Last = Dictionary.of(lastNames);
+
+export const Names = Dictionary.withChildren(
+  /**
+   * Fixes a gender once per call (via `Female`/`Male`) and draws first (and,
+   * ~30% of the time, a middle name) from that same gender's dictionary, so
+   * a generated name's parts don't mix genders. `Last` is independent.
+   */
+  Dictionary.from(() => {
+    const firstName = pick([Female, Male]);
+    const parts = randomBoolean(0.3)
+      ? [firstName.pick(), firstName.pick(), Last.pick()]
+      : [firstName.pick(), Last.pick()];
+
+    return parts.join(" ");
+  }),
+  { Female, Male, First, Middle, Last } as const,
+);

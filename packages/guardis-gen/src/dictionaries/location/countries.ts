@@ -9,7 +9,7 @@
  * sourced from.
  * @module
  */
-import { type Dictionary, dictionaryOf } from "../../dictionary.ts";
+import { Dictionary } from "../../dictionary.ts";
 import { pick } from "../../utilities/rng.ts";
 
 /** A single country's name, formal name, and its ISO 3166-1 alpha-2, alpha-3, and numeric codes. */
@@ -25,34 +25,6 @@ type CountryRecord = {
   /** ISO 3166-1 numeric code, e.g. "840". */
   readonly numeric: string;
 };
-
-class Countries implements Dictionary<string> {
-  /** A random full record -- name and all fields drawn together, so they agree with each other. */
-  readonly record: Dictionary<CountryRecord> = dictionaryOf(() => pick(records));
-  /** A random country name alone, e.g. "Japan". */
-  readonly name: Dictionary<CountryRecord["name"]> = dictionaryOf(() => this.record.pick().name);
-  /** A random formal/standard ISO name alone, e.g. "Bolivia (Plurinational State of)". Not part of `pick()`'s mix -- see `pick()`'s doc. */
-  readonly standardizedName: Dictionary<CountryRecord["standardizedName"]> = dictionaryOf(() =>
-    this.record.pick().standardizedName
-  );
-  /** A random ISO 3166-1 alpha-2 code alone, e.g. "JP". */
-  readonly alpha2: Dictionary<CountryRecord["alpha2"]> = dictionaryOf(() =>
-    this.record.pick().alpha2
-  );
-  /** A random ISO 3166-1 alpha-3 code alone, e.g. "JPN". */
-  readonly alpha3: Dictionary<CountryRecord["alpha3"]> = dictionaryOf(() =>
-    this.record.pick().alpha3
-  );
-  /** A random ISO 3166-1 numeric code alone, e.g. "392". Not part of `pick()`'s mix -- see `pick()`'s doc. */
-  readonly numeric: Dictionary<CountryRecord["numeric"]> = dictionaryOf(() =>
-    this.record.pick().numeric
-  );
-
-  /** Mixes name/alpha2/alpha3 representations across calls, on purpose -- mimics real, inconsistent user input. `standardizedName`/`numeric` are excluded: neither is something a person actually types. */
-  pick(): CountryRecord["name"] | CountryRecord["alpha2"] | CountryRecord["alpha3"] {
-    return pick([this.name, this.alpha2, this.alpha3]).pick();
-  }
-}
 
 const records: readonly CountryRecord[] = [
   {
@@ -942,4 +914,21 @@ const records: readonly CountryRecord[] = [
   },
 ];
 
-export const countries: Countries = new Countries();
+/** A random full record -- name and all fields drawn together, so they agree with each other. */
+const Record = Dictionary.of(records);
+/** A random country name alone, e.g. "Japan". */
+const Name = Dictionary.from(() => Record.pick().name);
+/** A random formal/standard ISO name alone, e.g. "Bolivia (Plurinational State of)". Not part of `pick()`'s mix -- see `pick()`'s doc. */
+const StandardizedName = Dictionary.from(() => Record.pick().standardizedName);
+/** A random ISO 3166-1 alpha-2 code alone, e.g. "JP". */
+const Alpha2 = Dictionary.from(() => Record.pick().alpha2);
+/** A random ISO 3166-1 alpha-3 code alone, e.g. "JPN". */
+const Alpha3 = Dictionary.from(() => Record.pick().alpha3);
+/** A random ISO 3166-1 numeric code alone, e.g. "392". Not part of `pick()`'s mix -- see `pick()`'s doc. */
+const Numeric = Dictionary.from(() => Record.pick().numeric);
+
+export const Countries = Dictionary.withChildren(
+  /** Mixes name/alpha2/alpha3 representations across calls, on purpose -- mimics real, inconsistent user input. `standardizedName`/`numeric` are excluded: neither is something a person actually types. */
+  Dictionary.from(() => pick([Name, Alpha2, Alpha3]).pick()),
+  { Record, Name, StandardizedName, Alpha2, Alpha3, Numeric } as const,
+);

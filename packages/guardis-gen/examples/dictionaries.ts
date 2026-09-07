@@ -3,8 +3,8 @@
  * ("dictionary") instead of blind random strings/numbers, and how it relates
  * to `defineGenerator()`/`generate()`.
  *
- * A `Dictionary<T>` is a small, validated, deduplicated pool -- see
- * `defineDictionary()` below -- and it's parameterized by the exact type it
+ * A `Dictionary<T>` is anything with a `pick(): T` method -- see
+ * `Dictionary.of()` below -- and it's parameterized by the exact type it
  * produces, so a `Dictionary<string>` can be handed to a string field but not
  * a number one, and a plain `Dictionary<string>` can't be handed to a branded
  * type (like an email or a UUID) without going through validation first. Run
@@ -32,40 +32,38 @@ import "@spudlabs/guardis-gen/modules/strings";
 
 import { createTypeGuard, isString } from "@spudlabs/guardis";
 import { isEmail } from "@spudlabs/guardis/strings";
-import { defineDictionary, dictionaries, fromDictionary } from "@spudlabs/guardis-gen";
+import { Dictionaries, Dictionary } from "@spudlabs/guardis-gen";
 
 function section(title: string): void {
   console.log(`\n--- ${title} ---`);
 }
 
-// --- 1. defineDictionary() builds a validated, deduplicated pool ------------
-// Duplicate entries collapse (it's backed by a Set); an empty pool throws
-// immediately rather than failing confusingly later.
+// --- 1. Dictionary.of() builds a flat pool -----------------------------------
+// pick() draws uniformly from the pool given.
 
 section("1. Building a dictionary");
 
-const colors = defineDictionary(["red", "green", "blue"]);
-console.log("colors.size:", colors.size);
+const colors = Dictionary.of(["red", "green", "blue"]);
 console.log("colors.pick():", colors.pick());
 // =>
-// colors.size: 3
 // colors.pick(): green
 
 // --- 2. A per-field dictionary scopes to just that field --------------------
-// `props.field.dictionary` reaches exactly one field, the same way any other
-// per-field option does -- the sibling field keeps generating normally.
+// A Dictionary handed directly as a field's own prop value reaches exactly
+// that field, the same way any other per-field option does -- the sibling
+// field keeps generating normally.
 
 section("2. A per-field dictionary override");
 
 const isSwatch = createTypeGuard({ name: isString, hex: isString });
 console.log(
-  "isSwatch.generate({ props: { name: { dictionary: colors } } }):",
-  isSwatch.generate({ props: { name: { dictionary: colors } } }),
+  "isSwatch.generate({ props: { name: colors } }):",
+  isSwatch.generate({ props: { name: colors } }),
 );
 // =>
-// isSwatch.generate({ props: { name: { dictionary: colors } } }): { name: "red", hex: "wexqf" }
+// isSwatch.generate({ props: { name: colors } }): { name: "red", hex: "wexqf" }
 
-// --- 3. defineGenerator(fromDictionary(...)) binds a dictionary to a guard --
+// --- 3. defineGenerator(() => dictionary.pick()) binds a dictionary to a guard
 // This composes anywhere the guard is used -- as a top-level generate() call,
 // a field, or a collection element -- just like any other function passed to
 // defineGenerator(). Bound to a dedicated guard, not isString itself, which
@@ -77,41 +75,40 @@ const isColorName = createTypeGuard(
   "color",
   (v: unknown) => typeof v === "string" ? v : null,
 );
-isColorName.defineGenerator(fromDictionary(colors));
+isColorName.defineGenerator(() => colors.pick());
 console.log("isColorName.generate():", isColorName.generate());
 // =>
 // isColorName.generate(): blue
 
-// --- 4. generate({ dictionary }) overrides at call time ---------------------
-// A call-time dictionary wins even over a registered defineGenerator() --
-// same "call-time options override registered defaults" rule every other
-// option already follows. Cast to unknown options: a custom guard built via
-// createTypeGuard's parser overload has no branded name to key a typed
-// GenerateOptionsFor entry off of, the same limitation documented in
-// define-generator.test.ts for constraint options -- isColorName's runtime
-// behavior is unaffected, only the .generate() call's typed surface is.
+// --- 4. generate(dictionary) overrides at call time --------------------------
+// A call-time dictionary, handed directly, wins even over a registered
+// defineGenerator() -- same "call-time options override registered
+// defaults" rule every other option already follows. Cast to unknown
+// options: a custom guard built via createTypeGuard's parser overload has no
+// branded name to key a typed GenerateOptionsFor entry off of, the same
+// limitation documented in define-generator.test.ts for constraint options --
+// isColorName's runtime behavior is unaffected, only the .generate() call's
+// typed surface is.
 
 section("4. Overriding with a different dictionary at call time");
 
-const primaryColors = defineDictionary(["red", "yellow", "blue"]);
-const overridden = (isColorName.generate as (options?: unknown) => string)({
-  dictionary: primaryColors,
-});
-console.log("isColorName.generate({ dictionary: primaryColors }):", overridden);
+const primaryColors = Dictionary.of(["red", "yellow", "blue"]);
+const overridden = (isColorName.generate as (options?: unknown) => string)(primaryColors);
+console.log("isColorName.generate(primaryColors):", overridden);
 // =>
-// isColorName.generate({ dictionary: primaryColors }): yellow
+// isColorName.generate(primaryColors): yellow
 
 // --- 5. Composing a realistic value from several built-in dictionaries ------
 // A dictionary only ever draws ONE value from a flat pool -- an email needs
 // its parts composed by hand, so this binds a short generator function
-// rather than a single fromDictionary() call.
+// rather than a single dictionary pick.
 
 section("5. Composing a realistic email from the built-in dictionaries");
 
-const { first: firstNames, last: lastNames } = dictionaries.people.names;
-const { domainWords, tlds } = dictionaries.internet;
+const { First: firstNames, Last: lastNames } = Dictionaries.People.Names;
+const { DomainWords, Tlds } = Dictionaries.Internet;
 isEmail.defineGenerator(
-  () => `${firstNames.pick()}.${lastNames.pick()}@${domainWords.pick()}.${tlds.pick()}`,
+  () => `${firstNames.pick()}.${lastNames.pick()}@${DomainWords.pick()}.${Tlds.pick()}`,
 );
 console.log("isEmail.generate():", isEmail.generate());
 // =>
